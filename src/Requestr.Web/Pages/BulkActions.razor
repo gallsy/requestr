@@ -1,0 +1,278 @@
+@page "/bulk-actions/{FormDefinitionId:int}"
+@using Requestr.Core.Models
+@using Requestr.Core.Interfaces
+@using Requestr.Core.Models.DTOs
+@using System.Linq
+@inject IDataViewService DataViewService
+@inject IFormDefinitionService FormDefinitionService
+@inject IBulkFormRequestService BulkFormRequestService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JSRuntime
+@attribute [Authorize]
+
+<h1 class="visually-hidden">Bulk Actions - Requestr</h1>
+
+@if (_isLoading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2">Loading form definition...</p>
+    </div>
+}
+else if (_formDefinition == null)
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="text-center p-5">
+                <i class="bi bi-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
+                <h4 class="mt-3">Form Definition Not Found</h4>
+                <p class="text-muted">The requested form definition could not be found or you don't have permission to access it.</p>
+                <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">
+                    Back to Home
+                </button>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-12">
+                <!-- Header -->
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h1 class="display-6">
+                            <i class="bi bi-collection me-3"></i>
+                            Bulk Actions: @_formDefinition.Name
+                        </h1>
+                        <nav aria-label="breadcrumb">
+                            <ol class="breadcrumb">
+                                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                                <li class="breadcrumb-item"><a href="/data-view/@FormDefinitionId">Data View</a></li>
+                                <li class="breadcrumb-item active" aria-current="page">Bulk Actions</li>
+                            </ol>
+                        </nav>
+                    </div>
+                    <div>
+                        <a href="/data-view/@FormDefinitionId" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left me-2"></i>
+                            Back to Data View
+                        </a>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        @_errorMessage
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" @onclick="() => _errorMessage = string.Empty"></button>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(_successMessage))
+                {
+                    <div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle-fill me-2"></i>
+                        @_successMessage
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" @onclick="() => _successMessage = string.Empty"></button>
+                    </div>
+                }
+
+                <!-- Bulk Action Options -->
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card mb-4">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="card-title mb-0">
+                                    <i class="bi bi-upload me-2"></i>
+                                    Upload CSV for Bulk Insert
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <p>Upload a CSV file to create multiple insert requests at once.</p>
+                                <p><small class="text-muted">CSV must include headers matching the field names.</small></p>
+                                <a href="/bulk-upload/@FormDefinitionId" class="btn btn-primary">
+                                    <i class="bi bi-upload me-2"></i>
+                                    Upload CSV
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card mb-4">
+                            <div class="card-header bg-info text-white">
+                                <h5 class="card-title mb-0">
+                                    <i class="bi bi-table me-2"></i>
+                                    Browse & Select Records
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <p>Browse and select existing records to perform bulk updates or deletions.</p>
+                                <p><small class="text-muted">Filter, sort, and select records to modify or delete.</small></p>
+                                <a href="/data-view/@FormDefinitionId" class="btn btn-info text-white">
+                                    <i class="bi bi-table me-2"></i>
+                                    Browse Data
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Bulk Requests -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="bi bi-clock-history me-2"></i>
+                            Recent Bulk Requests
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        @if (_recentBulkRequests == null)
+                        {
+                            <div class="d-flex justify-content-center py-4">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        }
+                        else if (!_recentBulkRequests.Any())
+                        {
+                            <div class="text-center py-4">
+                                <i class="bi bi-inbox text-muted" style="font-size: 2rem;"></i>
+                                <p class="text-muted mt-2">No recent bulk requests found.</p>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Type</th>
+                                            <th>File Name</th>
+                                            <th>Records</th>
+                                            <th>Status</th>
+                                            <th>Date</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var request in _recentBulkRequests)
+                                        {
+                                            <tr>
+                                                <td>@request.Id</td>
+                                                <td>
+                                                    <span class="badge @GetRequestTypeBadgeClass(request.RequestType)">
+                                                        @request.RequestType
+                                                    </span>
+                                                </td>
+                                                <td>@request.FileName</td>
+                                                <td>@request.SelectedRows / @request.TotalRows</td>
+                                                <td>
+                                                    <span class="badge @GetStatusBadgeClass(request.Status)">
+                                                        @request.Status
+                                                    </span>
+                                                </td>
+                                                <td>@request.RequestedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                                                <td>
+                                                    <a href="/bulk-requests/@request.Id" class="btn btn-sm btn-outline-primary">
+                                                        <i class="bi bi-eye"></i>
+                                                        View
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int FormDefinitionId { get; set; }
+
+    private bool _isLoading = true;
+    private string _errorMessage = string.Empty;
+    private string _successMessage = string.Empty;
+
+    private FormDefinition? _formDefinition;
+    private List<BulkFormRequest> _recentBulkRequests = new();
+    private string _currentUserId = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCurrentUser();
+        await LoadFormDefinition();
+        await LoadRecentBulkRequests();
+    }
+
+    private async Task LoadCurrentUser()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _currentUserId = GetUserIdentifier(authState.User);
+    }
+
+    private async Task LoadFormDefinition()
+    {
+        try
+        {
+            _formDefinition = await FormDefinitionService.GetFormDefinitionAsync(FormDefinitionId);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading form definition: {ex.Message}";
+        }
+    }
+
+    private async Task LoadRecentBulkRequests()
+    {
+        try
+        {
+            // Get recent bulk requests for this form definition
+            _recentBulkRequests = await BulkFormRequestService.GetBulkFormRequestsByFormDefinitionIdAsync(FormDefinitionId, 10);
+            
+            // Final step after loading data
+            _isLoading = false;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading recent bulk requests: {ex.Message}";
+            _isLoading = false;
+        }
+    }
+
+    private string GetRequestTypeBadgeClass(RequestType requestType) => requestType switch
+    {
+        RequestType.Insert => "bg-primary",
+        RequestType.Update => "bg-info text-dark",
+        RequestType.Delete => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private string GetStatusBadgeClass(RequestStatus status) => status switch
+    {
+        RequestStatus.Pending => "bg-warning text-dark",
+        RequestStatus.Approved => "bg-success",
+        RequestStatus.Rejected => "bg-danger",
+        RequestStatus.Applied => "bg-info",
+        RequestStatus.Failed => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private string GetUserIdentifier(System.Security.Claims.ClaimsPrincipal user)
+    {
+        return user.Identity?.Name ?? "Unknown";
+    }
+}

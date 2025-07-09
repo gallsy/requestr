@@ -1,0 +1,575 @@
+@page "/pending-approvals"
+@using System.Linq
+@using Microsoft.AspNetCore.Components.Web
+@using Requestr.Core.Models
+@using Requestr.Core.Interfaces
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize(Roles = "Admin,FormAdmin,DataAdmin,ReferenceDataApprover")]
+@inject IFormRequestService FormRequestService
+@inject IBulkFormRequestService BulkFormRequestService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Pending Approvals - Requestr</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="display-5">
+                        <i class="bi bi-exclamation-triangle-fill me-3 text-warning"></i>
+                        Pending Approvals
+                    </h1>
+                    <p class="lead">Review and approve individual requests and bulk uploads requiring your attention</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <select class="form-select form-select-sm" @bind="SelectedRequestTypeFilter" @bind:after="ApplyFilters">
+                        <option value="">All Request Types</option>
+                        <option value="Individual">Individual Requests</option>
+                        <option value="Bulk">Bulk Requests</option>
+                    </select>
+                    <select class="form-select form-select-sm" @bind="SelectedFormFilter" @bind:after="ApplyFilters">
+                        <option value="">All Forms</option>
+                        @if (AllIndividualRequests?.Any() == true)
+                        {
+                            @foreach (var form in AllIndividualRequests.Where(r => r.FormDefinition != null).Select(r => r.FormDefinition!).DistinctBy(f => f.Id))
+                            {
+                                <option value="@form.Id">@form.Name</option>
+                            }
+                        }
+                        @if (AllBulkRequests?.Any() == true)
+                        {
+                            @foreach (var form in AllBulkRequests.Where(r => r.FormDefinition != null).Select(r => r.FormDefinition!).DistinctBy(f => f.Id))
+                            {
+                                <option value="@form.Id">@form.Name</option>
+                            }
+                        }
+                    </select>
+                    <select class="form-select form-select-sm" @bind="SortOrder" @bind:after="ApplyFilters">
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">
+                    <i class="bi bi-list-check me-2"></i>
+                    Requests Awaiting Approval
+                </h5>
+            </div>
+            <div class="card">
+                <div class="card-body">
+                @if (IsLoading)
+                {
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading pending approvals...</p>
+                    </div>
+                }
+                else if ((FilteredIndividualRequests?.Any() != true) && (FilteredBulkRequests?.Any() != true))
+                {
+                    <div class="text-center py-5">
+                        <i class="bi bi-check-circle display-1 text-success mb-3"></i>
+                        <h6 class="text-muted">No pending approvals</h6>
+                        <p class="text-muted small">
+                            @if (string.IsNullOrEmpty(SelectedFormFilter) && string.IsNullOrEmpty(SelectedRequestTypeFilter))
+                            {
+                                <text>All requests have been processed. Great work!</text>
+                            }
+                            else
+                            {
+                                <text>No requests match your current filters. Try adjusting your filter criteria.</text>
+                            }
+                        </p>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Request Type</th>
+                                    <th>Form</th>
+                                    <th>Details</th>
+                                    <th>Requested By</th>
+                                    <th>Requested Date</th>
+                                    <th>Priority</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (FilteredBulkRequests?.Any() == true)
+                                {
+                                    @foreach (var bulkRequest in FilteredBulkRequests)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <span class="badge bg-info">
+                                                    <i class="bi bi-collection me-1"></i>
+                                                    Bulk Request
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div>
+                                                    <div class="fw-bold">@bulkRequest.FormDefinition?.Name</div>
+                                                    <small class="text-muted">
+                                                        <i class="bi bi-server me-1"></i>@bulkRequest.FormDefinition?.DatabaseConnectionName
+                                                        <span class="mx-1">•</span>
+                                                        <i class="bi bi-table me-1"></i>@bulkRequest.FormDefinition?.TableName
+                                                    </small>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div>
+                                                    <div class="fw-bold">@bulkRequest.SelectedRows items</div>
+                                                    <small class="text-muted">@bulkRequest.FileName</small>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div>
+                                                    <div class="fw-bold">@bulkRequest.RequestedByName</div>
+                                                    <small class="text-muted">@bulkRequest.RequestedBy</small>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div>
+                                                    @bulkRequest.RequestedAt.ToString("MMM dd, yyyy")
+                                                    <br/>
+                                                    <small class="text-muted">@bulkRequest.RequestedAt.ToString("HH:mm")</small>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span class="badge @GetPriorityBadgeClass(bulkRequest.RequestedAt)">
+                                                    @GetPriorityText(bulkRequest.RequestedAt)
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div class="btn-group" role="group">
+                                                    <a href="/bulk-requests/@bulkRequest.Id?isFromApprovals=true" class="btn btn-sm btn-outline-primary">
+                                                        <i class="bi bi-eye me-1"></i>
+                                                        Review
+                                                    </a>
+                                                    <button class="btn btn-sm btn-success" @onclick="() => QuickApproveBulk(bulkRequest.Id)" title="Quick Approve">
+                                                        <i class="bi bi-check-lg"></i>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-danger" @onclick="() => QuickRejectBulk(bulkRequest.Id)" title="Quick Reject">
+                                                        <i class="bi bi-x-lg"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                @if (FilteredIndividualRequests?.Any() == true)
+                                {
+                                    @foreach (var request in FilteredIndividualRequests)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <span class="badge @GetRequestTypeBadgeClass(request.RequestType)">
+                                                    @request.RequestType.ToString()
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div>
+                                                    <div class="fw-bold">@request.FormDefinition?.Name</div>
+                                                    <small class="text-muted">
+                                                        <i class="bi bi-server me-1"></i>@request.FormDefinition?.DatabaseConnectionName
+                                                        <span class="mx-1">•</span>
+                                                        <i class="bi bi-table me-1"></i>@request.FormDefinition?.TableName
+                                                    </small>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div>
+                                                    <small class="text-muted">Individual request</small>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div>
+                                                    <div class="fw-bold">@request.RequestedByName</div>
+                                                    <small class="text-muted">@request.RequestedBy</small>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div>
+                                                    @request.RequestedAt.ToString("MMM dd, yyyy")
+                                                    <br/>
+                                                    <small class="text-muted">@request.RequestedAt.ToString("HH:mm")</small>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span class="badge @GetPriorityBadgeClass(request.RequestedAt)">
+                                                    @GetPriorityText(request.RequestedAt)
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div class="btn-group" role="group">
+                                                    <a href="/requests/@request.Id" class="btn btn-sm btn-outline-primary">
+                                                        <i class="bi bi-eye me-1"></i>
+                                                        Review
+                                                    </a>
+                                                    <button class="btn btn-sm btn-success" @onclick="() => QuickApprove(request.Id)" title="Quick Approve">
+                                                        <i class="bi bi-check-lg"></i>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-danger" @onclick="() => QuickReject(request.Id)" title="Quick Reject">
+                                                        <i class="bi bi-x-lg"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="mt-3 pt-3 border-top">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p class="text-muted small mb-0">
+                                    Showing @((FilteredIndividualRequests?.Count ?? 0) + (FilteredBulkRequests?.Count ?? 0)) of @((AllIndividualRequests?.Count ?? 0) + (AllBulkRequests?.Count ?? 0)) pending approvals
+                                    @if (FilteredBulkRequests?.Any() == true)
+                                    {
+                                        <span class="text-info">
+                                            (@FilteredBulkRequests.Count bulk requests with @FilteredBulkRequests.Sum(br => br.SelectedRows) total items)
+                                        </span>
+                                    }
+                                </p>
+                            </div>
+                            <div class="col-md-6 text-end">
+                                @if (!string.IsNullOrEmpty(SelectedFormFilter) || !string.IsNullOrEmpty(SelectedRequestTypeFilter))
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="ClearFilters">
+                                        <i class="bi bi-x-lg me-1"></i>
+                                        Clear Filters
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Action Modal -->
+<div class="modal fade" id="quickActionModal" tabindex="-1" aria-labelledby="quickActionModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="quickActionModalLabel">
+                    @if (IsQuickApprove)
+                    {
+                        <i class="bi bi-check-circle text-success me-2"></i>
+                        <text>Quick Approve</text>
+                    }
+                    else
+                    {
+                        <i class="bi bi-x-circle text-danger me-2"></i>
+                        <text>Quick Reject</text>
+                    }
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to @(IsQuickApprove ? "approve" : "reject") this @(IsBulkAction ? "bulk request" : "request")?</p>
+                @if (IsBulkAction && IsQuickApprove)
+                {
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        This will approve all items in the bulk request.
+                    </div>
+                }
+                else if (IsBulkAction && !IsQuickApprove)
+                {
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        This will reject all items in the bulk request.
+                    </div>
+                }
+                @if (!IsQuickApprove)
+                {
+                    <div class="mb-3">
+                        <label for="rejectionReason" class="form-label">Rejection Reason *</label>
+                        <textarea class="form-control" id="rejectionReason" rows="3" @bind="RejectionReason" placeholder="Please provide a reason for rejection..."></textarea>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn @(IsQuickApprove ? "btn-success" : "btn-danger")" @onclick="ConfirmQuickAction" disabled="@(IsProcessing || (!IsQuickApprove && string.IsNullOrWhiteSpace(RejectionReason)))">
+                    @if (IsProcessing)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    }
+                    @(IsQuickApprove ? "Approve" : "Reject")
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    // Individual requests
+    private List<FormRequest>? AllIndividualRequests;
+    private List<FormRequest>? FilteredIndividualRequests;
+    
+    // Bulk requests
+    private List<BulkFormRequest>? AllBulkRequests;
+    private List<BulkFormRequest>? FilteredBulkRequests;
+    
+    private List<string> UserRoles = new();
+    private bool IsLoading = true;
+    private string SelectedFormFilter = "";
+    private string SelectedRequestTypeFilter = "";
+    private string SortOrder = "newest";
+    
+    // Quick action modal
+    private int SelectedRequestId = 0;
+    private bool IsQuickApprove = false;
+    private bool IsBulkAction = false;
+    private string RejectionReason = "";
+    private bool IsProcessing = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            if (authState.User.Identity?.IsAuthenticated == true)
+            {
+                UserRoles = authState.User.Claims
+                    .Where(c => c.Type == "roles" || c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role")
+                    .Select(c => c.Value)
+                    .ToList();
+
+                await LoadPendingApprovalsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading pending approvals: {ex.Message}");
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task LoadPendingApprovalsAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var currentUserId = authState.User.FindFirst("sub")?.Value ?? 
+                              authState.User.FindFirst("oid")?.Value ?? 
+                              authState.User.Identity?.Name ?? "";
+
+            // Load individual requests (excluding those that are part of bulk requests)
+            AllIndividualRequests = await FormRequestService.GetFormRequestsForApprovalAsync(UserRoles);
+            AllIndividualRequests = AllIndividualRequests?.Where(r => r.BulkFormRequestId == null).ToList();
+
+            // Load bulk requests
+            AllBulkRequests = await BulkFormRequestService.GetBulkFormRequestsForApprovalAsync(currentUserId, UserRoles);
+            
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading pending approvals: {ex.Message}");
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        // Filter individual requests
+        FilteredIndividualRequests = AllIndividualRequests;
+        if (!string.IsNullOrEmpty(SelectedFormFilter) && int.TryParse(SelectedFormFilter, out int formId))
+        {
+            FilteredIndividualRequests = FilteredIndividualRequests?.Where(r => r.FormDefinitionId == formId).ToList();
+        }
+
+        // Filter bulk requests
+        FilteredBulkRequests = AllBulkRequests;
+        if (!string.IsNullOrEmpty(SelectedFormFilter) && int.TryParse(SelectedFormFilter, out int bulkFormId))
+        {
+            FilteredBulkRequests = FilteredBulkRequests?.Where(r => r.FormDefinitionId == bulkFormId).ToList();
+        }
+
+        // Apply request type filter
+        if (!string.IsNullOrEmpty(SelectedRequestTypeFilter))
+        {
+            if (SelectedRequestTypeFilter == "Individual")
+            {
+                FilteredBulkRequests = new List<BulkFormRequest>();
+            }
+            else if (SelectedRequestTypeFilter == "Bulk")
+            {
+                FilteredIndividualRequests = new List<FormRequest>();
+            }
+        }
+
+        // Apply sorting
+        if (SortOrder == "newest")
+        {
+            FilteredIndividualRequests = FilteredIndividualRequests?.OrderByDescending(r => r.RequestedAt).ToList();
+            FilteredBulkRequests = FilteredBulkRequests?.OrderByDescending(r => r.RequestedAt).ToList();
+        }
+        else
+        {
+            FilteredIndividualRequests = FilteredIndividualRequests?.OrderBy(r => r.RequestedAt).ToList();
+            FilteredBulkRequests = FilteredBulkRequests?.OrderBy(r => r.RequestedAt).ToList();
+        }
+    }
+
+    private void ClearFilters()
+    {
+        SelectedFormFilter = "";
+        SelectedRequestTypeFilter = "";
+        ApplyFilters();
+    }
+
+    private string GetRequestTypeBadgeClass(RequestType requestType)
+    {
+        return requestType switch
+        {
+            RequestType.Insert => "bg-success",
+            RequestType.Update => "bg-warning text-dark",
+            RequestType.Delete => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetPriorityBadgeClass(DateTime requestedAt)
+    {
+        var daysOld = (DateTime.Now - requestedAt).Days;
+        return daysOld switch
+        {
+            >= 7 => "bg-danger",
+            >= 3 => "bg-warning text-dark",
+            >= 1 => "bg-info",
+            _ => "bg-light text-dark"
+        };
+    }
+
+    private string GetPriorityText(DateTime requestedAt)
+    {
+        var daysOld = (DateTime.Now - requestedAt).Days;
+        return daysOld switch
+        {
+            >= 7 => "High",
+            >= 3 => "Medium",
+            >= 1 => "Normal",
+            _ => "New"
+        };
+    }
+
+    private void QuickApprove(int requestId)
+    {
+        SelectedRequestId = requestId;
+        IsQuickApprove = true;
+        IsBulkAction = false;
+        RejectionReason = "";
+        ShowQuickActionModal();
+    }
+
+    private void QuickReject(int requestId)
+    {
+        SelectedRequestId = requestId;
+        IsQuickApprove = false;
+        IsBulkAction = false;
+        RejectionReason = "";
+        ShowQuickActionModal();
+    }
+
+    private void QuickApproveBulk(int bulkRequestId)
+    {
+        SelectedRequestId = bulkRequestId;
+        IsQuickApprove = true;
+        IsBulkAction = true;
+        RejectionReason = "";
+        ShowQuickActionModal();
+    }
+
+    private void QuickRejectBulk(int bulkRequestId)
+    {
+        SelectedRequestId = bulkRequestId;
+        IsQuickApprove = false;
+        IsBulkAction = true;
+        RejectionReason = "";
+        ShowQuickActionModal();
+    }
+
+    private void ShowQuickActionModal()
+    {
+        // This would typically use IJSRuntime to show Bootstrap modal
+        // For now, we'll navigate to the full request details page
+        if (IsBulkAction)
+        {
+            Navigation.NavigateTo($"/bulk-requests/{SelectedRequestId}?isFromApprovals=true");
+        }
+        else
+        {
+            Navigation.NavigateTo($"/requests/{SelectedRequestId}");
+        }
+    }
+
+    private async Task ConfirmQuickAction()
+    {
+        if (SelectedRequestId == 0) return;
+
+        IsProcessing = true;
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var currentUserId = authState.User.FindFirst("sub")?.Value ?? 
+                              authState.User.FindFirst("oid")?.Value ?? 
+                              authState.User.Identity?.Name ?? "";
+            var currentUserName = authState.User.Identity?.Name ?? "";
+
+            if (IsBulkAction)
+            {
+                if (IsQuickApprove)
+                {
+                    await BulkFormRequestService.ApproveBulkFormRequestAsync(SelectedRequestId, currentUserId, currentUserName);
+                }
+                else
+                {
+                    await BulkFormRequestService.RejectBulkFormRequestAsync(SelectedRequestId, currentUserId, currentUserName, RejectionReason);
+                }
+            }
+            else
+            {
+                if (IsQuickApprove)
+                {
+                    await FormRequestService.ApproveFormRequestAsync(SelectedRequestId, currentUserId, currentUserName);
+                }
+                else
+                {
+                    await FormRequestService.RejectFormRequestAsync(SelectedRequestId, currentUserId, currentUserName, RejectionReason);
+                }
+            }
+
+            // Reload the data
+            await LoadPendingApprovalsAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error processing quick action: {ex.Message}");
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+}

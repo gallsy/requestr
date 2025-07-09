@@ -1,0 +1,76 @@
+@inject ThemeService ThemeService
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<button class="btn btn-outline-light btn-sm theme-toggle" 
+        type="button" 
+        @onclick="ToggleTheme" 
+        title="@(_isDarkMode ? "Switch to light mode" : "Switch to dark mode")">
+    <i class="bi @(_isDarkMode ? "bi-sun-fill" : "bi-moon-fill")"></i>
+    <span class="d-none d-md-inline ms-1">@(_isDarkMode ? "Light" : "Dark")</span>
+</button>
+
+@code {
+    private bool _isDarkMode;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadThemeFromStorage();
+        _isDarkMode = ThemeService.IsDarkMode;
+        ThemeService.OnThemeChanged += OnThemeChanged;
+    }
+
+    private async Task LoadThemeFromStorage()
+    {
+        try
+        {
+            var storedTheme = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "theme");
+            var isDarkMode = storedTheme == "dark";
+            ThemeService.SetTheme(isDarkMode);
+        }
+        catch
+        {
+            // If localStorage fails, try to detect system preference
+            try
+            {
+                var prefersDark = await JSRuntime.InvokeAsync<bool>("window.matchMedia('(prefers-color-scheme: dark)').matches");
+                ThemeService.SetTheme(prefersDark);
+            }
+            catch
+            {
+                // Default to light mode if everything fails
+                ThemeService.SetTheme(false);
+            }
+        }
+    }
+
+    private async Task ToggleTheme()
+    {
+        ThemeService.ToggleTheme();
+        await SaveThemeToStorage();
+    }
+
+    private async Task SaveThemeToStorage()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "theme", _isDarkMode ? "dark" : "light");
+        }
+        catch
+        {
+            // Ignore localStorage errors
+        }
+    }
+
+    private void OnThemeChanged()
+    {
+        _isDarkMode = ThemeService.IsDarkMode;
+        _ = SaveThemeToStorage(); // Save asynchronously without waiting
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        ThemeService.OnThemeChanged -= OnThemeChanged;
+    }
+}

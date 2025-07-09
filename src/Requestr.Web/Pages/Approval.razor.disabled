@@ -1,0 +1,322 @@
+@page "/approve/{RequestId:int}"
+@using Requestr.Core.Models
+@using Requestr.Core.Interfaces
+@inject IFormRequestService FormRequestService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize]
+
+<PageTitle>Review Request</PageTitle>
+
+@if (_isLoading)
+{
+    <div class="text-center p-5">
+        <Spinner Color="SpinnerColor.Primary" />
+        <p class="mt-2">Loading request...</p>
+    </div>
+}
+else if (_request == null)
+{
+    <Card>
+        <CardBody>
+            <div class="text-center p-5">
+                <Icon Name="IconName.ExclamationTriangle" Size="IconSize.x3" Class="text-warning" />
+                <h4 class="mt-3">Request Not Found</h4>
+                <p class="text-muted">The requested approval could not be found or you don't have permission to access it.</p>
+                <Button Color="ButtonColor.Primary" @onclick="@(() => Navigation.NavigateTo("/"))">
+                    Go Home
+                </Button>
+            </div>
+        </CardBody>
+    </Card>
+}
+else
+{
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <Card>
+                    <CardHeader>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h4 class="mb-1">Review Request</h4>
+                                <small class="text-muted">@_request.FormDefinition?.Name</small>
+                            </div>
+                            <Badge Color="@GetStatusBadgeColor(_request.Status)">
+                                @_request.Status
+                            </Badge>
+                        </div>
+                    </CardHeader>
+                    <CardBody>
+                        @if (!string.IsNullOrEmpty(_errorMessage))
+                        {
+                            <Alert Color="AlertColor.Danger" Dismissible="true">
+                                @_errorMessage
+                            </Alert>
+                        }
+                        
+                        @if (!string.IsNullOrEmpty(_successMessage))
+                        {
+                            <Alert Color="AlertColor.Success" Dismissible="true">
+                                @_successMessage
+                            </Alert>
+                        }
+
+                        <!-- Request Details -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <strong>Request Type:</strong>
+                                <Badge Color="@GetRequestTypeBadgeColor(_request.RequestType)" Class="ms-2">
+                                    @_request.RequestType
+                                </Badge>
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Requested By:</strong> @_request.RequestedByName
+                            </div>
+                            <div class="col-md-6 mt-2">
+                                <strong>Requested At:</strong> @_request.RequestedAt.ToString("MMM dd, yyyy HH:mm")
+                            </div>
+                            <div class="col-md-6 mt-2">
+                                <strong>Form:</strong> @_request.FormDefinition?.Name
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(_request.Comments))
+                        {
+                            <div class="mb-4">
+                                <strong>Comments:</strong>
+                                <div class="border rounded p-3 mt-2 bg-light">
+                                    @_request.Comments
+                                </div>
+                            </div>
+                        }
+
+                        <!-- Field Values -->
+                        <div class="mb-4">
+                            <h5>Requested Changes</h5>
+                            <div class="table-responsive">
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Field</th>
+                                            @if (_request.RequestType != "INSERT")
+                                            {
+                                                <th>Original Value</th>
+                                            }
+                                            <th>New Value</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var fieldValue in _request.FieldValues)
+                                        {
+                                            <tr>
+                                                <td><strong>@fieldValue.Key</strong></td>
+                                                @if (_request.RequestType != "INSERT")
+                                                {
+                                                    <td>
+                                                        @if (_request.OriginalValues.ContainsKey(fieldValue.Key))
+                                                        {
+                                                            <span class="text-muted">@_request.OriginalValues[fieldValue.Key]</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="text-muted">-</span>
+                                                        }
+                                                    </td>
+                                                }
+                                                <td>
+                                                    @if (_request.RequestType == "DELETE")
+                                                    {
+                                                        <span class="text-danger">[DELETE]</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <strong>@fieldValue.Value</strong>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        @if (_request.Status == RequestStatus.Pending)
+                        {
+                            <div class="row">
+                                <div class="col-md-12 mb-3">
+                                    <label class="form-label">Approval Comments (Optional)</label>
+                                    <textarea class="form-control" rows="3" @bind="_approvalComments" placeholder="Add any comments about this approval/rejection..."></textarea>
+                                </div>
+                            </div>
+                            
+                            <div class="d-flex justify-content-between">
+                                <Button Color="ButtonColor.Secondary" @onclick="Cancel">
+                                    Cancel
+                                </Button>
+                                <div>
+                                    <Button Color="ButtonColor.Danger" @onclick="RejectRequest" Disabled="_isProcessing" Class="me-2">
+                                        @if (_isProcessing && _actionType == "reject")
+                                        {
+                                            <Spinner Size="SpinnerSize.Small" Class="me-2" />
+                                        }
+                                        <Icon Name="IconName.X" Class="me-1" />
+                                        Reject
+                                    </Button>
+                                    <Button Color="ButtonColor.Success" @onclick="ApproveRequest" Disabled="_isProcessing">
+                                        @if (_isProcessing && _actionType == "approve")
+                                        {
+                                            <Spinner Size="SpinnerSize.Small" Class="me-2" />
+                                        }
+                                        <Icon Name="IconName.Check" Class="me-1" />
+                                        Approve
+                                    </Button>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-center p-3 bg-light rounded">
+                                <Icon Name="IconName.InfoCircle" Class="text-info" />
+                                <p class="mb-0 mt-2">This request has already been @_request.Status.ToString().ToLower().</p>
+                                @if (!string.IsNullOrEmpty(_request.ApprovedByName))
+                                {
+                                    <small class="text-muted">
+                                        By @_request.ApprovedByName on @_request.ApprovedAt?.ToString("MMM dd, yyyy HH:mm")
+                                    </small>
+                                }
+                            </div>
+                        }
+                    </CardBody>
+                </Card>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int RequestId { get; set; }
+    
+    private FormRequest? _request;
+    private string _approvalComments = "";
+    private string _errorMessage = "";
+    private string _successMessage = "";
+    private bool _isLoading = true;
+    private bool _isProcessing = false;
+    private string _actionType = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _request = await FormRequestService.GetByIdAsync(RequestId);
+            
+            if (_request == null)
+            {
+                return;
+            }
+
+            // Check if user has permission to approve this request
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            
+            // TODO: Implement proper role-based access control based on form definition
+            // For now, just check if user is in Admin role
+            if (!user.IsInRole("Admin"))
+            {
+                _request = null;
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading request: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task ApproveRequest()
+    {
+        await ProcessRequest("approve", true);
+    }
+
+    private async Task RejectRequest()
+    {
+        await ProcessRequest("reject", false);
+    }
+
+    private async Task ProcessRequest(string actionType, bool isApproval)
+    {
+        try
+        {
+            _isProcessing = true;
+            _actionType = actionType;
+            _errorMessage = "";
+            _successMessage = "";
+
+            if (_request == null) return;
+
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var currentUser = authState.User.Identity?.Name ?? "Unknown";
+
+            if (isApproval)
+            {
+                await FormRequestService.ApproveAsync(RequestId, currentUser, _approvalComments);
+                _successMessage = "Request approved successfully!";
+            }
+            else
+            {
+                await FormRequestService.RejectAsync(RequestId, currentUser, _approvalComments);
+                _successMessage = "Request rejected successfully!";
+            }
+
+            // Reload the request to show updated status
+            _request = await FormRequestService.GetByIdAsync(RequestId);
+            
+            // Redirect after a brief delay
+            await Task.Delay(2000);
+            Navigation.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error processing request: {ex.Message}";
+        }
+        finally
+        {
+            _isProcessing = false;
+            _actionType = "";
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    private string GetStatusBadgeColor(RequestStatus status)
+    {
+        return status switch
+        {
+            RequestStatus.Pending => "bg-warning",
+            RequestStatus.Approved => "bg-success",
+            RequestStatus.Rejected => "bg-danger",
+            RequestStatus.Applied => "bg-info",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetRequestTypeBadgeColor(string requestType)
+    {
+        return requestType switch
+        {
+            "INSERT" => "bg-success",
+            "UPDATE" => "bg-primary",
+            "DELETE" => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+}

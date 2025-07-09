@@ -1,0 +1,41 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: requestr-sqlserver
+    environment:
+      ACCEPT_EULA: Y
+      SA_PASSWORD: "DevPassword123!"
+      MSSQL_PID: Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+      - ./database:/docker-entrypoint-initdb.d
+      # Make sure the consolidated schema files are used
+
+
+  requestr-web:
+    build:
+      context: .
+      dockerfile: src/Requestr.Web/Dockerfile
+    container_name: requestr-web
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: "http://+:8080"
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=RequestrApp;User Id=sa;Password=DevPassword123!;TrustServerCertificate=True;Connection Timeout=30;"
+      DatabaseConnections__ReferenceData: "Server=sqlserver,1433;Database=RequestrApp;User Id=sa;Password=DevPassword123!;TrustServerCertificate=True;Connection Timeout=30;"
+      DatabaseConnections__MainApp: "Server=sqlserver,1433;Database=RequestrApp;User Id=sa;Password=DevPassword123!;TrustServerCertificate=True;Connection Timeout=30;"
+      AzureAd__TenantId: ${AzureAd__TenantId}
+      AzureAd__ClientId: ${AzureAd__ClientId}
+      AzureAd__ClientSecret: ${AzureAd__ClientSecret}
+
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      - sqlserver
+
+volumes:
+  sqlserver_data:
+

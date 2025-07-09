@@ -1,0 +1,708 @@
+@page "/requests/{RequestId:int}"
+@using Requestr.Core.Models
+@using Requestr.Core.Interfaces
+@using Microsoft.AspNetCore.Components.Web
+@using System.Text.Json
+@inject IFormRequestService FormRequestService
+@inject IFormDefinitionService FormDefinitionService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize]
+
+<!-- Request Details Title -->
+
+@if (_isLoading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2">Loading request details...</p>
+    </div>
+}
+else if (_request == null)
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="text-center p-5">
+                <i class="bi bi-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
+                <h4 class="mt-3">Request Not Found</h4>
+                <p class="text-muted">The requested form request could not be found or you don't have permission to access it.</p>
+                <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">
+                    Go Home
+                </button>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h2>Request Details</h2>
+                        <nav aria-label="breadcrumb">
+                            <ol class="breadcrumb">
+                                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                                <li class="breadcrumb-item"><a href="/approval">Requests</a></li>
+                                <li class="breadcrumb-item active" aria-current="page">Request #@RequestId</li>
+                            </ol>
+                        </nav>
+                    </div>
+                    <div>
+                        @if (_request.Status == RequestStatus.Pending && CanEditRequest())
+                        {
+                            <a href="/forms/@_request.FormDefinitionId/edit/@RequestId" class="btn btn-outline-primary me-2">
+                                <i class="bi bi-pencil"></i> Edit Request
+                            </a>
+                        }
+                        <button class="btn btn-secondary" @onclick="GoBack">
+                            <i class="bi bi-arrow-left"></i> Back
+                        </button>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-lg-8">
+                        <!-- Request Information Card -->
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="bi bi-info-circle me-2"></i>Request Information
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <strong>Form:</strong> @_formDefinition?.Name<br>
+                                        <strong>Request Type:</strong> 
+                                        <span class="badge @GetRequestTypeBadgeColor(_request.RequestType)">
+                                            @GetRequestTypeDisplayName(_request.RequestType)
+                                        </span><br>
+                                        <strong>Submitted:</strong> @_request.RequestedAt.ToString("MMM dd, yyyy 'at' h:mm tt")<br>
+                                        <strong>Submitted By:</strong> @_request.RequestedByName
+                                    </div>
+                                    <div class="col-md-6">
+                                        <strong>Status:</strong>
+                                        <span class="badge @GetStatusBadgeColor(_request.Status)">
+                                            @_request.Status
+                                        </span><br>
+                                        @if (!string.IsNullOrEmpty(_request.ApprovedBy))
+                                        {
+                                            <strong>Processed By:</strong> @_request.ApprovedBy<br>
+                                            <strong>Processed Date:</strong> @_request.ApprovedAt?.ToString("MMM dd, yyyy 'at' h:mm tt")<br>
+                                        }
+                                    </div>
+                                </div>
+                                
+                                @if (!string.IsNullOrEmpty(_request.Comments))
+                                {
+                                    <hr>
+                                    <div>
+                                        <strong>Comments:</strong>
+                                        <div class="mt-2 p-3 bg-light rounded">
+                                            @_request.Comments
+                                        </div>
+                                    </div>
+                                }
+
+                                @if (!string.IsNullOrEmpty(_request.RejectionReason))
+                                {
+                                    <hr>
+                                    <div>
+                                        <strong>Rejection Reason:</strong>
+                                        <div class="mt-2 p-3 bg-light rounded">
+                                            @_request.RejectionReason
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Field Values Card -->
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="bi bi-list-ul me-2"></i>Field Values
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                @if (_request.FieldValues?.Any() == true)
+                                {
+                                    <div class="table-responsive">
+                                        <table class="table table-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th>Field</th>
+                                                    <th>Value</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var fieldValue in _request.FieldValues)
+                                                {
+                                                    var field = _formDefinition?.Fields?.FirstOrDefault(f => f.Name == fieldValue.Key);
+                                                    <tr>
+                                                        <td>
+                                                            <strong>@(field?.DisplayName ?? fieldValue.Key)</strong>
+                                                            @if (!string.IsNullOrEmpty(field?.DataType))
+                                                            {
+                                                                <br><small class="text-muted">(@field.DataType)</small>
+                                                            }
+                                                        </td>
+                                                        <td>
+                                                            @if (fieldValue.Value == null || string.IsNullOrEmpty(fieldValue.Value.ToString()))
+                                                            {
+                                                                <em class="text-muted">No value</em>
+                                                            }
+                                                            else
+                                                            {
+                                                                @fieldValue.Value
+                                                            }
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <p class="text-muted">No field values available.</p>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Request History Card -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="bi bi-clock-history me-2"></i>Request History
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                @if (_requestHistory?.Any() == true)
+                                {
+                                    <div class="timeline">
+                                        @foreach (var historyItem in _requestHistory.OrderBy(h => h.ChangedAt))
+                                        {
+                                            <div class="timeline-item">
+                                                <div class="timeline-marker @GetHistoryMarkerColor(historyItem.ChangeType)">
+                                                    <i class="bi @GetHistoryIcon(historyItem.ChangeType)"></i>
+                                                </div>
+                                                <div class="timeline-content">
+                                                    <div class="timeline-header">
+                                                        <strong>@GetHistoryTitle(historyItem.ChangeType)</strong>
+                                                        <small class="text-muted">@historyItem.ChangedAt.ToString("MMM dd, yyyy 'at' h:mm tt")</small>
+                                                    </div>
+                                                    <div class="timeline-body">
+                                                        <p class="mb-1"><strong>By:</strong> @historyItem.ChangedByName</p>
+                                                        @if (!string.IsNullOrEmpty(historyItem.Comments))
+                                                        {
+                                                            <p class="mb-1"><strong>Comments:</strong> @historyItem.Comments</p>
+                                                        }
+                                                        @if (historyItem.ChangeType == FormRequestChangeType.StatusChanged || historyItem.ChangeType == FormRequestChangeType.Approved || historyItem.ChangeType == FormRequestChangeType.Rejected)
+                                                        {
+                                                            <div class="mt-2">
+                                                                @if (historyItem.PreviousValues.ContainsKey("Status"))
+                                                                {
+                                                                    <span class="badge bg-secondary me-2">@historyItem.PreviousValues["Status"]</span>
+                                                                    <i class="bi bi-arrow-right"></i>
+                                                                    <span class="badge bg-primary ms-2">@historyItem.NewValues["Status"]</span>
+                                                                }
+                                                            </div>
+                                                        }
+                                                        @if (historyItem.ChangeType == FormRequestChangeType.Updated && historyItem.NewValues.ContainsKey("FieldChanges"))
+                                                        {
+                                                            <div class="mt-2">
+                                                                <strong>Field Changes:</strong>
+                                                                <div class="mt-1">
+                                                                    @try
+                                                                    {
+                                                                        var fieldChangesJson = historyItem.NewValues["FieldChanges"];
+                                                                        if (fieldChangesJson != null)
+                                                                        {
+                                                                            // Parse the JSON element to get the field changes
+                                                                            var fieldChangesElement = (JsonElement)fieldChangesJson;
+                                                                            if (fieldChangesElement.ValueKind == JsonValueKind.Array)
+                                                                            {
+                                                                                foreach (var changeElement in fieldChangesElement.EnumerateArray())
+                                                                                {
+                                                                                    var fieldName = changeElement.GetProperty("FieldName").GetString() ?? "";
+                                                                                    var previousValue = changeElement.TryGetProperty("PreviousValue", out var prevProp) ? prevProp.GetString() : "null";
+                                                                                    var newValue = changeElement.TryGetProperty("NewValue", out var newProp) ? newProp.GetString() : "null";
+                                                                                    var changeType = changeElement.TryGetProperty("ChangeType", out var typeProp) ? typeProp.GetString() : "";
+                                                                                    
+                                                                                    var displayFieldName = fieldName.StartsWith("Original_") ? fieldName.Substring(9) + " (Original)" : fieldName;
+                                                                                    
+                                                                                    <div class="field-change-item mb-2 p-2 border rounded bg-light">
+                                                                                        <div class="d-flex justify-content-between align-items-center">
+                                                                                            <strong class="field-name">@displayFieldName:</strong>
+                                                                                            <small class="text-muted">@GetFieldDisplayName(fieldName)</small>
+                                                                                        </div>
+                                                                                        <div class="field-change-values mt-1">
+                                                                                            <div class="d-flex align-items-center">
+                                                                                                <span class="previous-value me-2">
+                                                                                                    <span class="badge bg-secondary">Previous:</span>
+                                                                                                    <code class="ms-1">@(previousValue ?? "null")</code>
+                                                                                                </span>
+                                                                                                <i class="bi bi-arrow-right mx-2"></i>
+                                                                                                <span class="new-value">
+                                                                                                    <span class="badge bg-primary">New:</span>
+                                                                                                    <code class="ms-1">@(newValue ?? "null")</code>
+                                                                                                </span>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    catch (Exception ex)
+                                                                    {
+                                                                        <div class="alert alert-warning">
+                                                                            <small>Unable to parse field changes: @ex.Message</small>
+                                                                        </div>
+                                                                    }
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <p class="text-muted">No history available.</p>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-4">
+                        <!-- Actions Card -->
+                        @if (CanApproveRequest() || CanRetryRequest())
+                        {
+                            <div class="card mb-4">
+                                <div class="card-header">
+                                    <h5 class="mb-0">
+                                        <i class="bi bi-check-circle me-2"></i>Actions
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    @if (_request.Status == RequestStatus.Pending && CanApproveRequest())
+                                    {
+                                        <div class="d-grid gap-2">
+                                            <button class="btn btn-success" @onclick="() => ShowApprovalModal(true)">
+                                                <i class="bi bi-check-lg"></i> Approve Request
+                                            </button>
+                                            <button class="btn btn-danger" @onclick="() => ShowApprovalModal(false)">
+                                                <i class="bi bi-x-lg"></i> Reject Request
+                                            </button>
+                                        </div>
+                                    }
+                                    else if (_request.Status == RequestStatus.Failed && CanRetryRequest())
+                                    {
+                                        <div class="d-grid gap-2">
+                                            <div class="alert alert-warning mb-3">
+                                                <i class="bi bi-exclamation-triangle"></i>
+                                                <strong>Application Failed</strong>
+                                                <p class="mb-0 mt-1 small">@_request.FailureMessage</p>
+                                            </div>
+                                            <button class="btn btn-warning" @onclick="RetryFailedRequest" disabled="@_isProcessing">
+                                                @if (_isProcessing)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                                }
+                                                <i class="bi bi-arrow-repeat me-1"></i> Retry Application
+                                            </button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="alert alert-info mb-0">
+                                            <i class="bi bi-info-circle"></i>
+                                            This request has already been @_request.Status.ToString().ToLower().
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        <!-- Related Information Card -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="bi bi-link-45deg me-2"></i>Related Information
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <strong>Form Definition:</strong><br>
+                                    @if (_formDefinition != null)
+                                    {
+                                        <a href="/admin/forms" class="text-decoration-none">
+                                            @_formDefinition.Name
+                                        </a>
+                                        @if (!string.IsNullOrEmpty(_formDefinition.Description))
+                                        {
+                                            <br><small class="text-muted">@_formDefinition.Description</small>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <em class="text-muted">Not available</em>
+                                    }
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <strong>Database Table:</strong><br>
+                                    @if (_formDefinition != null)
+                                    {
+                                        <code>@_formDefinition.TableName</code>
+                                        @if (!string.IsNullOrEmpty(_formDefinition.DatabaseConnectionName))
+                                        {
+                                            <br><small class="text-muted">Connection: @_formDefinition.DatabaseConnectionName</small>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <em class="text-muted">Not available</em>
+                                    }
+                                </div>
+                                
+                                <div>
+                                    <strong>Request ID:</strong><br>
+                                    <code>@RequestId</code>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+@if (_showApprovalModal)
+{
+    <!-- Approval Modal using Blazor conditional rendering -->
+    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        @(_isApproval ? "Approve Request" : "Reject Request")
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="HideApprovalModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <p>
+                            Are you sure you want to @(_isApproval ? "approve" : "reject") this request?
+                        </p>
+                        @if (!_isApproval)
+                        {
+                            <div class="mt-3">
+                                <label class="form-label">Reason for rejection:</label>
+                                <textarea class="form-control" rows="3" @bind="_approvalComments" 
+                                          placeholder="Please provide a reason for rejecting this request..."></textarea>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="mt-3">
+                                <label class="form-label">Comments (optional):</label>
+                                <textarea class="form-control" rows="3" @bind="_approvalComments" 
+                                          placeholder="Any additional comments..."></textarea>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="HideApprovalModal">Cancel</button>
+                    <button type="button" class="btn @(_isApproval ? "btn-success" : "btn-danger")" @onclick="ProcessApproval" disabled="@_isProcessing">
+                        @if (_isProcessing)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                        }
+                        @(_isApproval ? "Approve" : "Reject")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+}
+
+@code {
+    [Parameter] public int RequestId { get; set; }
+    
+    private FormRequest? _request;
+    private FormDefinition? _formDefinition;
+    private List<FormRequestHistory> _requestHistory = new();
+    private bool _isLoading = true;
+    private bool _isProcessing = false;
+    private bool _isApproval = false;
+    private bool _showApprovalModal = false;
+    private string _approvalComments = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRequest();
+    }
+
+    private async Task LoadRequest()
+    {
+        try
+        {
+            _isLoading = true;
+            _request = await FormRequestService.GetFormRequestWithHistoryAsync(RequestId);
+            
+            if (_request != null)
+            {
+                _formDefinition = await FormDefinitionService.GetByIdAsync(_request.FormDefinitionId);
+                _requestHistory = _request.History;
+            }
+        }
+        catch (Exception)
+        {
+            // Log error - request will remain null and show not found message
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/approval");
+    }
+
+    private bool CanEditRequest()
+    {
+        // Users can edit their own pending requests
+        // This would need proper user context checking
+        return _request?.Status == RequestStatus.Pending;
+    }
+
+    private bool CanApproveRequest()
+    {
+        // This would need proper role checking
+        // For now, assume all authenticated users can approve
+        return _request?.Status == RequestStatus.Pending;
+    }
+
+    private bool CanRetryRequest()
+    {
+        // Allow Admin users to retry failed requests
+        // This would need proper role checking in a real application
+        return _request?.Status == RequestStatus.Failed;
+    }
+
+    private async Task RetryFailedRequest()
+    {
+        if (_request == null) return;
+
+        _isProcessing = true;
+        try
+        {
+            // Get the current user information from authentication state
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var currentUser = GetUserIdentifier(authState.User);
+            var currentUserName = authState.User.Identity?.Name ?? "Unknown User";
+
+            var success = await FormRequestService.RetryFailedFormRequestAsync(_request.Id, currentUser, currentUserName);
+            
+            if (success)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Request retry successful! The request has been reprocessed.");
+                
+                // Reload the request to get the updated status
+                await LoadRequest();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Failed to retry the request. Please check if the request is in a failed state.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error retrying request: {ex.Message}");
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    private void SetApprovalType(bool isApproval)
+    {
+        _isApproval = isApproval;
+        _approvalComments = "";
+    }
+
+    private void ShowApprovalModal(bool isApproval)
+    {
+        _isApproval = isApproval;
+        _approvalComments = "";
+        _showApprovalModal = true;
+    }
+
+    private void HideApprovalModal()
+    {
+        _showApprovalModal = false;
+        _approvalComments = "";
+    }
+
+    private async Task CloseModalAsync()
+    {
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('approvalModal'))?.hide()");
+    }
+
+    private async Task ProcessApproval()
+    {
+        if (_request == null) return;
+
+        _isProcessing = true;
+        try
+        {
+            // Get the current user information from authentication state
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var currentUser = GetUserIdentifier(authState.User);
+            var currentUserName = GetUserDisplayName(authState.User);
+
+            bool success;
+            if (_isApproval)
+            {
+                // Update the ApproveAsync method call to pass both user ID and display name
+                success = await FormRequestService.ApproveFormRequestAsync(_request.Id, currentUser, currentUserName);
+            }
+            else
+            {
+                // Update the RejectAsync method call to pass both user ID and display name  
+                success = await FormRequestService.RejectFormRequestAsync(_request.Id, currentUser, currentUserName, _approvalComments ?? "Request rejected");
+            }
+
+            if (success)
+            {
+                // Reload the request with history to show updated status
+                _request = await FormRequestService.GetFormRequestWithHistoryAsync(RequestId);
+                if (_request != null)
+                {
+                    _requestHistory = _request.History;
+                }
+                HideApprovalModal();
+                StateHasChanged();
+            }
+        }
+        catch (Exception)
+        {
+            // Handle error
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    private string GetStatusBadgeColor(RequestStatus status) => status switch
+    {
+        RequestStatus.Pending => "bg-warning",
+        RequestStatus.Approved => "bg-success",
+        RequestStatus.Rejected => "bg-danger",
+        RequestStatus.Applied => "bg-info",
+        _ => "bg-secondary"
+    };
+
+    private string GetRequestTypeBadgeColor(RequestType requestType) => requestType switch
+    {
+        RequestType.Insert => "bg-primary",
+        RequestType.Update => "bg-info",
+        RequestType.Delete => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private string GetRequestTypeDisplayName(RequestType requestType) => requestType switch
+    {
+        RequestType.Insert => "Add New Record",
+        RequestType.Update => "Update Record", 
+        RequestType.Delete => "Delete Record",
+        _ => requestType.ToString()
+    };
+
+    private string GetHistoryMarkerColor(FormRequestChangeType changeType) => changeType switch
+    {
+        FormRequestChangeType.Created => "bg-primary",
+        FormRequestChangeType.Updated => "bg-info",
+        FormRequestChangeType.StatusChanged => "bg-warning",
+        FormRequestChangeType.Approved => "bg-success",
+        FormRequestChangeType.Rejected => "bg-danger",
+        FormRequestChangeType.Applied => "bg-success",
+        FormRequestChangeType.Failed => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private string GetHistoryIcon(FormRequestChangeType changeType) => changeType switch
+    {
+        FormRequestChangeType.Created => "bi-plus-circle",
+        FormRequestChangeType.Updated => "bi-pencil-square",
+        FormRequestChangeType.StatusChanged => "bi-arrow-repeat",
+        FormRequestChangeType.Approved => "bi-check-circle",
+        FormRequestChangeType.Rejected => "bi-x-circle",
+        FormRequestChangeType.Applied => "bi-check2-all",
+        FormRequestChangeType.Failed => "bi-exclamation-triangle",
+        _ => "bi-circle"
+    };
+
+    private string GetHistoryTitle(FormRequestChangeType changeType) => changeType switch
+    {
+        FormRequestChangeType.Created => "Request Created",
+        FormRequestChangeType.Updated => "Request Updated",
+        FormRequestChangeType.StatusChanged => "Status Changed",
+        FormRequestChangeType.Approved => "Request Approved",
+        FormRequestChangeType.Rejected => "Request Rejected",
+        FormRequestChangeType.Applied => "Changes Applied",
+        FormRequestChangeType.Failed => "Application Failed",
+        _ => changeType.ToString()
+    };
+
+    private string GetFieldDisplayName(string fieldName)
+    {
+        if (fieldName.StartsWith("Original_"))
+        {
+            var actualFieldName = fieldName.Substring(9);
+            var field = _formDefinition?.Fields?.FirstOrDefault(f => f.Name == actualFieldName);
+            return field?.DisplayName ?? actualFieldName;
+        }
+
+        var formField = _formDefinition?.Fields?.FirstOrDefault(f => f.Name == fieldName);
+        return formField?.DisplayName ?? fieldName;
+    }
+
+    private string GetUserIdentifier(System.Security.Claims.ClaimsPrincipal user)
+    {
+        // Try to get the user ID from various Entra ID claims
+        return user.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value ??
+               user.FindFirst("oid")?.Value ??
+               user.FindFirst("sub")?.Value ??
+               user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ??
+               user.Identity?.Name ?? "Unknown";
+    }
+
+    private string GetUserDisplayName(System.Security.Claims.ClaimsPrincipal user)
+    {
+        // Try to get the display name from various Entra ID claims
+        return user.FindFirst("name")?.Value ??
+               user.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name")?.Value ??
+               user.FindFirst("preferred_username")?.Value ??
+               user.FindFirst("upn")?.Value ??
+               user.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")?.Value ??
+               user.Identity?.Name ?? "Unknown User";
+    }
+}

@@ -1,0 +1,39 @@
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <NotAuthorized>
+                    @if (context.User.Identity?.IsAuthenticated != true)
+                    {
+                        <div class="text-center p-5">
+                            <h3>Please Sign In</h3>
+                            <p>You need to sign in to access this application.</p>
+                            <a href="/MicrosoftIdentity/Account/SignIn" class="btn btn-primary">Sign In</a>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            <h4 class="alert-heading">Access Denied</h4>
+                            <p>You are not authorized to access this resource.</p>
+                            <hr>
+                            <p class="mb-0">Please contact your administrator if you believe this is an error.</p>
+                        </div>
+                    }
+                </NotAuthorized>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <PageTitle>Not found</PageTitle>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <div class="alert alert-warning" role="alert">
+                    <h4 class="alert-heading">Page Not Found</h4>
+                    <p>Sorry, there's nothing at this address.</p>
+                    <hr>
+                    <a href="/" class="btn btn-primary">Go Home</a>
+                </div>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>

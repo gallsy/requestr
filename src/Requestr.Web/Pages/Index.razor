@@ -1,0 +1,300 @@
+@page "/"
+@using Microsoft.AspNetCore.Authorization
+@using System.Linq
+@attribute [Authorize]
+@inject IFormDefinitionService FormDefinitionService
+@inject IFormRequestService FormRequestService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Home - Requestr</PageTitle>
+
+<div class="page-header slide-up">
+    <h1 class="display-4">
+        <i class="bi bi-house-door-fill me-3"></i>
+        Welcome to Requestr
+    </h1>
+    <p class="lead">Manage your data requests and approvals efficiently with our modern, intuitive interface.</p>
+</div>
+
+<div class="row gy-4">
+    <!-- Available Forms -->
+    <div class="col-lg-6 col-md-12">
+        <div class="card h-100 slide-up">
+            <div class="card-header bg-primary">
+                <h5 class="card-title mb-0 text-white">
+                    <i class="bi bi-clipboard-data me-2"></i>
+                    Available Forms
+                </h5>
+            </div>
+            <div class="card-body">
+                @if (AvailableForms == null)
+                {
+                    <div class="d-flex justify-content-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                }
+                else if (!AvailableForms.Any())
+                {
+                    <div class="text-center py-5">
+                        <i class="bi bi-inbox display-1 text-muted mb-3"></i>
+                        <h6 class="text-muted">No forms available</h6>
+                        <p class="text-muted small">Check back later or contact your administrator.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="list-group list-group-flush">
+                        @foreach (var form in AvailableForms?.Take(5) ?? Enumerable.Empty<FormDefinition>())
+                        {
+                            <div class="list-group-item list-group-item-action border-0">
+                                <div class="d-flex w-100 justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-2 fw-bold">@form.Name</h6>
+                                        <p class="mb-1 text-muted small">@form.Description</p>
+                                        <small class="text-muted">
+                                            <i class="bi bi-server me-1"></i>@form.DatabaseConnectionName
+                                            <span class="mx-2">•</span>
+                                            <i class="bi bi-table me-1"></i>@form.TableName
+                                        </small>
+                                    </div>
+                                    <div class="btn-group">
+                                        <a href="/forms/@form.Id" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-plus-circle me-1"></i>
+                                            New Request
+                                        </a>
+                                        <a href="/data-view/@form.Id" class="btn btn-sm btn-outline-secondary">
+                                            <i class="bi bi-table me-1"></i>
+                                            View Data
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    @if (AvailableForms?.Count > 5)
+                    {
+                        <div class="mt-3 pt-3 border-top">
+                            <a href="/forms" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-arrow-right me-2"></i>
+                                View All (@AvailableForms.Count) Forms
+                            </a>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Pending Requests -->
+    <div class="col-lg-6 col-md-12">
+        <div class="card h-100 slide-up">
+            <div class="card-header bg-info">
+                <h5 class="card-title mb-0 text-white">
+                    <i class="bi bi-clock-history me-2"></i>
+                    My Pending Requests
+                </h5>
+            </div>
+            <div class="card-body">
+                @if (PendingRequests == null)
+                {
+                    <div class="d-flex justify-content-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                }
+                else if (!PendingRequests.Any())
+                {
+                    <div class="text-center py-5">
+                        <i class="bi bi-check-circle display-1 text-success mb-3"></i>
+                        <h6 class="text-muted">No pending requests</h6>
+                        <p class="text-muted small">All caught up! Great work.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="list-group list-group-flush">
+                        @foreach (var request in PendingRequests?.Take(5) ?? Enumerable.Empty<FormRequest>())
+                        {
+                            <a href="/requests/@request.Id" class="list-group-item list-group-item-action">
+                                <div class="d-flex w-100 justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-2 fw-bold">@request.FormDefinition?.Name</h6>
+                                        <div class="mb-2">
+                                            <span class="badge bg-primary me-2">
+                                                @request.RequestType
+                                            </span>
+                                            <span class="badge bg-secondary">
+                                                @request.Status
+                                            </span>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(request.Comments))
+                                        {
+                                            <p class="mb-1 text-muted small">@request.Comments</p>
+                                        }
+                                        <small class="text-muted">
+                                            <i class="bi bi-calendar me-1"></i>
+                                            @request.RequestedAt.ToString("MMM dd, yyyy")
+                                        </small>
+                                    </div>
+                                    <i class="bi bi-chevron-right text-muted"></i>
+                                </div>
+                            </a>
+                        }
+                    </div>
+                    @if (PendingRequests?.Count > 5)
+                    {
+                        <div class="mt-3 pt-3 border-top">
+                            <a href="/my-requests" class="btn btn-outline-info btn-sm">
+                                <i class="bi bi-arrow-right me-2"></i>
+                                View All (@PendingRequests.Count) Requests
+                            </a>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pending Approvals (Only for authorized users) -->
+<AuthorizeView Roles="Admin,FormAdmin,DataAdmin,ReferenceDataApprover">
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card slide-up">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Requests Awaiting My Approval
+                    </h5>
+                </div>
+                <div class="card-body">
+                    @if (RequestsForApproval == null)
+                    {
+                        <div class="d-flex justify-content-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    }
+                    else if (!RequestsForApproval.Any())
+                    {
+                        <div class="text-center py-5">
+                            <i class="bi bi-check-circle display-1 text-success mb-3"></i>
+                            <h6 class="text-muted">No requests awaiting approval</h6>
+                            <p class="text-muted small">All requests have been processed.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Form</th>
+                                        <th>Request Type</th>
+                                        <th>Requested By</th>
+                                        <th>Requested Date</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var request in RequestsForApproval?.Take(10) ?? Enumerable.Empty<FormRequest>())
+                                    {
+                                        <tr>
+                                            <td class="fw-bold">@request.FormDefinition?.Name</td>
+                                            <td>
+                                                <span class="badge bg-primary">
+                                                    @request.RequestType
+                                                </span>
+                                            </td>
+                                            <td>@request.RequestedByName</td>
+                                            <td>@request.RequestedAt.ToString("MMM dd, yyyy HH:mm")</td>
+                                            <td>
+                                                <a href="/requests/@request.Id" class="btn btn-sm btn-outline-primary">
+                                                    <i class="bi bi-eye me-1"></i>
+                                                    Review
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        @if (RequestsForApproval?.Count > 10)
+                        {
+                            <div class="mt-3 pt-3 border-top">
+                                <a href="/pending-approvals" class="btn btn-warning">
+                                    <i class="bi bi-arrow-right me-2"></i>
+                                    View All (@RequestsForApproval.Count) Pending Approvals
+                                </a>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</AuthorizeView>
+
+@code {
+    private List<FormDefinition>? AvailableForms;
+    private List<FormRequest>? PendingRequests;
+    private List<FormRequest>? RequestsForApproval;
+    private string? CurrentUserId;
+    private List<string> UserRoles = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            if (authState.User.Identity?.IsAuthenticated == true)
+            {
+                CurrentUserId = authState.User.FindFirst("sub")?.Value ?? 
+                               authState.User.FindFirst("oid")?.Value ?? 
+                               authState.User.Identity.Name;
+
+                UserRoles = authState.User.Claims
+                    .Where(c => c.Type == "roles" || c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role")
+                    .Select(c => c.Value)
+                    .ToList();
+
+                await LoadDataAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log error - in production, you'd want proper error handling
+            Console.WriteLine($"Error loading dashboard data: {ex.Message}");
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (string.IsNullOrEmpty(CurrentUserId)) return;
+
+        try
+        {
+            // Load available forms
+            AvailableForms = await FormDefinitionService.GetFormDefinitionsForUserAsync(CurrentUserId, UserRoles);
+
+            // Load user's pending requests
+            var allUserRequests = await FormRequestService.GetFormRequestsByUserAsync(CurrentUserId);
+            PendingRequests = allUserRequests.Where(r => r.Status == RequestStatus.Pending).ToList();
+
+            // Load requests for approval (if user has appropriate roles)
+            if (UserRoles.Any(role => new[] { "Admin", "FormAdmin", "DataAdmin", "ReferenceDataApprover" }.Contains(role)))
+            {
+                RequestsForApproval = await FormRequestService.GetFormRequestsForApprovalAsync(UserRoles);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log error - in production, you'd want proper error handling
+            Console.WriteLine($"Error loading data: {ex.Message}");
+        }
+    }
+}

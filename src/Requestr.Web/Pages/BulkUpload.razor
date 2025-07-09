@@ -1,0 +1,518 @@
+@page "/forms/{FormId:int}/bulk-upload"
+@using Requestr.Core.Models
+@using Requestr.Core.Models.DTOs
+@using Requestr.Core.Interfaces
+@inject IFormDefinitionService FormDefinitionService
+@inject IBulkFormRequestService BulkFormRequestService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize]
+
+<PageTitle>Bulk Upload - @_formDefinition?.Name</PageTitle>
+
+@if (_isLoading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2">Loading form...</p>
+    </div>
+}
+else if (_formDefinition == null)
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="text-center p-5">
+                <i class="bi bi-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
+                <h4 class="mt-3">Form Not Found</h4>
+                <p class="text-muted">The requested form could not be found or you don't have permission to access it.</p>
+                <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">
+                    Go Home
+                </button>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-10">
+                <!-- Header -->
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h1 class="display-6">
+                            <i class="bi bi-upload me-3"></i>
+                            Bulk Upload
+                        </h1>
+                        <p class="lead">Upload CSV data for @_formDefinition.Name</p>
+                    </div>
+                    <div>
+                        <a href="/forms/@FormId" class="btn btn-outline-secondary me-2">
+                            <i class="bi bi-arrow-left me-2"></i>
+                            Back to Form
+                        </a>
+                        <button class="btn btn-outline-info" @onclick="DownloadTemplate">
+                            <i class="bi bi-download me-2"></i>
+                            Download Template
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 1: Upload & Request Type Selection -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="bi bi-1-circle me-2"></i>
+                            Upload CSV File & Select Request Type
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label class="form-label">Select Request Type</label>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="requestType" id="insert" value="@RequestType.Insert" @onchange="OnRequestTypeChanged" checked="@(_selectedRequestType == RequestType.Insert)">
+                                        <label class="form-check-label" for="insert">
+                                            <span class="badge bg-primary me-2">Insert</span>
+                                            Add new records
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="requestType" id="update" value="@RequestType.Update" @onchange="OnRequestTypeChanged" checked="@(_selectedRequestType == RequestType.Update)">
+                                        <label class="form-check-label" for="update">
+                                            <span class="badge bg-info me-2">Update</span>
+                                            Modify existing records
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="requestType" id="delete" value="@RequestType.Delete" @onchange="OnRequestTypeChanged" checked="@(_selectedRequestType == RequestType.Delete)">
+                                        <label class="form-check-label" for="delete">
+                                            <span class="badge bg-danger me-2">Delete</span>
+                                            Remove existing records
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Upload CSV File</label>
+                                <div class="mb-3">
+                                    <InputFile OnChange="OnFileSelected" class="form-control" accept=".csv" />
+                                    <div class="form-text">
+                                        Upload a CSV file with column headers matching the form fields. Maximum file size: 10MB.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (_isProcessing)
+                        {
+                            <div class="text-center p-3">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Processing...</span>
+                                </div>
+                                <p class="mt-2">Processing CSV file...</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <!-- Step 2: Validation Results -->
+                @if (_uploadResult != null)
+                {
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="bi bi-2-circle me-2"></i>
+                                Validation Results
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <div class="text-center">
+                                        <div class="h4 text-primary">@_uploadResult.TotalRows</div>
+                                        <div class="text-muted">Total Rows</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="text-center">
+                                        <div class="h4 text-success">@_uploadResult.ValidRows</div>
+                                        <div class="text-muted">Valid Rows</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="text-center">
+                                        <div class="h4 text-danger">@_uploadResult.InvalidRows</div>
+                                        <div class="text-muted">Invalid Rows</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="text-center">
+                                        <div class="h4 text-info">@_selectedRowCount</div>
+                                        <div class="text-muted">Selected</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            @if (_uploadResult.Errors.Any())
+                            {
+                                <div class="alert alert-danger mt-3">
+                                    <h6>File Processing Errors:</h6>
+                                    <ul class="mb-0">
+                                        @foreach (var error in _uploadResult.Errors)
+                                        {
+                                            <li>@error</li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Data Preview -->
+                    @if (_uploadResult.IsValid || _uploadResult.ValidationResults.Any())
+                    {
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">
+                                        <i class="bi bi-3-circle me-2"></i>
+                                        Data Preview & Selection
+                                    </h5>
+                                    <div>
+                                        <button class="btn btn-sm btn-outline-secondary me-2" @onclick="SelectAll">
+                                            Select All Valid
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-secondary" @onclick="SelectNone">
+                                            Select None
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover">
+                                        <thead class="table-dark">
+                                            <tr>
+                                                <th width="50">
+                                                    <input type="checkbox" @onchange="OnSelectAllChanged" checked="@_allSelected" />
+                                                </th>
+                                                <th width="80">Row</th>
+                                                <th width="80">Status</th>
+                                                @foreach (var field in _formDefinition.Fields.Where(f => f.IsVisible).OrderBy(f => f.DisplayOrder))
+                                                {
+                                                    <th>@field.DisplayName</th>
+                                                }
+                                                <th width="150">Errors</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @for (int i = 0; i < _uploadResult.ValidationResults.Count; i++)
+                                            {
+                                                var result = _uploadResult.ValidationResults[i];
+                                                var isSelected = _selectedRows.Contains(i);
+                                                <tr class="@(result.IsValid ? "" : "table-danger")">
+                                                    <td>
+                                                        @if (result.IsValid)
+                                                        {
+                                                            <input type="checkbox" @onchange="@(e => OnRowSelectionChanged(i, e))" checked="@isSelected" />
+                                                        }
+                                                    </td>
+                                                    <td>@result.RowNumber</td>
+                                                    <td>
+                                                        @if (result.IsValid)
+                                                        {
+                                                            <span class="badge bg-success">Valid</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge bg-danger">Invalid</span>
+                                                        }
+                                                    </td>
+                                                    @foreach (var field in _formDefinition.Fields.Where(f => f.IsVisible).OrderBy(f => f.DisplayOrder))
+                                                    {
+                                                        <td>
+                                                            @if (result.ParsedData.TryGetValue(field.Name, out var value))
+                                                            {
+                                                                @(value?.ToString() ?? "")
+                                                            }
+                                                        </td>
+                                                    }
+                                                    <td>
+                                                        @if (result.Errors.Any())
+                                                        {
+                                                            <small class="text-danger">
+                                                                @string.Join("; ", result.Errors)
+                                                            </small>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Step 4: Submit -->
+                    @if (_uploadResult.IsValid && _selectedRows.Any())
+                    {
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="bi bi-4-circle me-2"></i>
+                                    Submit Request
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Comments (Optional)</label>
+                                        <textarea class="form-control" rows="3" @bind="_comments" placeholder="Add any additional comments for the reviewers..."></textarea>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="d-flex flex-column h-100">
+                                            <div class="mb-3">
+                                                <strong>Request Summary:</strong>
+                                                <ul class="list-unstyled mt-2">
+                                                    <li><strong>Type:</strong> @_selectedRequestType</li>
+                                                    <li><strong>Form:</strong> @_formDefinition.Name</li>
+                                                    <li><strong>Selected Rows:</strong> @_selectedRows.Count</li>
+                                                    <li><strong>File:</strong> @_selectedFileName</li>
+                                                </ul>
+                                            </div>
+                                            <div class="mt-auto">
+                                                <button class="btn btn-primary btn-lg" @onclick="SubmitBulkRequest" disabled="@_isSubmitting">
+                                                    @if (_isSubmitting)
+                                                    {
+                                                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                                        <text>Submitting...</text>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="bi bi-check-lg me-2"></i>
+                                                        <text>Submit Bulk Request</text>
+                                                    }
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int FormId { get; set; }
+
+    private FormDefinition? _formDefinition;
+    private bool _isLoading = true;
+    private bool _isProcessing = false;
+    private bool _isSubmitting = false;
+    private RequestType _selectedRequestType = RequestType.Insert;
+    private string _selectedFileName = "";
+    private string _comments = "";
+    private CsvUploadResult? _uploadResult;
+    private HashSet<int> _selectedRows = new();
+    private bool _allSelected = false;
+    private int _selectedRowCount = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _formDefinition = await FormDefinitionService.GetFormDefinitionAsync(FormId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading form definition: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        _selectedFileName = file.Name;
+        _isProcessing = true;
+        _uploadResult = null;
+        _selectedRows.Clear();
+        _selectedRowCount = 0;
+
+        try
+        {
+            if (file.Size > 10 * 1024 * 1024) // 10MB limit
+            {
+                _uploadResult = new CsvUploadResult
+                {
+                    IsValid = false,
+                    Errors = new List<string> { "File size exceeds 10MB limit" }
+                };
+                return;
+            }
+
+            using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            _uploadResult = await BulkFormRequestService.ProcessCsvUploadAsync(FormId, stream, file.Name);
+        }
+        catch (Exception ex)
+        {
+            _uploadResult = new CsvUploadResult
+            {
+                IsValid = false,
+                Errors = new List<string> { $"Error processing file: {ex.Message}" }
+            };
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    private void OnRequestTypeChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<RequestType>(e.Value?.ToString(), out var requestType))
+        {
+            _selectedRequestType = requestType;
+        }
+    }
+
+    private void OnRowSelectionChanged(int rowIndex, ChangeEventArgs e)
+    {
+        var isChecked = (bool)(e.Value ?? false);
+        if (isChecked)
+        {
+            _selectedRows.Add(rowIndex);
+        }
+        else
+        {
+            _selectedRows.Remove(rowIndex);
+        }
+        
+        _selectedRowCount = _selectedRows.Count;
+        _allSelected = _selectedRows.Count == _uploadResult?.ValidRows;
+    }
+
+    private void OnSelectAllChanged(ChangeEventArgs e)
+    {
+        var isChecked = (bool)(e.Value ?? false);
+        if (isChecked)
+        {
+            SelectAll();
+        }
+        else
+        {
+            SelectNone();
+        }
+    }
+
+    private void SelectAll()
+    {
+        _selectedRows.Clear();
+        if (_uploadResult?.ValidationResults != null)
+        {
+            for (int i = 0; i < _uploadResult.ValidationResults.Count; i++)
+            {
+                if (_uploadResult.ValidationResults[i].IsValid)
+                {
+                    _selectedRows.Add(i);
+                }
+            }
+        }
+        _selectedRowCount = _selectedRows.Count;
+        _allSelected = true;
+    }
+
+    private void SelectNone()
+    {
+        _selectedRows.Clear();
+        _selectedRowCount = 0;
+        _allSelected = false;
+    }
+
+    private async Task SubmitBulkRequest()
+    {
+        if (_uploadResult == null || _formDefinition == null) return;
+
+        _isSubmitting = true;
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst("sub")?.Value ?? 
+                        authState.User.FindFirst("oid")?.Value ?? 
+                        authState.User.Identity?.Name ?? "";
+            var userName = authState.User.Identity?.Name ?? "";
+
+            var createDto = new CreateBulkFormRequestDto
+            {
+                FormDefinitionId = FormId,
+                RequestType = _selectedRequestType,
+                FileName = _selectedFileName,
+                Comments = _comments,
+                FormRequests = _selectedRows.Select(rowIndex => new CreateFormRequestDto
+                {
+                    FormDefinitionId = FormId,
+                    RequestType = _selectedRequestType,
+                    FieldValues = _uploadResult.ValidationResults[rowIndex].ParsedData,
+                    OriginalValues = new Dictionary<string, object?>()
+                }).ToList()
+            };
+
+            var bulkRequest = await BulkFormRequestService.CreateBulkFormRequestAsync(createDto, userId, userName);
+            
+            // Navigate to the request details page
+            Navigation.NavigateTo($"/bulk-requests/{bulkRequest.Id}");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error submitting request: {ex.Message}");
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private async Task DownloadTemplate()
+    {
+        if (_formDefinition == null) return;
+
+        var headers = _formDefinition.Fields
+            .Where(f => f.IsVisible)
+            .OrderBy(f => f.DisplayOrder)
+            .Select(f => f.Name)
+            .ToList();
+
+        var csvContent = string.Join(",", headers);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(csvContent);
+        var fileName = $"{_formDefinition.Name}_template.csv";
+
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, "text/csv", bytes);
+    }
+}
+
+<script>
+    window.downloadFile = function (filename, contentType, content) {
+        const blob = new Blob([content], { type: contentType });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        window.URL.revokeObjectURL(url);
+    };
+</script>

@@ -1,0 +1,1084 @@
+@page "/admin/forms/builder"
+@page "/admin/forms/builder/{FormId:int}"
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@using Requestr.Core.Interfaces
+@using Requestr.Core.Models
+@inject IFormDefinitionService FormDefinitionService
+@inject IDatabaseService DatabaseService
+@inject IDataService DataService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize(Roles = "Admin")]
+
+@* Form Builder *@
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3">@(FormId.HasValue ? "Edit Form" : "Create New Form")</h1>
+                <div>
+                    <button type="button" class="btn btn-secondary me-2" @onclick="Cancel">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveForm" disabled="@_isLoading">
+                        <i class="bi bi-save me-1"></i>
+                        @if (_isLoading)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                            <text>Saving...</text>
+                        }
+                        else
+                        {
+                            <text>Save Form</text>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="text-center p-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading...</p>
+        </div>
+    }
+    else
+    {
+        <!-- Tab Navigation -->
+        <div class="row">
+            <div class="col-12">
+                <ul class="nav nav-tabs mb-4" id="formBuilderTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(ActiveTab == "details" ? "active" : "")" 
+                                @onclick="@(() => SetActiveTab("details"))" 
+                                type="button">
+                            <i class="bi bi-info-circle me-2"></i>
+                            Form Details
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(ActiveTab == "designer" ? "active" : "")" 
+                                @onclick="@(() => SetActiveTab("designer"))" 
+                                type="button">
+                            <i class="bi bi-ui-checks me-2"></i>
+                            Form Designer
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(ActiveTab == "permissions" ? "active" : "")" 
+                                @onclick="@(() => SetActiveTab("permissions"))" 
+                                type="button">
+                            <i class="bi bi-shield-check me-2"></i>
+                            Permissions & Approvals
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(ActiveTab == "notifications" ? "active" : "")" 
+                                @onclick="@(() => SetActiveTab("notifications"))" 
+                                type="button">
+                            <i class="bi bi-bell me-2"></i>
+                            Notifications
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="tab-content">
+            <!-- Form Details Tab -->
+            @if (ActiveTab == "details")
+            {
+                <div class="row">
+                    <div class="col-lg-8 mx-auto">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    Basic Form Information
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Form Name *</label>
+                                            <input type="text" class="form-control" @bind="_formDefinition.Name" placeholder="Enter form name" />
+                                            <small class="form-text text-muted">This name will be displayed to users</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Status</label>
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" @bind="_formDefinition.IsActive" id="formActiveSwitch">
+                                                <label class="form-check-label" for="formActiveSwitch">
+                                                    @(_formDefinition.IsActive ? "Active" : "Inactive")
+                                                </label>
+                                            </div>
+                                            <small class="form-text text-muted">Only active forms are visible to users</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Description</label>
+                                    <textarea class="form-control" rows="3" @bind="_formDefinition.Description" placeholder="Enter form description"></textarea>
+                                    <small class="form-text text-muted">Provide a clear description of what this form is used for</small>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Category</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" 
+                                               list="categoryOptions" 
+                                               @bind="_formDefinition.Category" 
+                                               placeholder="Select or create a category" />
+                                        <datalist id="categoryOptions">
+                                            @foreach (var category in _existingCategories)
+                                            {
+                                                <option value="@category">@category</option>
+                                            }
+                                        </datalist>
+                                    </div>
+                                    <small class="form-text text-muted">Group related forms together by assigning them to the same category</small>
+                                </div>
+                                
+                                <hr class="my-4">
+                                
+                                <h6 class="mb-3">
+                                    <i class="bi bi-database me-2"></i>
+                                    Database Configuration
+                                </h6>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Database Connection *</label>
+                                            <select class="form-select" @bind="_selectedConnectionString" @bind:after="OnConnectionStringChangedAsync">
+                                                <option value="">Select a database</option>
+                                                @foreach (var conn in _connectionStrings)
+                                                {
+                                                    <option value="@conn.Key">@conn.Key</option>
+                                                }
+                                            </select>
+                                            <small class="form-text text-muted">Choose the database this form will interact with</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        @if (!string.IsNullOrEmpty(_selectedConnectionString))
+                                        {
+                                            <div class="mb-3">
+                                                <label class="form-label">Table *</label>
+                                                <select class="form-select" @bind="_formDefinition.TableName" @bind:after="OnTableChangedAsync">
+                                                    <option value="">Select a table</option>
+                                                    @foreach (var table in _tables)
+                                                    {
+                                                        <option value="@table">@table</option>
+                                                    }
+                                                </select>
+                                                <small class="form-text text-muted">The table that will be modified by this form</small>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                                
+                                @if (!string.IsNullOrEmpty(_formDefinition.TableName))
+                                {
+                                    <div class="alert alert-info">
+                                        <i class="bi bi-info-circle me-2"></i>
+                                        <strong>Database:</strong> @_selectedConnectionString <br/>
+                                        <strong>Table:</strong> @_formDefinition.TableName <br/>
+                                        <strong>Schema:</strong> @_formDefinition.Schema
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- Form Designer Tab -->
+            @if (ActiveTab == "designer")
+            {
+                <div class="row">
+                    <!-- Available Fields Panel -->
+                    <div class="col-lg-4">
+                        @if (_tableColumns.Any())
+                        {
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">
+                                        <i class="bi bi-list-ul me-2"></i>
+                                        Available Fields
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <p class="text-muted small mb-3">Drag fields to the form designer to add them</p>
+                                    <div class="available-fields">
+                                        @foreach (var column in _tableColumns)
+                                        {
+                                            <div class="field-item mb-2 p-2 border rounded @(IsFieldAlreadyAdded(column.Name) ? "field-disabled" : "field-draggable")" 
+                                                 draggable="@(IsFieldAlreadyAdded(column.Name) ? "false" : "true")" 
+                                                 @ondragstart="@(() => OnDragStart(column))"
+                                                 @onmousedown:preventDefault="@(!IsFieldAlreadyAdded(column.Name))"
+                                                 @onselectstart:preventDefault="@(!IsFieldAlreadyAdded(column.Name))"
+                                                 style="@(IsFieldAlreadyAdded(column.Name) ? "cursor: not-allowed; opacity: 0.5;" : "cursor: grab;")">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <div>
+                                                        <strong>@column.Name</strong>
+                                                        <br />
+                                                        <small class="text-muted">@column.DataType (@(column.IsNullable ? "Optional" : "Required"))</small>
+                                                        @if (column.IsPrimaryKey)
+                                                        {
+                                                            <span class="badge bg-warning text-dark ms-1">PK</span>
+                                                        }
+                                                        @if (column.IsIdentity)
+                                                        {
+                                                            <span class="badge bg-info ms-1">Identity</span>
+                                                        }
+                                                    </div>
+                                                    @if (IsFieldAlreadyAdded(column.Name))
+                                                    {
+                                                        <small class="text-muted">Added</small>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="bi bi-grip-vertical text-muted"></i>
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        else if (!string.IsNullOrEmpty(_formDefinition.TableName))
+                        {
+                            <div class="card">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-exclamation-circle text-warning" style="font-size: 2rem;"></i>
+                                    <p class="mt-2">No fields available for the selected table.</p>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="card">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-arrow-left text-muted" style="font-size: 2rem;"></i>
+                                    <p class="mt-2 text-muted">Select a database and table in the Form Details tab to see available fields.</p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    
+                    <!-- Form Designer Panel -->
+                    <div class="col-lg-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="bi bi-ui-checks me-2"></i>
+                                    Form Designer
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-designer @(_isDragOver ? "drag-over" : "")" 
+                                     @ondrop="OnDrop" 
+                                     @ondragover="OnDragOver" 
+                                     @ondragover:preventDefault="true"
+                                     @ondragenter="OnDragEnter"
+                                     @ondragleave="OnDragLeave"
+                                     style="min-height: 500px; border: 2px dashed #ddd; padding: 20px; transition: all 0.3s ease;">
+                                    
+                                    @if (!_formDefinition.Fields.Any())
+                                    {
+                                        <div class="text-center text-muted p-5">
+                                            <i class="bi bi-dash-square" style="font-size: 3rem;"></i>
+                                            <p class="mt-3">Drag fields from the left panel to build your form</p>
+                                            <small class="text-muted">Fields will automatically configure based on their SQL data types</small>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var field in _formDefinition.Fields.OrderBy(f => f.DisplayOrder))
+                                        {
+                                            <div class="form-field-designer mb-3 p-3 border rounded position-relative">
+                                                <div class="d-flex justify-content-between align-items-start">
+                                                    <div class="flex-grow-1">
+                                                        <div class="row">
+                                                            <div class="col-md-6">
+                                                                <label class="form-label">Field Name</label>
+                                                                <input type="text" class="form-control form-control-sm" @bind="field.DisplayName" />
+                                                            </div>
+                                                            <div class="col-md-6">
+                                                                <label class="form-label">Control Type</label>
+                                                                <select class="form-select form-select-sm" @bind="field.DataType" @bind:after="() => OnControlTypeChanged(field)">
+                                                                    @foreach (var controlOption in GetAvailableControlTypes(field))
+                                                                    {
+                                                                        <option value="@controlOption.Value">@controlOption.Text</option>
+                                                                    }
+                                                                </select>
+                                                                <small class="form-text text-muted">SQL Type: @GetOriginalSqlType(field)</small>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div class="row mt-2">
+                                                            <div class="col-md-6">
+                                                                <label class="form-label">Default Value</label>
+                                                                <input type="text" class="form-control form-control-sm" @bind="field.DefaultValue" />
+                                                            </div>
+                                                            @if (SupportsValidation(field.DataType))
+                                                            {
+                                                                <div class="col-md-6">
+                                                                    <label class="form-label">Validation Regex</label>
+                                                                    <input type="text" class="form-control form-control-sm" @bind="field.ValidationRegex" placeholder="Regex pattern" />
+                                                                </div>
+                                                            }
+                                                            else
+                                                            {
+                                                                <div class="col-md-6">
+                                                                    <label class="form-label">Validation</label>
+                                                                    <input type="text" class="form-control form-control-sm" value="Not applicable for this control type" disabled />
+                                                                </div>
+                                                            }
+                                                        </div>
+                                                        
+                                                        @if (ShowMaxLengthOption(field.DataType))
+                                                        {
+                                                            <div class="row mt-2">
+                                                                <div class="col-md-6">
+                                                                    <label class="form-label">Max Length</label>
+                                                                    <input type="number" class="form-control form-control-sm" @bind="field.MaxLength" min="0" />
+                                                                </div>
+                                                                <div class="col-md-6">
+                                                                    <label class="form-label">Validation Message</label>
+                                                                    <input type="text" class="form-control form-control-sm" @bind="field.ValidationMessage" placeholder="Custom error message" />
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                                         @if (field.DataType == "select" || field.DataType == "radio")
+                                        {
+                                            <div class="row mt-2">
+                                                <div class="col-12">
+                                                    <label class="form-label">Options (one per line)</label>
+                                                    <textarea class="form-control form-control-sm" rows="3" @bind="field.DropdownOptions" placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
+                                                    <small class="form-text text-muted">Enter each option on a new line</small>
+                                                </div>
+                                            </div>
+                                        }
+                                                        
+                                                        <div class="row mt-2">
+                                                            <div class="col-md-4">
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox" @bind="field.IsRequired" />
+                                                                    <label class="form-check-label">Required</label>
+                                                                </div>
+                                                            </div>
+                                                            <div class="col-md-4">
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox" @bind="field.IsReadOnly" />
+                                                                    <label class="form-check-label">Read Only</label>
+                                                                </div>
+                                                            </div>
+                                                            <div class="col-md-4">
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox" @bind="field.IsVisible" />
+                                                                    <label class="form-check-label">Visible</label>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div class="field-actions">
+                                                        <button type="button" class="btn btn-danger btn-sm" @onclick="() => RemoveField(field)">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- Permissions & Approvals Tab -->
+            @if (ActiveTab == "permissions")
+            {
+                <div class="row">
+                    <div class="col-lg-8 mx-auto">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="bi bi-shield-check me-2"></i>
+                                    Approval Configuration
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" @bind="_formDefinition.RequiresApproval" id="requiresApprovalSwitch">
+                                        <label class="form-check-label" for="requiresApprovalSwitch">
+                                            <strong>Requires Approval</strong>
+                                        </label>
+                                    </div>
+                                    <small class="form-text text-muted">When enabled, all form submissions must be approved before being applied to the database</small>
+                                </div>
+
+                                @if (_formDefinition.RequiresApproval)
+                                {
+                                    <div class="mb-3">
+                                        <label class="form-label">Approver Roles *</label>
+                                        <input type="text" class="form-control" @bind="_approverRolesText" placeholder="Admin, FormAdmin, DataAdmin" />
+                                        <small class="form-text text-muted">Enter role names separated by commas. Users with these roles can approve requests for this form.</small>
+                                    </div>
+
+                                    <div class="alert alert-info">
+                                        <h6 class="alert-heading">
+                                            <i class="bi bi-info-circle me-2"></i>
+                                            How Approval Works
+                                        </h6>
+                                        <ul class="mb-0">
+                                            <li>Users submit form requests that go into a "Pending" state</li>
+                                            <li>Users with the specified roles can view and approve/reject requests</li>
+                                            <li>Once approved, changes are automatically applied to the database</li>
+                                            <li>If rejected, the request is marked as rejected with a reason</li>
+                                        </ul>
+                                    </div>
+
+                                    <hr class="my-4">
+
+                                    <h6 class="mb-3">
+                                        <i class="bi bi-people me-2"></i>
+                                        Available Roles
+                                    </h6>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="card bg-light">
+                                                <div class="card-body">
+                                                    <h6 class="card-title">Standard Roles</h6>
+                                                    <ul class="list-unstyled mb-0">
+                                                        <li><code>Admin</code> - Full system access</li>
+                                                        <li><code>FormAdmin</code> - Form management</li>
+                                                        <li><code>DataAdmin</code> - Data approval</li>
+                                                        <li><code>ReferenceDataApprover</code> - Reference data</li>
+                                                    </ul>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="card bg-light">
+                                                <div class="card-body">
+                                                    <h6 class="card-title">Custom Roles</h6>
+                                                    <p class="card-text small text-muted">You can also use custom roles defined in your Entra ID application. Make sure the role names match exactly.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="alert alert-warning">
+                                        <h6 class="alert-heading">
+                                            <i class="bi bi-exclamation-triangle me-2"></i>
+                                            No Approval Required
+                                        </h6>
+                                        <p class="mb-0">Form submissions will be automatically applied to the database without approval. This is suitable for trusted users or non-critical data.</p>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- Notifications Tab -->
+            @if (ActiveTab == "notifications")
+            {
+                <div class="row">
+                    <div class="col-lg-8 mx-auto">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="bi bi-bell me-2"></i>
+                                    Notification Settings
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info">
+                                    <h6 class="alert-heading">
+                                        <i class="bi bi-info-circle me-2"></i>
+                                        Coming Soon
+                                    </h6>
+                                    <p class="mb-0">Notification settings will allow you to configure email alerts, Teams notifications, and other communication preferences for form events.</p>
+                                </div>
+
+                                <h6 class="mb-3">Planned Notification Features</h6>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="card bg-light">
+                                            <div class="card-body">
+                                                <h6 class="card-title">
+                                                    <i class="bi bi-envelope me-2"></i>
+                                                    Email Notifications
+                                                </h6>
+                                                <ul class="list-unstyled mb-0 small">
+                                                    <li>• Form submission confirmations</li>
+                                                    <li>• Approval request alerts</li>
+                                                    <li>• Status change notifications</li>
+                                                    <li>• Rejection notifications with reasons</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card bg-light">
+                                            <div class="card-body">
+                                                <h6 class="card-title">
+                                                    <i class="bi bi-microsoft-teams me-2"></i>
+                                                    Teams Integration
+                                                </h6>
+                                                <ul class="list-unstyled mb-0 small">
+                                                    <li>• Channel notifications</li>
+                                                    <li>• Direct message alerts</li>
+                                                    <li>• Approval workflow cards</li>
+                                                    <li>• Quick approve/reject actions</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-4">
+                                    <h6 class="mb-3">Notification Preferences</h6>
+                                    <div class="mb-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" disabled>
+                                            <label class="form-check-label text-muted">
+                                                Send email notifications to form submitters
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" disabled>
+                                            <label class="form-check-label text-muted">
+                                                Send email notifications to approvers
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" disabled>
+                                            <label class="form-check-label text-muted">
+                                                Send Teams notifications for urgent approvals
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label text-muted">Notification Email Template</label>
+                                        <textarea class="form-control" rows="4" disabled placeholder="Custom email template for notifications..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int? FormId { get; set; }
+    
+    private FormDefinition _formDefinition = new();
+    private List<string> _existingCategories = new();
+    private Dictionary<string, string> _connectionStrings = new();
+    private List<string> _tables = new();
+    private List<ColumnInfo> _tableColumns = new();
+    private string _selectedConnectionString = "";
+    private string _approverRolesText = "";
+    private bool _isLoading = true;
+    private ColumnInfo? _draggedColumn;
+    private Dictionary<string, string> _fieldOriginalSqlTypes = new(); // Track original SQL types for each field
+    private bool _isDragOver = false;
+    private string ActiveTab = "details"; // Default to Form Details tab
+
+    private void SetActiveTab(string tab)
+    {
+        ActiveTab = tab;
+        StateHasChanged();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Load connection strings from configuration
+            _connectionStrings = await DatabaseService.GetConnectionStringsAsync();
+            
+            // Load all existing categories for the dropdown
+            var allForms = await FormDefinitionService.GetAllAsync();
+            _existingCategories = allForms
+                .Where(f => !string.IsNullOrWhiteSpace(f.Category))
+                .Select(f => f.Category.Trim())
+                .Distinct()
+                .OrderBy(c => c)
+                .ToList();
+            
+            if (FormId.HasValue)
+            {
+                _formDefinition = await FormDefinitionService.GetByIdAsync(FormId.Value) ?? new FormDefinition();
+                _selectedConnectionString = _formDefinition.DatabaseConnectionName;
+                _approverRolesText = string.Join(", ", _formDefinition.ApproverRoles);
+                
+                // Populate ControlType for existing fields if empty (for backward compatibility)
+                foreach (var field in _formDefinition.Fields)
+                {
+                    if (string.IsNullOrEmpty(field.ControlType))
+                    {
+                        field.ControlType = field.DataType;
+                    }
+                }
+                
+                if (!string.IsNullOrEmpty(_selectedConnectionString))
+                {
+                    _tables = await DatabaseService.GetTablesAsync(_selectedConnectionString);
+                    
+                    if (!string.IsNullOrEmpty(_formDefinition.TableName))
+                    {
+                        _tableColumns = await DatabaseService.GetTableColumnsAsync(_selectedConnectionString, _formDefinition.TableName);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error loading form builder: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OnTableChangedAsync()
+    {
+        if (!string.IsNullOrEmpty(_formDefinition.TableName) && !string.IsNullOrEmpty(_selectedConnectionString))
+        {
+            _tableColumns = await DatabaseService.GetTableColumnsAsync(_selectedConnectionString, _formDefinition.TableName);
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnConnectionStringChangedAsync()
+    {
+        if (!string.IsNullOrEmpty(_selectedConnectionString))
+        {
+            try
+            {
+                _tables = await DatabaseService.GetTablesAsync(_selectedConnectionString);
+                // Clear table selection and columns when connection changes
+                _formDefinition.TableName = "";
+                _tableColumns.Clear();
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("console.error", $"Error loading tables: {ex.Message}");
+                await JSRuntime.InvokeVoidAsync("alert", $"Error connecting to database: {ex.Message}");
+            }
+        }
+        else
+        {
+            _tables.Clear();
+            _formDefinition.TableName = "";
+            _tableColumns.Clear();
+            StateHasChanged();
+        }
+    }
+
+    private void OnDragStart(ColumnInfo column)
+    {
+        _draggedColumn = column;
+    }
+
+    private void OnDragOver(DragEventArgs e)
+    {
+        // Allow drop
+    }
+
+    private void OnDragEnter(DragEventArgs e)
+    {
+        _isDragOver = true;
+        StateHasChanged();
+    }
+
+    private void OnDragLeave(DragEventArgs e)
+    {
+        _isDragOver = false;
+        StateHasChanged();
+    }
+
+    private bool IsFieldAlreadyAdded(string fieldName)
+    {
+        return _formDefinition.Fields.Any(f => f.Name == fieldName);
+    }
+
+    private void OnDrop(DragEventArgs e)
+    {
+        _isDragOver = false;
+        if (_draggedColumn != null)
+        {
+            var existingField = _formDefinition.Fields.FirstOrDefault(f => f.Name == _draggedColumn.Name);
+            if (existingField == null)
+            {
+                var defaultControlType = GetDefaultControlTypeForSqlType(_draggedColumn.DataType);
+                var newField = new FormField
+                {
+                    Name = _draggedColumn.Name,
+                    DisplayName = _draggedColumn.Name,
+                    DataType = defaultControlType,
+                    ControlType = defaultControlType,
+                    MaxLength = _draggedColumn.MaxLength,
+                    IsRequired = !_draggedColumn.IsNullable && !_draggedColumn.IsIdentity,
+                    IsReadOnly = _draggedColumn.IsIdentity || _draggedColumn.IsPrimaryKey,
+                    IsVisible = true,
+                    DefaultValue = GetDefaultValueForSqlType(_draggedColumn.DataType, _draggedColumn.IsNullable, _draggedColumn.DefaultValue),
+                    DisplayOrder = _formDefinition.Fields.Count + 1
+                };
+                
+                // Store the original SQL type for this field
+                _fieldOriginalSqlTypes[newField.Name] = _draggedColumn.DataType;
+                
+                _formDefinition.Fields.Add(newField);
+            }
+            
+            _draggedColumn = null;
+            StateHasChanged();
+        }
+    }
+
+    private void RemoveField(FormField field)
+    {
+        _formDefinition.Fields.Remove(field);
+        // Reorder remaining fields
+        var orderedFields = _formDefinition.Fields.OrderBy(f => f.DisplayOrder).ToList();
+        for (int i = 0; i < orderedFields.Count; i++)
+        {
+            orderedFields[i].DisplayOrder = i + 1;
+        }
+    }
+
+    private async Task SaveForm()
+    {
+        try
+        {
+            _isLoading = true;
+            
+            // Validate form
+            if (string.IsNullOrWhiteSpace(_formDefinition.Name))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Please enter a form name.");
+                return;
+            }
+            
+            if (string.IsNullOrWhiteSpace(_selectedConnectionString))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Please select a database connection.");
+                return;
+            }
+            
+            if (string.IsNullOrWhiteSpace(_formDefinition.TableName))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Please select a table.");
+                return;
+            }
+            
+            if (!_formDefinition.Fields.Any())
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Please add at least one field to the form.");
+                return;
+            }
+            
+            _formDefinition.DatabaseConnectionName = _selectedConnectionString;
+            _formDefinition.ApproverRoles = _approverRolesText.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(r => r.Trim())
+                .Where(r => !string.IsNullOrEmpty(r))
+                .ToList();
+            
+            // Set timestamps and user info to prevent SQL DateTime overflow
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var currentUser = authState.User?.Identity?.Name ?? "System";
+            
+            if (!FormId.HasValue) // Creating new form
+            {
+                _formDefinition.CreatedAt = DateTime.Now;
+                _formDefinition.CreatedBy = currentUser;
+            }
+            else // Updating existing form
+            {
+                _formDefinition.UpdatedAt = DateTime.Now;
+                _formDefinition.UpdatedBy = currentUser;
+            }
+            
+            if (FormId.HasValue)
+            {
+                await FormDefinitionService.UpdateAsync(_formDefinition);
+            }
+            else
+            {
+                await FormDefinitionService.CreateAsync(_formDefinition);
+            }
+            
+            // Use a small delay to ensure the save operation completes before navigation
+            await Task.Delay(100);
+            Navigation.NavigateTo("/admin/forms", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            // Use console.error instead of alert to avoid potential JS interop issues
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("console.error", $"Error saving form: {ex.Message}");
+                // Still show user-friendly message, but catch any JS errors
+                await JSRuntime.InvokeVoidAsync("alert", $"Error saving form: {ex.Message}");
+            }
+            catch
+            {
+                // If JS interop fails, at least log to server console
+                Console.WriteLine($"Error saving form: {ex.Message}");
+            }
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/admin/forms");
+    }
+
+    private bool IsLongText(string sqlDataType)
+    {
+        // Consider fields with more than 255 characters as long text
+        if (sqlDataType.Contains("("))
+        {
+            var lengthPart = sqlDataType.Split('(')[1].Split(')')[0];
+            if (int.TryParse(lengthPart, out int length))
+            {
+                return length > 255;
+            }
+        }
+        return false;
+    }
+
+    private string? GetDefaultValueForSqlType(string sqlDataType, bool isNullable, string? existingDefault)
+    {
+        // If there's already a default value from the database, use it
+        if (!string.IsNullOrEmpty(existingDefault))
+        {
+            return CleanDefaultValue(existingDefault);
+        }
+
+        // Don't set default values for nullable fields unless required
+        if (isNullable)
+        {
+            return null;
+        }
+
+        // Set appropriate default values for non-nullable fields
+        return sqlDataType.ToLower() switch
+        {
+            "bit" => "false",
+            "tinyint" or "smallint" or "int" or "bigint" => "0",
+            "decimal" or "numeric" or "float" or "real" or "money" or "smallmoney" => "0.00",
+            "date" => DateTime.Today.ToString("yyyy-MM-dd"),
+            "datetime" or "datetime2" or "smalldatetime" => DateTime.Now.ToString("yyyy-MM-ddTHH:mm"),
+            "time" => DateTime.Now.ToString("HH:mm"),
+            "char" or "nchar" or "varchar" or "nvarchar" => "",
+            "uniqueidentifier" => Guid.NewGuid().ToString(),
+            _ => ""
+        };
+    }
+
+    private string CleanDefaultValue(string defaultValue)
+    {
+        // Remove SQL Server default value syntax like ((0)) or ('default')
+        var cleaned = defaultValue.Trim('(', ')', '\'', '"');
+        
+        // Handle special SQL Server functions
+        if (cleaned.ToLower().Contains("getdate") || cleaned.ToLower().Contains("getutcdate"))
+        {
+            return DateTime.Now.ToString("yyyy-MM-ddTHH:mm");
+        }
+        
+        if (cleaned.ToLower().Contains("newid"))
+        {
+            return Guid.NewGuid().ToString();
+        }
+        
+        return cleaned;
+    }
+
+    // Type-aware control methods
+    private List<(string Value, string Text)> GetAvailableControlTypes(FormField field)
+    {
+        var sqlType = GetOriginalSqlType(field);
+        var options = new List<(string Value, string Text)>();
+
+        switch (sqlType.ToLower())
+        {
+            case var type when type.Contains("bit"):
+                options.Add(("checkbox", "Checkbox"));
+                options.Add(("select", "Dropdown (Yes/No)"));
+                options.Add(("radio", "Radio Buttons"));
+                break;
+
+            case var type when type.Contains("int") || type.Contains("decimal") || type.Contains("numeric") || 
+                              type.Contains("float") || type.Contains("real") || type.Contains("money"):
+                options.Add(("number", "Number Input"));
+                options.Add(("text", "Text Input"));
+                options.Add(("select", "Dropdown"));
+                options.Add(("range", "Slider"));
+                break;
+
+            case var type when type.Contains("date"):
+                options.Add(("date", "Date Picker"));
+                options.Add(("text", "Text Input"));
+                break;
+
+            case var type when type.Contains("datetime") || type.Contains("smalldatetime"):
+                options.Add(("datetime-local", "DateTime Picker"));
+                options.Add(("date", "Date Only"));
+                options.Add(("text", "Text Input"));
+                break;
+
+            case var type when type.Contains("time"):
+                options.Add(("time", "Time Picker"));
+                options.Add(("text", "Text Input"));
+                break;
+
+            case var type when type.Contains("text") || type.Contains("ntext") || 
+                              (type.Contains("varchar") && IsLongText(type)) || 
+                              (type.Contains("nvarchar") && IsLongText(type)):
+                options.Add(("textarea", "Text Area"));
+                options.Add(("text", "Text Input"));
+                break;
+
+            case var type when type.Contains("varchar") || type.Contains("nvarchar") || 
+                              type.Contains("char") || type.Contains("nchar"):
+                options.Add(("text", "Text Input"));
+                options.Add(("email", "Email Input"));
+                options.Add(("tel", "Phone Input"));
+                options.Add(("url", "URL Input"));
+                options.Add(("password", "Password Input"));
+                options.Add(("select", "Dropdown"));
+                options.Add(("radio", "Radio Buttons"));
+                options.Add(("textarea", "Text Area"));
+                break;
+
+            case var type when type.Contains("uniqueidentifier"):
+                options.Add(("text", "Text Input (GUID)"));
+                break;
+
+            default:
+                options.Add(("text", "Text Input"));
+                options.Add(("textarea", "Text Area"));
+                options.Add(("select", "Dropdown"));
+                break;
+        }
+
+        return options;
+    }
+
+    private string GetOriginalSqlType(FormField field)
+    {
+        return _fieldOriginalSqlTypes.TryGetValue(field.Name, out var sqlType) ? sqlType : "varchar";
+    }
+
+    private string GetDefaultControlTypeForSqlType(string sqlDataType)
+    {
+        return sqlDataType.ToLower() switch
+        {
+            "bit" => "checkbox",
+            "tinyint" or "smallint" or "int" or "bigint" => "number",
+            "decimal" or "numeric" or "float" or "real" or "money" or "smallmoney" => "number",
+            "date" => "date",
+            "datetime" or "datetime2" or "smalldatetime" => "datetime-local",
+            "time" => "time",
+            "varchar" or "nvarchar" or "char" or "nchar" when IsLongText(sqlDataType) => "textarea",
+            "varchar" or "nvarchar" or "char" or "nchar" => "text",
+            "text" or "ntext" => "textarea",
+            "uniqueidentifier" => "text",
+            _ => "text"
+        };
+    }
+
+    private bool SupportsValidation(string controlType)
+    {
+        return controlType switch
+        {
+            "text" or "email" or "tel" or "url" or "password" or "textarea" => true,
+            "number" => true, // Can use min/max validation
+            _ => false
+        };
+    }
+
+    private bool ShowMaxLengthOption(string controlType)
+    {
+        return controlType switch
+        {
+            "text" or "email" or "tel" or "url" or "password" or "textarea" => true,
+            _ => false
+        };
+    }
+
+    private void OnControlTypeChanged(FormField field)
+    {
+        // Set the ControlType field to match the DataType selection
+        field.ControlType = field.DataType;
+        
+        // Clear validation regex if control type doesn't support it
+        if (!SupportsValidation(field.DataType))
+        {
+            field.ValidationRegex = null;
+        }
+
+        // Reset max length for controls that don't support it
+        if (!ShowMaxLengthOption(field.DataType))
+        {
+            field.MaxLength = 0;
+        }
+
+        // Set appropriate default values based on control type
+        if (string.IsNullOrEmpty(field.DefaultValue))
+        {
+            field.DefaultValue = field.DataType switch
+            {
+                "checkbox" => "false",
+                "number" or "range" => "0",
+                "date" => DateTime.Today.ToString("yyyy-MM-dd"),
+                "datetime-local" => DateTime.Now.ToString("yyyy-MM-ddTHH:mm"),
+                "time" => DateTime.Now.ToString("HH:mm"),
+                _ => ""
+            };
+        }
+
+        StateHasChanged();
+    }
+}

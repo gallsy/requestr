@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Requestr.Web", "src\Requestr.Web\Requestr.Web.csproj", "{2B8E1F4A-8B9C-4D2E-9A3B-1C5D6E7F8A9B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Requestr.Core", "src\Requestr.Core\Requestr.Core.csproj", "{3C9F2E5B-9C8D-5E3F-AB4C-2D6E7F8A9C0D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2B8E1F4A-8B9C-4D2E-9A3B-1C5D6E7F8A9B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2B8E1F4A-8B9C-4D2E-9A3B-1C5D6E7F8A9B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2B8E1F4A-8B9C-4D2E-9A3B-1C5D6E7F8A9B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2B8E1F4A-8B9C-4D2E-9A3B-1C5D6E7F8A9B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3C9F2E5B-9C8D-5E3F-AB4C-2D6E7F8A9C0D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C9F2E5B-9C8D-5E3F-AB4C-2D6E7F8A9C0D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3C9F2E5B-9C8D-5E3F-AB4C-2D6E7F8A9C0D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3C9F2E5B-9C8D-5E3F-AB4C-2D6E7F8A9C0D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

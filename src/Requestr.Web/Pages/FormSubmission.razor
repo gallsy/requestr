@@ -1,0 +1,614 @@
+@page "/forms/{FormId:int}"
+@page "/forms/{FormId:int}/edit/{RequestId:int}"
+@using Requestr.Core.Models
+@using Requestr.Core.Interfaces
+@inject IFormDefinitionService FormDefinitionService
+@inject IFormRequestService FormRequestService
+@inject IDataService DataService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize]
+
+<PageTitle>@_formDefinition?.Name</PageTitle>
+
+@if (_isLoading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2">Loading form...</p>
+    </div>
+}
+else if (_formDefinition == null)
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="text-center p-5">
+                <i class="bi bi-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
+                <h4 class="mt-3">Form Not Found</h4>
+                <p class="text-muted">The requested form could not be found or you don't have permission to access it.</p>
+                <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">
+                    Go Home
+                </button>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h4 class="mb-1">@_formDefinition.Name</h4>
+                                @if (!string.IsNullOrEmpty(_formDefinition.Description))
+                                {
+                                    <p class="text-muted mb-0">@_formDefinition.Description</p>
+                                }
+                            </div>
+                            @if (RequestId.HasValue)
+                            {
+                                <span class="badge bg-info">Edit Mode</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        @if (!string.IsNullOrEmpty(_errorMessage))
+                        {
+                            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                @_errorMessage
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        }
+                        
+                        @if (!string.IsNullOrEmpty(_successMessage))
+                        {
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                @_successMessage
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        }
+
+                        <EditForm Model="_fieldValues" OnValidSubmit="SubmitForm">
+                            <div class="row">
+                                @foreach (var field in _formDefinition.Fields.Where(f => f.IsVisible).OrderBy(f => f.DisplayOrder))
+                                {
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">
+                                            @field.DisplayName
+                                            @if (field.IsRequired)
+                                            {
+                                                <span class="text-danger">*</span>
+                                            }
+                                        </label>
+                                        
+                                        @{
+                                            var dataType = field.DataType?.ToLower() ?? "text";
+                                            var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : DetermineControlType(dataType);
+                                        }
+                                        
+                                        @if (controlType == "textarea")
+                                        {
+                                            <textarea class="form-control" 
+                                                     rows="3"
+                                                     @bind="_fieldValues[field.Name]"
+                                                     disabled="@field.IsReadOnly"
+                                                     placeholder="@field.DefaultValue">
+                                            </textarea>
+                                        }
+                                        else if (controlType == "checkbox")
+                                        {
+                                            <div class="form-check">
+                                                <input class="form-check-input" 
+                                                       type="checkbox" 
+                                                       @bind="_checkboxValues[field.Name]"
+                                                       disabled="@field.IsReadOnly" />
+                                                <label class="form-check-label">
+                                                    @field.DisplayName
+                                                </label>
+                                            </div>
+                                        }
+                                        else if (controlType == "select")
+                                        {
+                                            <select class="form-select" 
+                                                    @bind="_fieldValues[field.Name]"
+                                                    disabled="@field.IsReadOnly">
+                                                <option value="">Select an option</option>
+                                                @if (!string.IsNullOrEmpty(field.DropdownOptions))
+                                                {
+                                                    @foreach (var option in GetDropdownOptions(field.DropdownOptions))
+                                                    {
+                                                        <option value="@option.Value">@option.Text</option>
+                                                    }
+                                                }
+                                            </select>
+                                        }
+                                        else if (controlType == "date")
+                                        {
+                                            <input type="date" 
+                                                   class="form-control"
+                                                   value="@GetDateValue(field.Name)"
+                                                   @onchange="@((e) => SetFieldValue(field.Name, e.Value))"
+                                                   disabled="@field.IsReadOnly" />
+                                        }                        else if (controlType == "datetime-local")
+                        {
+                            <input type="datetime-local" 
+                                   class="form-control"
+                                   value="@GetDateTimeValue(field.Name)"
+                                   @onchange="@((e) => SetFieldValue(field.Name, e.Value))"
+                                   disabled="@field.IsReadOnly" />
+                        }
+                                        else if (controlType == "time")
+                                        {
+                                            <input type="time" 
+                                                   class="form-control"
+                                                   value="@GetTimeValue(field.Name)"
+                                                   @onchange="@((e) => SetFieldValue(field.Name, e.Value))"
+                                                   disabled="@field.IsReadOnly" />
+                                        }
+                                        else
+                                        {
+                                            var inputType = GetInputType(dataType);
+                                            <input type="@inputType" 
+                                                   class="form-control"
+                                                   @bind="_fieldValues[field.Name]"
+                                                   disabled="@field.IsReadOnly"
+                                                   placeholder="@field.DefaultValue"
+                                                   step="@(inputType == "number" ? "any" : null)"
+                                                   maxlength="@(inputType == "text" && field.MaxLength > 0 ? field.MaxLength.ToString() : null)" />
+                                        }
+                                        
+                                        @if (!string.IsNullOrEmpty(field.ValidationMessage))
+                                        {
+                                            <small class="form-text text-muted">@field.ValidationMessage</small>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            
+                            <div class="mt-4">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Request Type</label>
+                                        <select class="form-select" @bind="_requestType">
+                                            <option value="@RequestType.Insert">Add New Record</option>
+                                            <option value="@RequestType.Update">Update Existing Record</option>
+                                            <option value="@RequestType.Delete">Delete Record</option>
+                                        </select>
+                                    </div>
+                                    @if (_requestType != RequestType.Insert)
+                                    {
+                                        <div class="col-md-6">
+                                            <label class="form-label">Select Existing Record</label>
+                                            <select class="form-select" @bind="_selectedRecordId" @bind:after="LoadExistingRecord">
+                                                <option value="">Select a record</option>
+                                                @foreach (var record in _existingRecords)
+                                                {
+                                                    <option value="@record.Key">@record.Value</option>
+                                                }
+                                            </select>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                            
+                            <div class="mt-4">
+                                <label class="form-label">Comments (Optional)</label>
+                                <textarea class="form-control" rows="3" @bind="_comments" placeholder="Add any additional comments about this request..."></textarea>
+                            </div>
+                            
+                            <div class="mt-4 d-flex justify-content-between">
+                                <button type="button" class="btn btn-secondary" @onclick="Cancel">
+                                    Cancel
+                                </button>
+                                <button type="submit" class="btn btn-primary" disabled="@_isSubmitting">
+                                    @if (_isSubmitting)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                        <span>Submitting...</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Submit Request</span>
+                                    }
+                                </button>
+                            </div>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int FormId { get; set; }
+    [Parameter] public int? RequestId { get; set; }
+    
+    private FormDefinition? _formDefinition;
+    private Dictionary<string, string> _fieldValues = new();
+    private Dictionary<string, bool> _checkboxValues = new();
+    private Dictionary<string, string> _existingRecords = new();
+    private RequestType _requestType = RequestType.Insert;
+    private string _selectedRecordId = "";
+    private string _comments = "";
+    private string _errorMessage = "";
+    private string _successMessage = "";
+    private bool _isLoading = true;
+    private bool _isSubmitting = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _formDefinition = await FormDefinitionService.GetByIdAsync(FormId);
+            
+            if (_formDefinition == null || !_formDefinition.IsActive)
+            {
+                return;
+            }
+
+            // Initialize field values with defaults
+            foreach (var field in _formDefinition.Fields)
+            {
+                var dataType = field.DataType?.ToLower() ?? "text";
+                var inputType = GetInputType(dataType);
+                
+                // Check if this should be a checkbox (either new format or legacy SQL type)
+                if (inputType == "checkbox" || dataType == "bit")
+                {
+                    _checkboxValues[field.Name] = false;
+                }
+                else
+                {
+                    _fieldValues[field.Name] = field.DefaultValue ?? "";
+                }
+            }
+
+            // Load existing records for UPDATE/DELETE operations
+            await LoadExistingRecords();
+
+            // If editing an existing request, load its values
+            if (RequestId.HasValue)
+            {
+                await LoadExistingRequest();
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading form: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task LoadExistingRecords()
+    {
+        try
+        {
+            if (_formDefinition != null)
+            {
+                _existingRecords = await DataService.GetRecordSummariesAsync(
+                    _formDefinition.DatabaseConnectionName,
+                    _formDefinition.TableName);
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error loading existing records: {ex.Message}");
+        }
+    }
+
+    private async Task LoadExistingRecord()
+    {
+        if (!string.IsNullOrEmpty(_selectedRecordId) && _formDefinition != null)
+        {
+            try
+            {
+                var recordData = await DataService.GetRecordByIdAsync(
+                    _formDefinition.DatabaseConnectionName,
+                    _formDefinition.TableName,
+                    _selectedRecordId);
+
+                if (recordData != null)
+                {
+                    foreach (var field in _formDefinition.Fields)
+                    {
+                        if (recordData.ContainsKey(field.Name))
+                        {
+                            var dataType = field.DataType?.ToLower() ?? "text";
+                            var inputType = GetInputType(dataType);
+                            
+                            if (inputType == "checkbox" || dataType == "bit")
+                            {
+                                _checkboxValues[field.Name] = Convert.ToBoolean(recordData[field.Name]);
+                            }
+                            else
+                            {
+                                _fieldValues[field.Name] = recordData[field.Name]?.ToString() ?? "";
+                            }
+                        }
+                    }
+                    StateHasChanged();
+                }
+            }
+            catch (Exception ex)
+            {
+                _errorMessage = $"Error loading record: {ex.Message}";
+            }
+        }
+    }
+
+    private async Task LoadExistingRequest()
+    {
+        if (!RequestId.HasValue) return;
+
+        try
+        {
+            var request = await FormRequestService.GetByIdAsync(RequestId.Value);
+            if (request != null)
+            {
+                _requestType = request.RequestType;
+                _comments = request.Comments ?? "";
+                
+                foreach (var fieldValue in request.FieldValues)
+                {
+                    var field = _formDefinition?.Fields.FirstOrDefault(f => f.Name == fieldValue.Key);
+                    if (field != null)
+                    {
+                        var dataType = field.DataType?.ToLower() ?? "text";
+                        var inputType = GetInputType(dataType);
+                        
+                        if (inputType == "checkbox" || dataType == "bit")
+                        {
+                            _checkboxValues[fieldValue.Key] = Convert.ToBoolean(fieldValue.Value);
+                        }
+                        else
+                        {
+                            _fieldValues[fieldValue.Key] = fieldValue.Value?.ToString() ?? "";
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading request: {ex.Message}";
+        }
+    }
+
+    private string GetInputType(string dataType)
+    {
+        var lowerType = dataType.ToLower();
+        
+        // Handle form control types (new format)
+        if (lowerType == "number" || lowerType == "date" || lowerType == "datetime-local" || 
+            lowerType == "time" || lowerType == "email" || lowerType == "text" || 
+            lowerType == "checkbox" || lowerType == "textarea")
+        {
+            return lowerType == "checkbox" ? "checkbox" : lowerType;
+        }
+        
+        // Handle SQL data types (legacy format) - convert to form control types
+        return lowerType switch
+        {
+            "bit" => "checkbox",
+            "tinyint" or "smallint" or "int" or "bigint" => "number",
+            "decimal" or "numeric" or "float" or "real" or "money" or "smallmoney" => "number",
+            "date" => "date",
+            "datetime" or "datetime2" or "smalldatetime" => "datetime-local",
+            "time" => "time",
+            "varchar" or "nvarchar" or "char" or "nchar" when IsLongText(dataType) => "textarea",
+            "varchar" or "nvarchar" or "char" or "nchar" => "text",
+            "text" or "ntext" => "textarea",
+            "uniqueidentifier" => "text",
+            _ => "text"
+        };
+    }
+
+    private bool IsLongText(string sqlDataType)
+    {
+        // Consider fields with more than 255 characters as long text
+        if (sqlDataType.Contains("("))
+        {
+            var lengthPart = sqlDataType.Split('(')[1].Split(')')[0];
+            if (int.TryParse(lengthPart, out int length))
+            {
+                return length > 255;
+            }
+        }
+        return false;
+    }
+
+    private string DetermineControlType(string dataType)
+    {
+        var lowerType = dataType.ToLower();
+        
+        return lowerType switch
+        {
+            "bit" => "checkbox",
+            "date" => "date",
+            "datetime" or "datetime2" or "smalldatetime" => "datetime-local",
+            "time" => "time",
+            "select" => "select",
+            "varchar" or "nvarchar" or "char" or "nchar" when IsLongText(dataType) => "textarea",
+            "text" or "ntext" => "textarea",
+            _ => "input"
+        };
+    }
+
+    private List<(string Value, string Text)> GetDropdownOptions(string dropdownOptionsJson)
+    {
+        if (string.IsNullOrEmpty(dropdownOptionsJson))
+            return new List<(string Value, string Text)>();
+
+        try
+        {
+            // Try to parse as simple array of strings (JSON format)
+            var simpleOptions = System.Text.Json.JsonSerializer.Deserialize<string[]>(dropdownOptionsJson);
+            if (simpleOptions != null)
+            {
+                return simpleOptions.Select(opt => (Value: opt, Text: opt)).ToList();
+            }
+        }
+        catch
+        {
+            try
+            {
+                // Try to parse as array of objects with Value and Text properties (JSON format)
+                var complexOptions = System.Text.Json.JsonSerializer.Deserialize<DropdownOption[]>(dropdownOptionsJson);
+                if (complexOptions != null)
+                {
+                    return complexOptions.Select(opt => (Value: opt.Value, Text: opt.Text)).ToList();
+                }
+            }
+            catch
+            {
+                // Check if it's line-separated format from Form Builder
+                if (dropdownOptionsJson.Contains('\n') || dropdownOptionsJson.Contains('\r'))
+                {
+                    var lines = dropdownOptionsJson.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                    return lines.Select(line => (Value: line.Trim(), Text: line.Trim())).ToList();
+                }
+                
+                // If all else fails, treat as single option
+                return new List<(string Value, string Text)> { (Value: dropdownOptionsJson, Text: dropdownOptionsJson) };
+            }
+        }
+
+        return new List<(string Value, string Text)>();
+    }
+
+    public class DropdownOption
+    {
+        public string Value { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
+    }
+
+    private async Task SubmitForm()
+    {
+        try
+        {
+            _isSubmitting = true;
+            _errorMessage = "";
+            _successMessage = "";
+
+            if (_formDefinition == null) return;
+
+            // Get current user
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            // Combine regular field values and checkbox values
+            var allFieldValues = _fieldValues.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
+            foreach (var checkboxValue in _checkboxValues)
+            {
+                allFieldValues[checkboxValue.Key] = checkboxValue.Value;
+            }
+
+            var formRequest = new FormRequest
+            {
+                FormDefinitionId = FormId,
+                RequestType = _requestType,
+                FieldValues = allFieldValues,
+                Comments = _comments,
+                RequestedBy = user.Identity?.Name ?? "Unknown",
+                RequestedByName = user.Identity?.Name ?? "Unknown",
+                RequestedAt = DateTime.UtcNow
+            };
+
+            // For UPDATE/DELETE, also capture original values
+            if (_requestType != RequestType.Insert && !string.IsNullOrEmpty(_selectedRecordId))
+            {
+                var originalData = await DataService.GetRecordByIdAsync(
+                    _formDefinition.DatabaseConnectionName,
+                    _formDefinition.TableName,
+                    _selectedRecordId);
+                formRequest.OriginalValues = originalData ?? new Dictionary<string, object?>();
+            }
+
+            if (RequestId.HasValue)
+            {
+                formRequest.Id = RequestId.Value;
+                await FormRequestService.UpdateAsync(formRequest);
+                _successMessage = "Request updated successfully!";
+            }
+            else
+            {
+                await FormRequestService.CreateAsync(formRequest);
+                _successMessage = _formDefinition.RequiresApproval 
+                    ? "Request submitted successfully and is pending approval!"
+                    : "Request submitted and processed successfully!";
+            }
+
+            // Redirect after a brief delay
+            await Task.Delay(2000);
+            Navigation.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error submitting request: {ex.Message}";
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    private string GetDateValue(string fieldName)
+    {
+        if (_fieldValues.TryGetValue(fieldName, out var value) && value != null)
+        {
+            if (DateTime.TryParse(value.ToString(), out var dateValue))
+            {
+                return dateValue.ToString("yyyy-MM-dd");
+            }
+        }
+        return string.Empty;
+    }
+
+    private string GetDateTimeValue(string fieldName)
+    {
+        if (_fieldValues.TryGetValue(fieldName, out var value) && value != null)
+        {
+            if (DateTime.TryParse(value.ToString(), out var dateTimeValue))
+            {
+                return dateTimeValue.ToString("yyyy-MM-ddTHH:mm");
+            }
+        }
+        return string.Empty;
+    }
+
+    private string GetTimeValue(string fieldName)
+    {
+        if (_fieldValues.TryGetValue(fieldName, out var value) && value != null)
+        {
+            if (TimeOnly.TryParse(value.ToString(), out var timeValue))
+            {
+                return timeValue.ToString("HH:mm");
+            }
+            if (DateTime.TryParse(value.ToString(), out var dateTimeValue))
+            {
+                return dateTimeValue.ToString("HH:mm");
+            }
+        }
+        return string.Empty;
+    }
+
+    private void SetFieldValue(string fieldName, object? value)
+    {
+        _fieldValues[fieldName] = value?.ToString();
+    }
+}
