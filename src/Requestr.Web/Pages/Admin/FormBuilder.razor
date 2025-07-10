@@ -342,13 +342,6 @@
                                                                     <input type="text" class="form-control form-control-sm" @bind="field.ValidationRegex" placeholder="Regex pattern" />
                                                                 </div>
                                                             }
-                                                            else
-                                                            {
-                                                                <div class="col-md-6">
-                                                                    <label class="form-label">Validation</label>
-                                                                    <input type="text" class="form-control form-control-sm" value="Not applicable for this control type" disabled />
-                                                                </div>
-                                                            }
                                                         </div>
                                                         
                                                         @if (ShowMaxLengthOption(field.ControlType ?? field.DataType))
@@ -376,22 +369,28 @@
                                         }
                                                         
                                                         <div class="row mt-2">
-                                                            <div class="col-md-4">
+                                                            <div class="col-md-3">
                                                                 <div class="form-check">
                                                                     <input class="form-check-input" type="checkbox" @bind="field.IsRequired" />
                                                                     <label class="form-check-label">Required</label>
                                                                 </div>
                                                             </div>
-                                                            <div class="col-md-4">
+                                                            <div class="col-md-3">
                                                                 <div class="form-check">
                                                                     <input class="form-check-input" type="checkbox" @bind="field.IsReadOnly" />
                                                                     <label class="form-check-label">Read Only</label>
                                                                 </div>
                                                             </div>
-                                                            <div class="col-md-4">
+                                                            <div class="col-md-3">
                                                                 <div class="form-check">
                                                                     <input class="form-check-input" type="checkbox" @bind="field.IsVisible" />
                                                                     <label class="form-check-label">Visible</label>
+                                                                </div>
+                                                            </div>
+                                                            <div class="col-md-3">
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox" @bind="field.IsVisibleInDataView" />
+                                                                    <label class="form-check-label">Visible in Data View</label>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -760,6 +759,7 @@
                     IsRequired = !_draggedColumn.IsNullable && !_draggedColumn.IsIdentity,
                     IsReadOnly = _draggedColumn.IsIdentity || _draggedColumn.IsPrimaryKey,
                     IsVisible = true,
+                    IsVisibleInDataView = true,
                     DefaultValue = GetDefaultValueForSqlType(_draggedColumn.DataType, _draggedColumn.IsNullable, _draggedColumn.DefaultValue),
                     DisplayOrder = _formDefinition.Fields.Count + 1
                 };

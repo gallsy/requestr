@@ -66,6 +66,7 @@ BEGIN
         IsRequired bit NOT NULL DEFAULT 0,
         IsReadOnly bit NOT NULL DEFAULT 0,
         IsVisible bit NOT NULL DEFAULT 1,
+        IsVisibleInDataView bit NOT NULL DEFAULT 1,
         DefaultValue nvarchar(max) NULL,
         ValidationRegex nvarchar(500) NULL,
         ValidationMessage nvarchar(500) NULL,
@@ -97,6 +98,15 @@ BEGIN
         ADD DropdownOptions nvarchar(max) NULL;
         
         PRINT 'DropdownOptions column added to FormFields table';
+    END
+    
+    -- Check if the IsVisibleInDataView column exists and add it if it doesn't
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('FormFields') AND name = 'IsVisibleInDataView')
+    BEGIN
+        ALTER TABLE FormFields
+        ADD IsVisibleInDataView bit NOT NULL DEFAULT 1;
+        
+        PRINT 'IsVisibleInDataView column added to FormFields table';
     END
 END
 GO

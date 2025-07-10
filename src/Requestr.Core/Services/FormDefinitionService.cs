@@ -33,7 +33,7 @@ public class FormDefinitionService : IFormDefinitionService
                 SELECT fd.Id, fd.Name, fd.Description, fd.Category, fd.DatabaseConnectionName, fd.TableName, fd.[Schema], 
                        fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.MaxLength, 
-                       ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
+                       ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
@@ -81,6 +81,7 @@ public class FormDefinitionService : IFormDefinitionService
                         IsRequired = (bool)row.IsRequired,
                         IsReadOnly = (bool)row.IsReadOnly,
                         IsVisible = (bool)row.IsVisible,
+                        IsVisibleInDataView = (bool)row.IsVisibleInDataView,
                         DefaultValue = (string?)row.DefaultValue,
                         ValidationRegex = (string?)row.ValidationRegex,
                         ValidationMessage = (string?)row.ValidationMessage,
@@ -112,7 +113,7 @@ public class FormDefinitionService : IFormDefinitionService
                 SELECT fd.Id, fd.Name, fd.Description, fd.DatabaseConnectionName, fd.TableName, fd.[Schema], 
                        fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.MaxLength, 
-                       ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
+                       ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
@@ -160,6 +161,7 @@ public class FormDefinitionService : IFormDefinitionService
                         IsRequired = (bool)(row.IsRequired ?? false),
                         IsReadOnly = (bool)(row.IsReadOnly ?? false),
                         IsVisible = (bool)(row.IsVisible ?? true),
+                        IsVisibleInDataView = (bool)(row.IsVisibleInDataView ?? true),
                         DefaultValue = row.DefaultValue as string,
                         ValidationRegex = row.ValidationRegex as string,
                         ValidationMessage = row.ValidationMessage as string,
@@ -192,7 +194,7 @@ public class FormDefinitionService : IFormDefinitionService
                 SELECT fd.Id, fd.Name, fd.Description, fd.Category, fd.DatabaseConnectionName, fd.TableName, fd.[Schema], 
                        fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.MaxLength, 
-                       ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
+                       ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
@@ -242,6 +244,7 @@ public class FormDefinitionService : IFormDefinitionService
                         IsRequired = (bool)row.IsRequired,
                         IsReadOnly = (bool)row.IsReadOnly,
                         IsVisible = (bool)row.IsVisible,
+                        IsVisibleInDataView = (bool)row.IsVisibleInDataView,
                         DefaultValue = (string?)row.DefaultValue,
                         ValidationRegex = (string?)row.ValidationRegex,
                         ValidationMessage = (string?)row.ValidationMessage,
@@ -297,8 +300,8 @@ public class FormDefinitionService : IFormDefinitionService
                 if (formDefinition.Fields.Any())
                 {
                     var fieldSql = @"
-                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder)
-                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder)";
+                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder)
+                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder)";
 
                     foreach (var field in formDefinition.Fields)
                     {
@@ -363,8 +366,8 @@ public class FormDefinitionService : IFormDefinitionService
                 if (formDefinition.Fields.Any())
                 {
                     var fieldSql = @"
-                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder)
-                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder)";
+                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder)
+                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder)";
 
                     foreach (var field in formDefinition.Fields)
                     {
@@ -419,7 +422,7 @@ public class FormDefinitionService : IFormDefinitionService
                 SELECT fd.Id, fd.Name, fd.Description, fd.Category, fd.DatabaseConnectionName, fd.TableName, fd.[Schema], 
                        fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.MaxLength, 
-                       ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
+                       ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
@@ -468,6 +471,7 @@ public class FormDefinitionService : IFormDefinitionService
                         IsRequired = (bool)row.IsRequired,
                         IsReadOnly = (bool)row.IsReadOnly,
                         IsVisible = (bool)row.IsVisible,
+                        IsVisibleInDataView = (bool)row.IsVisibleInDataView,
                         DefaultValue = (string?)row.DefaultValue,
                         ValidationRegex = (string?)row.ValidationRegex,
                         ValidationMessage = (string?)row.ValidationMessage,

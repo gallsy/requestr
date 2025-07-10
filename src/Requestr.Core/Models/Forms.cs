@@ -25,6 +25,7 @@ public class FormField : BaseEntity
     public bool IsRequired { get; set; }
     public bool IsReadOnly { get; set; }
     public bool IsVisible { get; set; } = true;
+    public bool IsVisibleInDataView { get; set; } = true;
     public string? DefaultValue { get; set; }
     public string? ValidationRegex { get; set; }
     public string? ValidationMessage { get; set; }

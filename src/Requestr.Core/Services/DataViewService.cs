@@ -68,8 +68,8 @@ public class DataViewService : IDataViewService
 
         try
         {
-            // Get all visible form fields to determine columns
-            var visibleFields = formDefinition.Fields.Where(f => f.IsVisible).OrderBy(f => f.DisplayOrder).ToList();
+            // Get all fields visible in data view to determine columns
+            var visibleFields = formDefinition.Fields.Where(f => f.IsVisibleInDataView).OrderBy(f => f.DisplayOrder).ToList();
             result.Columns = visibleFields.Select(f => f.Name).ToList();
 
             // Get primary key columns
@@ -178,7 +178,7 @@ public class DataViewService : IDataViewService
 
             // For simplicity, assume single primary key column
             var primaryKeyColumn = primaryKeyColumns.First();
-            var visibleFields = formDefinition.Fields.Where(f => f.IsVisible).OrderBy(f => f.DisplayOrder).ToList();
+            var visibleFields = formDefinition.Fields.Where(f => f.IsVisibleInDataView).OrderBy(f => f.DisplayOrder).ToList();
             var columnsList = string.Join(", ", visibleFields.Select(f => $"[{f.Name}]"));
 
             var sql = $@"
