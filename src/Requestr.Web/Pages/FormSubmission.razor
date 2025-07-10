@@ -338,6 +338,46 @@ else
                             {
                                 _checkboxValues[field.Name] = Convert.ToBoolean(recordData[field.Name]);
                             }
+                            else if (controlType == "date" && recordData[field.Name] != null)
+                            {
+                                // Format date values for HTML date input
+                                if (DateTime.TryParse(recordData[field.Name].ToString(), out var dateValue))
+                                {
+                                    _fieldValues[field.Name] = dateValue.ToString("yyyy-MM-dd");
+                                }
+                                else
+                                {
+                                    _fieldValues[field.Name] = recordData[field.Name]?.ToString() ?? "";
+                                }
+                            }
+                            else if (controlType == "datetime-local" && recordData[field.Name] != null)
+                            {
+                                // Format datetime values for HTML datetime-local input
+                                if (DateTime.TryParse(recordData[field.Name].ToString(), out var dateTimeValue))
+                                {
+                                    _fieldValues[field.Name] = dateTimeValue.ToString("yyyy-MM-ddTHH:mm");
+                                }
+                                else
+                                {
+                                    _fieldValues[field.Name] = recordData[field.Name]?.ToString() ?? "";
+                                }
+                            }
+                            else if (controlType == "time" && recordData[field.Name] != null)
+                            {
+                                // Format time values for HTML time input
+                                if (DateTime.TryParse(recordData[field.Name].ToString(), out var timeValue))
+                                {
+                                    _fieldValues[field.Name] = timeValue.ToString("HH:mm");
+                                }
+                                else if (TimeOnly.TryParse(recordData[field.Name].ToString(), out var timeOnlyValue))
+                                {
+                                    _fieldValues[field.Name] = timeOnlyValue.ToString("HH:mm");
+                                }
+                                else
+                                {
+                                    _fieldValues[field.Name] = recordData[field.Name]?.ToString() ?? "";
+                                }
+                            }
                             else
                             {
                                 _fieldValues[field.Name] = recordData[field.Name]?.ToString() ?? "";
@@ -377,6 +417,46 @@ else
                         if (controlType == "checkbox" || dataType == "bit")
                         {
                             _checkboxValues[fieldValue.Key] = Convert.ToBoolean(fieldValue.Value);
+                        }
+                        else if (controlType == "date" && fieldValue.Value != null)
+                        {
+                            // Format date values for HTML date input
+                            if (DateTime.TryParse(fieldValue.Value.ToString(), out var dateValue))
+                            {
+                                _fieldValues[fieldValue.Key] = dateValue.ToString("yyyy-MM-dd");
+                            }
+                            else
+                            {
+                                _fieldValues[fieldValue.Key] = fieldValue.Value?.ToString() ?? "";
+                            }
+                        }
+                        else if (controlType == "datetime-local" && fieldValue.Value != null)
+                        {
+                            // Format datetime values for HTML datetime-local input
+                            if (DateTime.TryParse(fieldValue.Value.ToString(), out var dateTimeValue))
+                            {
+                                _fieldValues[fieldValue.Key] = dateTimeValue.ToString("yyyy-MM-ddTHH:mm");
+                            }
+                            else
+                            {
+                                _fieldValues[fieldValue.Key] = fieldValue.Value?.ToString() ?? "";
+                            }
+                        }
+                        else if (controlType == "time" && fieldValue.Value != null)
+                        {
+                            // Format time values for HTML time input
+                            if (DateTime.TryParse(fieldValue.Value.ToString(), out var timeValue))
+                            {
+                                _fieldValues[fieldValue.Key] = timeValue.ToString("HH:mm");
+                            }
+                            else if (TimeOnly.TryParse(fieldValue.Value.ToString(), out var timeOnlyValue))
+                            {
+                                _fieldValues[fieldValue.Key] = timeOnlyValue.ToString("HH:mm");
+                            }
+                            else
+                            {
+                                _fieldValues[fieldValue.Key] = fieldValue.Value?.ToString() ?? "";
+                            }
                         }
                         else
                         {
@@ -617,6 +697,49 @@ else
 
     private void SetFieldValue(string fieldName, object? value)
     {
-        _fieldValues[fieldName] = value?.ToString();
+        var stringValue = value?.ToString();
+        
+        // Find the field to determine its data type
+        var field = _formDefinition?.Fields.FirstOrDefault(f => f.Name == fieldName);
+        if (field != null)
+        {
+            var dataType = field.DataType?.ToLower() ?? "";
+            var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : "";
+            
+            // Handle date/datetime conversions for SQL Server compatibility
+            if (controlType == "date" && (dataType.Contains("datetime") || dataType.Contains("date")))
+            {
+                // For date picker to datetime2 column, append time part
+                if (!string.IsNullOrEmpty(stringValue) && DateTime.TryParse(stringValue, out var dateValue))
+                {
+                    // For date-only input to datetime column, set time to start of day
+                    _fieldValues[fieldName] = dateValue.Date.ToString("yyyy-MM-dd HH:mm:ss.fff");
+                }
+                else
+                {
+                    _fieldValues[fieldName] = stringValue;
+                }
+            }
+            else if (controlType == "datetime-local" && (dataType.Contains("datetime") || dataType.Contains("date")))
+            {
+                // For datetime-local picker, ensure proper format
+                if (!string.IsNullOrEmpty(stringValue) && DateTime.TryParse(stringValue, out var dateTimeValue))
+                {
+                    _fieldValues[fieldName] = dateTimeValue.ToString("yyyy-MM-dd HH:mm:ss.fff");
+                }
+                else
+                {
+                    _fieldValues[fieldName] = stringValue;
+                }
+            }
+            else
+            {
+                _fieldValues[fieldName] = stringValue;
+            }
+        }
+        else
+        {
+            _fieldValues[fieldName] = stringValue;
+        }
     }
 }

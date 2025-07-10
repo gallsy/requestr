@@ -320,7 +320,7 @@
                                                             </div>
                                                             <div class="col-md-6">
                                                                 <label class="form-label">Control Type</label>
-                                                                <select class="form-select form-select-sm" @bind="field.DataType" @bind:after="() => OnControlTypeChanged(field)">
+                                                                <select class="form-select form-select-sm" @bind="field.ControlType" @bind:after="() => OnControlTypeChanged(field)">
                                                                     @foreach (var controlOption in GetAvailableControlTypes(field))
                                                                     {
                                                                         <option value="@controlOption.Value">@controlOption.Text</option>
@@ -335,7 +335,7 @@
                                                                 <label class="form-label">Default Value</label>
                                                                 <input type="text" class="form-control form-control-sm" @bind="field.DefaultValue" />
                                                             </div>
-                                                            @if (SupportsValidation(field.DataType))
+                                                            @if (SupportsValidation(field.ControlType ?? field.DataType))
                                                             {
                                                                 <div class="col-md-6">
                                                                     <label class="form-label">Validation Regex</label>
@@ -351,7 +351,7 @@
                                                             }
                                                         </div>
                                                         
-                                                        @if (ShowMaxLengthOption(field.DataType))
+                                                        @if (ShowMaxLengthOption(field.ControlType ?? field.DataType))
                                                         {
                                                             <div class="row mt-2">
                                                                 <div class="col-md-6">
@@ -364,7 +364,7 @@
                                                                 </div>
                                                             </div>
                                                         }
-                                                                         @if (field.DataType == "select" || field.DataType == "radio")
+                                                                         @if (field.ControlType == "select" || field.ControlType == "radio" || field.DataType == "select" || field.DataType == "radio")
                                         {
                                             <div class="row mt-2">
                                                 <div class="col-12">
@@ -647,9 +647,13 @@
                 // Populate ControlType for existing fields if empty (for backward compatibility)
                 foreach (var field in _formDefinition.Fields)
                 {
+                    // Store the original SQL type (DataType field contains the SQL type)
+                    _fieldOriginalSqlTypes[field.Name] = field.DataType;
+                    
                     if (string.IsNullOrEmpty(field.ControlType))
                     {
-                        field.ControlType = field.DataType;
+                        // Map from SQL DataType to appropriate ControlType
+                        field.ControlType = GetDefaultControlTypeForSqlType(field.DataType);
                     }
                 }
                 
@@ -1053,17 +1057,14 @@
 
     private void OnControlTypeChanged(FormField field)
     {
-        // Set the ControlType field to match the DataType selection
-        field.ControlType = field.DataType;
-        
         // Clear validation regex if control type doesn't support it
-        if (!SupportsValidation(field.DataType))
+        if (!SupportsValidation(field.ControlType ?? ""))
         {
             field.ValidationRegex = null;
         }
 
         // Reset max length for controls that don't support it
-        if (!ShowMaxLengthOption(field.DataType))
+        if (!ShowMaxLengthOption(field.ControlType ?? ""))
         {
             field.MaxLength = 0;
         }
@@ -1071,7 +1072,7 @@
         // Set appropriate default values based on control type
         if (string.IsNullOrEmpty(field.DefaultValue))
         {
-            field.DefaultValue = field.DataType switch
+            field.DefaultValue = field.ControlType switch
             {
                 "checkbox" => "false",
                 "number" or "range" => "0",
