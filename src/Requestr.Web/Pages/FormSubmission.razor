@@ -257,12 +257,20 @@ else
             foreach (var field in _formDefinition.Fields)
             {
                 var dataType = field.DataType?.ToLower() ?? "text";
-                var inputType = GetInputType(dataType);
+                var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : DetermineControlType(dataType);
                 
-                // Check if this should be a checkbox (either new format or legacy SQL type)
-                if (inputType == "checkbox" || dataType == "bit")
+                // Check if this should be a checkbox (using ControlType or fallback to DataType)
+                if (controlType == "checkbox" || dataType == "bit")
                 {
-                    _checkboxValues[field.Name] = false;
+                    // Use default value if set, otherwise default to false
+                    if (!string.IsNullOrEmpty(field.DefaultValue))
+                    {
+                        _checkboxValues[field.Name] = field.DefaultValue.ToLower() == "true" || field.DefaultValue == "1";
+                    }
+                    else
+                    {
+                        _checkboxValues[field.Name] = false;
+                    }
                 }
                 else
                 {
@@ -324,9 +332,9 @@ else
                         if (recordData.ContainsKey(field.Name))
                         {
                             var dataType = field.DataType?.ToLower() ?? "text";
-                            var inputType = GetInputType(dataType);
+                            var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : DetermineControlType(dataType);
                             
-                            if (inputType == "checkbox" || dataType == "bit")
+                            if (controlType == "checkbox" || dataType == "bit")
                             {
                                 _checkboxValues[field.Name] = Convert.ToBoolean(recordData[field.Name]);
                             }
@@ -364,9 +372,9 @@ else
                     if (field != null)
                     {
                         var dataType = field.DataType?.ToLower() ?? "text";
-                        var inputType = GetInputType(dataType);
+                        var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : DetermineControlType(dataType);
                         
-                        if (inputType == "checkbox" || dataType == "bit")
+                        if (controlType == "checkbox" || dataType == "bit")
                         {
                             _checkboxValues[fieldValue.Key] = Convert.ToBoolean(fieldValue.Value);
                         }
