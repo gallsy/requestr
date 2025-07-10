@@ -10,6 +10,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
+@inject ILogger<WorkflowApprovals> Logger
 @attribute [Authorize]
 
 <PageTitle>Workflow Approvals - Requestr</PageTitle>
@@ -101,7 +102,7 @@
                                         <th>Form</th>
                                         <th>Request Type</th>
                                         <th>Requested By</th>
-                                        <th>Current Step</th>
+                                        <th>Workflow Progress</th>
                                         <th>Requested At</th>
                                         <th>Actions</th>
                                     </tr>
@@ -124,15 +125,7 @@
                                                 <small class="text-muted">@request.RequestedBy</small>
                                             </td>
                                             <td>
-                                                @if (WorkflowSteps.TryGetValue(request.Id, out var currentStep) && currentStep != null)
-                                                {
-                                                    <div class="fw-medium">@currentStep.StepId</div>
-                                                    <small class="text-muted">@currentStep.Status</small>
-                                                }
-                                                else
-                                                {
-                                                    <span class="text-muted">Loading...</span>
-                                                }
+                                                <WorkflowProgressDisplay FormRequestId="request.Id" ShowCompact="true" AutoLoad="true" />
                                             </td>
                                             <td>
                                                 <div>@request.RequestedAt.ToString("MM/dd/yyyy")</div>
@@ -285,7 +278,9 @@
         if (User?.Identity?.IsAuthenticated == true)
         {
             UserRoles = User.Claims
-                .Where(c => c.Type == ClaimTypes.Role)
+                .Where(c => c.Type == "roles" || 
+                           c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role" ||
+                           c.Type == ClaimTypes.Role)
                 .Select(c => c.Value)
                 .ToList();
         }
@@ -301,25 +296,52 @@
             if (User?.Identity?.IsAuthenticated == true)
             {
                 var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+                
+                // Log the user details and roles for debugging
+                Logger.LogInformation("WorkflowApprovals: Loading data for user {UserName} (ID: {UserId})", User.Identity.Name, userId);
+                Logger.LogInformation("WorkflowApprovals: User has {RoleCount} roles: {Roles}", UserRoles.Count, string.Join(", ", UserRoles));
+                
+                // Log all claims for debugging
+                Logger.LogDebug("WorkflowApprovals: All user claims:");
+                foreach (var claim in User.Claims)
+                {
+                    Logger.LogDebug("  {ClaimType}: {ClaimValue}", claim.Type, claim.Value);
+                }
+
                 AllRequests = await FormRequestService.GetFormRequestsForWorkflowApprovalAsync(userId, UserRoles);
+                
+                Logger.LogInformation("WorkflowApprovals: Received {RequestCount} requests from service", AllRequests?.Count ?? 0);
 
                 // Load workflow step information for each request
                 WorkflowSteps.Clear();
                 if (AllRequests?.Any() == true)
                 {
+                    Logger.LogInformation("WorkflowApprovals: Loading workflow steps for {RequestCount} requests", AllRequests.Count);
                     foreach (var request in AllRequests)
                     {
                         try
                         {
                             var currentStep = await FormRequestService.GetCurrentWorkflowStepAsync(request.Id);
                             WorkflowSteps[request.Id] = currentStep;
+                            Logger.LogInformation("WorkflowApprovals: Request {RequestId} - WorkflowInstanceId: {WorkflowInstanceId}, CurrentStep: {StepId}", 
+                                request.Id, request.WorkflowInstanceId, currentStep?.StepId ?? "None");
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"Error loading workflow step for request {request.Id}: {ex.Message}");
+                            Logger.LogError(ex, "Error loading workflow step for request {RequestId}", request.Id);
                             WorkflowSteps[request.Id] = null;
                         }
                     }
+                }
+                else
+                {
+                    Logger.LogWarning("WorkflowApprovals: No requests returned from service");
+                }
+
+                Logger.LogInformation("WorkflowApprovals: Finished loading data. WorkflowSteps dictionary now contains {Count} entries", WorkflowSteps.Count);
+                foreach (var kvp in WorkflowSteps)
+                {
+                    Logger.LogInformation("  Request {RequestId}: StepId={StepId}", kvp.Key, kvp.Value?.StepId ?? "null");
                 }
 
                 await ApplyFilters();
@@ -424,7 +446,40 @@
 
     private void ViewRequest(int requestId)
     {
-        Navigation.NavigateTo($"/requests/{requestId}");
+        try
+        {
+            Logger.LogInformation("ViewRequest called for requestId: {RequestId}", requestId);
+            
+            // Get the workflow instance ID and current step for this request
+            var workflowStep = WorkflowSteps.TryGetValue(requestId, out var step) ? step : null;
+            var request = AllRequests?.FirstOrDefault(r => r.Id == requestId);
+            
+            Logger.LogInformation("WorkflowSteps dictionary contains {Count} entries", WorkflowSteps.Count);
+            Logger.LogInformation("WorkflowSteps dictionary keys: {Keys}", string.Join(", ", WorkflowSteps.Keys));
+            Logger.LogInformation("Found request: {RequestFound}, WorkflowInstanceId: {WorkflowInstanceId}", request != null, request?.WorkflowInstanceId);
+            Logger.LogInformation("Found workflow step: {StepFound}, StepId: {StepId}", workflowStep != null, workflowStep?.StepId);
+            
+            if (request?.WorkflowInstanceId != null && workflowStep?.StepId != null)
+            {
+                var workflowUrl = $"/workflow/{request.WorkflowInstanceId}/step/{workflowStep.StepId}";
+                Logger.LogInformation("Navigating to workflow URL: {WorkflowUrl}", workflowUrl);
+                // Navigate to the workflow approval page with proper parameters
+                Navigation.NavigateTo(workflowUrl);
+            }
+            else
+            {
+                var fallbackUrl = $"/requests/{requestId}";
+                Logger.LogInformation("Using fallback URL: {FallbackUrl}", fallbackUrl);
+                // Fallback to the general request view
+                Navigation.NavigateTo(fallbackUrl);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Exception in ViewRequest for requestId: {RequestId}", requestId);
+            // Fallback to the general request view
+            Navigation.NavigateTo($"/requests/{requestId}");
+        }
     }
 
     private async Task RefreshData()

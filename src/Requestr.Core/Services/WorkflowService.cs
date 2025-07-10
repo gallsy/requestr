@@ -425,8 +425,23 @@ public class WorkflowService : IWorkflowService
         await connection.OpenAsync();
         using var transaction = connection.BeginTransaction();
 
+        try
+        {
+            var result = await StartWorkflowAsync(formRequestId, workflowDefinitionId, connection, transaction);
+            transaction.Commit();
+            return result;
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    // Overload that uses existing connection and transaction to avoid deadlocks
+    public async Task<WorkflowInstance> StartWorkflowAsync(int formRequestId, int workflowDefinitionId, SqlConnection connection, SqlTransaction transaction)
+    {
         int instanceId = 0;
-        bool committed = false;
         WorkflowInstance? workflowInstance = null;
 
         try
@@ -476,118 +491,61 @@ public class WorkflowService : IWorkflowService
             
             workflowInstance.Id = instanceId;
 
+            _logger.LogInformation("Workflow definition has {StepCount} steps: {StepIds}", 
+                workflowDefinition.Steps.Count, string.Join(", ", workflowDefinition.Steps.Select(s => $"{s.StepId}({s.StepType})")));
+
             // Create step instances for all steps using bulk operation
             await CreateStepInstancesBulkAsync(connection, transaction, instanceId, workflowDefinition.Steps, startStep.StepId);
 
             // If start step is not an approval step, move to next step immediately
             if (startStep.StepType != WorkflowStepType.Approval)
             {
+                _logger.LogInformation("Start step '{StepId}' is type '{StepType}', attempting to move to next step", startStep.StepId, startStep.StepType);
                 var nextStepId = await GetNextStepIdAsync(connection, transaction, instanceId, startStep.StepId, new Dictionary<string, object?>());
                 if (!string.IsNullOrEmpty(nextStepId))
                 {
+                    _logger.LogInformation("Moving workflow instance {InstanceId} from '{CurrentStep}' to '{NextStep}'", instanceId, startStep.StepId, nextStepId);
                     await MoveToNextStepAsync(connection, transaction, instanceId, nextStepId);
                 }
+                else
+                {
+                    _logger.LogWarning("No next step found for workflow instance {InstanceId} from start step '{StepId}'", instanceId, startStep.StepId);
+                }
+            }
+            else
+            {
+                _logger.LogInformation("Start step '{StepId}' is an approval step, staying on this step", startStep.StepId);
             }
 
-            transaction.Commit();
-            committed = true;
-            
             _logger.LogInformation("Started workflow instance {InstanceId} for form request {RequestId}", instanceId, formRequestId);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error starting workflow instance for request {RequestId}", formRequestId);
-            
-            if (!committed)
-            {
-                try
-                {
-                    transaction.Rollback();
-                }
-                catch (Exception rollbackEx)
-                {
-                    _logger.LogError(rollbackEx, "Error rolling back transaction for workflow instance creation");
-                }
-            }
             throw;
         }
 
-        // Retrieve the created workflow instance (outside the transaction)
-        try
+        // Return the workflow instance we created
+        if (workflowInstance != null && instanceId > 0)
         {
-            if (instanceId > 0)
+            // Load step instances that were just created using the same connection and transaction
+            try
             {
-                var result = await GetWorkflowInstanceAsync(instanceId);
-                return result ?? workflowInstance ?? throw new InvalidOperationException("Failed to create workflow instance");
+                const string stepInstancesSql = "SELECT * FROM WorkflowStepInstances WHERE WorkflowInstanceId = @Id ORDER BY StartedAt";
+                var stepInstances = await connection.QueryAsync<WorkflowStepInstance>(stepInstancesSql, new { Id = instanceId }, transaction);
+                workflowInstance.StepInstances = stepInstances.ToList();
+                _logger.LogInformation("Loaded {Count} step instances for workflow instance {InstanceId}", stepInstances.Count(), instanceId);
             }
-            return workflowInstance ?? throw new InvalidOperationException("Failed to create workflow instance");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error retrieving created workflow instance {InstanceId}, returning original object", instanceId);
-            return workflowInstance ?? throw new InvalidOperationException("Failed to create workflow instance");
-        }
-    }
-
-    // Overload that accepts existing connection and transaction to avoid deadlocks
-    public async Task<WorkflowInstance> StartWorkflowAsync(int formRequestId, int workflowDefinitionId, 
-        SqlConnection connection, SqlTransaction transaction)
-    {
-        int instanceId = 0;
-        WorkflowInstance? workflowInstance = null;
-
-        try
-        {
-            var workflowDefinition = await GetWorkflowDefinitionAsync(connection, transaction, workflowDefinitionId);
-            if (workflowDefinition == null)
-                throw new InvalidOperationException($"Workflow definition {workflowDefinitionId} not found");
-
-            // Find start step
-            var startStep = workflowDefinition.Steps.FirstOrDefault(s => s.StepType == WorkflowStepType.Start);
-            if (startStep == null)
-                throw new InvalidOperationException("Workflow has no start step");
-
-            // Create workflow instance with increased timeout
-            const string instanceSql = @"
-                INSERT INTO WorkflowInstances (FormRequestId, WorkflowDefinitionId, CurrentStepId, Status, StartedAt)
-                OUTPUT INSERTED.Id
-                VALUES (@FormRequestId, @WorkflowDefinitionId, @CurrentStepId, @Status, @StartedAt)";
-
-            workflowInstance = new WorkflowInstance
+            catch (Exception ex)
             {
-                FormRequestId = formRequestId,
-                WorkflowDefinitionId = workflowDefinitionId,
-                CurrentStepId = startStep.StepId,
-                Status = WorkflowInstanceStatus.InProgress,
-                StartedAt = DateTime.UtcNow
-            };
-
-            // No retry logic needed here since we're using an existing transaction
-            instanceId = await connection.QuerySingleAsync<int>(instanceSql, workflowInstance, transaction, commandTimeout: 300);
-            workflowInstance.Id = instanceId;
-
-            // Create step instances for all steps using bulk operation
-            await CreateStepInstancesBulkAsync(connection, transaction, instanceId, workflowDefinition.Steps, startStep.StepId);
-
-            // If start step is not an approval step, move to next step immediately
-            if (startStep.StepType != WorkflowStepType.Approval)
-            {
-                var nextStepId = await GetNextStepIdAsync(connection, transaction, instanceId, startStep.StepId, new Dictionary<string, object?>());
-                if (!string.IsNullOrEmpty(nextStepId))
-                {
-                    await MoveToNextStepAsync(connection, transaction, instanceId, nextStepId);
-                }
+                _logger.LogWarning(ex, "Error loading step instances for workflow instance {InstanceId}", instanceId);
+                workflowInstance.StepInstances = new List<WorkflowStepInstance>();
             }
-            
-            _logger.LogInformation("Started workflow instance {InstanceId} for form request {RequestId} using existing transaction", instanceId, formRequestId);
             
             return workflowInstance;
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error starting workflow instance for request {RequestId} using existing transaction", formRequestId);
-            throw;
-        }
+        
+        throw new InvalidOperationException("Failed to create workflow instance");
     }
 
     public async Task<WorkflowInstance?> GetWorkflowInstanceAsync(int id)
@@ -596,17 +554,25 @@ public class WorkflowService : IWorkflowService
         
         const string sql = @"
             SELECT * FROM WorkflowInstances WHERE Id = @Id;
-            SELECT * FROM WorkflowStepInstances WHERE WorkflowInstanceId = @Id ORDER BY StartedAt;";
+            SELECT * FROM WorkflowStepInstances WHERE WorkflowInstanceId = @Id ORDER BY ISNULL(StartedAt, '1900-01-01'), Id;";
 
-        using var multi = await connection.QueryMultipleAsync(sql, new { Id = id });
-        
-        var instance = await multi.ReadFirstOrDefaultAsync<WorkflowInstance>();
-        if (instance == null) return null;
+        try
+        {
+            using var multi = await connection.QueryMultipleAsync(sql, new { Id = id }, commandTimeout: 60);
+            
+            var workflowInstance = await multi.ReadFirstOrDefaultAsync<WorkflowInstance>();
+            if (workflowInstance == null) return null;
 
-        var stepInstances = await multi.ReadAsync<WorkflowStepInstance>();
-        instance.StepInstances = stepInstances.ToList();
+            var stepInstances = await multi.ReadAsync<WorkflowStepInstance>();
+            workflowInstance.StepInstances = stepInstances.ToList();
 
-        return instance;
+            return workflowInstance;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading workflow instance {WorkflowInstanceId}", id);
+            throw;
+        }
     }
 
     public async Task<WorkflowInstance?> GetWorkflowInstanceByRequestAsync(int formRequestId)
@@ -723,46 +689,119 @@ public class WorkflowService : IWorkflowService
     {
         using var connection = new SqlConnection(_connectionString);
         
-        // This query needs to check against the workflow steps to find assigned roles
+        // This query finds workflow step instances that are pending or in-progress
+        // and checks if the user can access them based on assigned roles or direct assignment
+        // Note: Also handles NULL status values for backwards compatibility
         const string sql = @"
-            SELECT wsi.* FROM WorkflowStepInstances wsi
+            SELECT wsi.*, wi.FormRequestId, wi.WorkflowDefinitionId
+            FROM WorkflowStepInstances wsi
             INNER JOIN WorkflowInstances wi ON wsi.WorkflowInstanceId = wi.Id
             INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId AND ws.StepId = wsi.StepId
-            WHERE wsi.Status IN (@InProgress, @Pending)
+            WHERE (wsi.Status IN (@InProgress, @Pending) OR wsi.Status IS NULL)
             AND wi.Status = @WorkflowInProgress
-            AND (wsi.AssignedTo = @UserId OR ws.AssignedRoles IS NULL OR ws.AssignedRoles = '[]')";
+            AND ws.StepType = @ApprovalStepType
+            AND (
+                wsi.AssignedTo = @UserId 
+                OR wsi.AssignedTo IS NULL
+                OR ws.AssignedRoles IS NULL 
+                OR ws.AssignedRoles = '[]'
+                OR ws.AssignedRoles = ''
+            )
+            ORDER BY ISNULL(wsi.StartedAt, '1900-01-01'), wsi.Id ASC";
 
         var stepInstances = await connection.QueryAsync<WorkflowStepInstance>(sql, new
         {
             UserId = userId,
             InProgress = WorkflowStepInstanceStatus.InProgress,
             Pending = WorkflowStepInstanceStatus.Pending,
-            WorkflowInProgress = WorkflowInstanceStatus.InProgress
+            WorkflowInProgress = WorkflowInstanceStatus.InProgress,
+            ApprovalStepType = WorkflowStepType.Approval
         });
 
-        // Additional filtering based on assigned roles would need to be done here
-        // This is a simplified version - in production, you'd want to optimize this query
+        var result = new List<WorkflowStepInstance>();
 
-        return stepInstances.ToList();
+        // Additional filtering for role-based access
+        foreach (var stepInstance in stepInstances)
+        {
+            // If directly assigned to user, include it
+            if (stepInstance.AssignedTo == userId)
+            {
+                result.Add(stepInstance);
+                continue;
+            }
+
+            // Check if user has required roles
+            var workflowStep = await GetWorkflowStepAsync(stepInstance.WorkflowInstanceId, stepInstance.StepId);
+            if (workflowStep != null)
+            {
+                if (workflowStep.AssignedRoles == null || workflowStep.AssignedRoles.Count == 0)
+                {
+                    // No specific roles required - any authenticated user can access
+                    result.Add(stepInstance);
+                }
+                else if (userRoles != null && workflowStep.AssignedRoles.Any(role => userRoles.Contains(role)))
+                {
+                    // User has at least one of the required roles
+                    result.Add(stepInstance);
+                }
+            }
+        }
+
+        _logger.LogInformation("Found {Count} pending workflow steps for user {UserId}", result.Count, userId);
+        return result;
     }
 
     public async Task<WorkflowStepInstance?> GetCurrentStepInstanceAsync(int workflowInstanceId)
     {
         using var connection = new SqlConnection(_connectionString);
         
-        const string sql = @"
+        _logger.LogInformation("GetCurrentStepInstanceAsync called for workflowInstanceId: {WorkflowInstanceId}", workflowInstanceId);
+        
+        // First try to get the current step using CurrentStepId
+        const string sqlCurrentStep = @"
             SELECT wsi.* FROM WorkflowStepInstances wsi
             INNER JOIN WorkflowInstances wi ON wsi.WorkflowInstanceId = wi.Id
             WHERE wi.Id = @WorkflowInstanceId AND wsi.StepId = wi.CurrentStepId";
 
-        return await connection.QueryFirstOrDefaultAsync<WorkflowStepInstance>(sql, new { WorkflowInstanceId = workflowInstanceId });
+        var currentStep = await connection.QueryFirstOrDefaultAsync<WorkflowStepInstance>(sqlCurrentStep, new { WorkflowInstanceId = workflowInstanceId });
+        
+        if (currentStep != null)
+        {
+            _logger.LogInformation("Found current step using CurrentStepId: {StepId}", currentStep.StepId);
+            return currentStep;
+        }
+        
+        _logger.LogInformation("No current step found using CurrentStepId, trying InProgress status");
+        
+        // Fallback: Look for InProgress step instances
+        const string sqlInProgressStep = @"
+            SELECT wsi.* FROM WorkflowStepInstances wsi
+            WHERE wsi.WorkflowInstanceId = @WorkflowInstanceId 
+            AND wsi.Status = @InProgressStatus
+            ORDER BY wsi.StartedAt DESC";
+
+        var inProgressStep = await connection.QueryFirstOrDefaultAsync<WorkflowStepInstance>(sqlInProgressStep, new { 
+            WorkflowInstanceId = workflowInstanceId,
+            InProgressStatus = WorkflowStepInstanceStatus.InProgress.ToString()
+        });
+        
+        if (inProgressStep != null)
+        {
+            _logger.LogInformation("Found InProgress step: {StepId}", inProgressStep.StepId);
+        }
+        else
+        {
+            _logger.LogWarning("No InProgress step found for workflowInstanceId: {WorkflowInstanceId}", workflowInstanceId);
+        }
+        
+        return inProgressStep;
     }
 
     public async Task<List<WorkflowStepInstance>> GetStepInstancesAsync(int workflowInstanceId)
     {
         using var connection = new SqlConnection(_connectionString);
         
-        const string sql = "SELECT * FROM WorkflowStepInstances WHERE WorkflowInstanceId = @WorkflowInstanceId ORDER BY StartedAt";
+        const string sql = "SELECT * FROM WorkflowStepInstances WHERE WorkflowInstanceId = @WorkflowInstanceId ORDER BY ISNULL(StartedAt, '1900-01-01'), Id";
         var stepInstances = await connection.QueryAsync<WorkflowStepInstance>(sql, new { WorkflowInstanceId = workflowInstanceId });
         
         return stepInstances.ToList();
@@ -821,7 +860,7 @@ public class WorkflowService : IWorkflowService
     {
         using var connection = new SqlConnection(_connectionString);
         
-        // Get the step definition to check assigned roles
+        // Get step definition and assigned roles
         const string sql = @"
             SELECT ws.AssignedRoles FROM WorkflowSteps ws
             INNER JOIN WorkflowInstances wi ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId
@@ -834,11 +873,12 @@ public class WorkflowService : IWorkflowService
         });
 
         if (string.IsNullOrEmpty(assignedRolesJson))
-            return true; // No role restrictions
+            return false;
 
         var assignedRoles = JsonSerializer.Deserialize<List<string>>(assignedRolesJson) ?? new List<string>();
         
-        return !assignedRoles.Any() || assignedRoles.Intersect(userRoles).Any();
+        // Check if user has any of the assigned roles
+        return assignedRoles.Any(role => userRoles.Contains(role)) || userRoles.Contains("Admin");
     }
 
     public async Task<string?> GetNextStepIdAsync(int workflowInstanceId, string currentStepId, Dictionary<string, object?> formData)
@@ -879,9 +919,16 @@ public class WorkflowService : IWorkflowService
             CurrentStepId = currentStepId 
         }, transaction, commandTimeout: 120);
 
+        _logger.LogInformation("Found {Count} transitions from step '{StepId}' for workflow instance {InstanceId}", transitions.Count(), currentStepId, workflowInstanceId);
+
         // For now, return the first transition - in a full implementation,
         // you'd evaluate conditions here
         var nextTransition = transitions.FirstOrDefault();
+        
+        if (nextTransition != null)
+        {
+            _logger.LogInformation("Next step from '{FromStep}' is '{ToStep}'", nextTransition.FromStepId, nextTransition.ToStepId);
+        }
         
         return nextTransition?.ToStepId;
     }
@@ -896,7 +943,7 @@ public class WorkflowService : IWorkflowService
             INNER JOIN WorkflowInstances wi ON wsi.WorkflowInstanceId = wi.Id
             INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId AND ws.StepId = wsi.StepId
             WHERE wi.Id = @WorkflowInstanceId 
-            AND wsi.Status IN (@Pending, @InProgress)";
+            AND (wsi.Status IN (@Pending, @InProgress) OR wsi.Status IS NULL)";
 
         var stepIds = await connection.QueryAsync<string>(sql, new
         {
@@ -1029,118 +1076,152 @@ public class WorkflowService : IWorkflowService
         }
     }
 
-    private async Task CreateStepInstancesBulkAsync(SqlConnection connection, SqlTransaction transaction, 
-        int workflowInstanceId, List<WorkflowStep> steps, string startStepId)
+    private async Task CreateStepInstancesBulkAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId, List<WorkflowStep> steps, string currentStepId)
     {
-        if (!steps.Any()) return;
-
-        // Use a single bulk insert for better performance
-        const string bulkInsertSql = @"
-            INSERT INTO WorkflowStepInstances (WorkflowInstanceId, StepId, Status, AssignedTo, StartedAt, FieldValues)
-            VALUES ";
-
-        var parameters = new DynamicParameters();
-        var valuesClauses = new List<string>();
-        
-        for (int i = 0; i < steps.Count; i++)
-        {
-            var step = steps[i];
-            var isStartStep = step.StepId == startStepId;
-            
-            valuesClauses.Add($"(@WorkflowInstanceId{i}, @StepId{i}, @Status{i}, @AssignedTo{i}, @StartedAt{i}, @FieldValues{i})");
-            
-            parameters.Add($"WorkflowInstanceId{i}", workflowInstanceId);
-            parameters.Add($"StepId{i}", step.StepId);
-            parameters.Add($"Status{i}", isStartStep ? WorkflowStepInstanceStatus.InProgress.ToString() : WorkflowStepInstanceStatus.Pending.ToString());
-            parameters.Add($"AssignedTo{i}", (string?)null);
-            parameters.Add($"StartedAt{i}", isStartStep ? DateTime.UtcNow : (DateTime?)null);
-            parameters.Add($"FieldValues{i}", "{}"); // Empty JSON object
-        }
-
-        var finalSql = bulkInsertSql + string.Join(", ", valuesClauses);
-        
         try
         {
-            await connection.ExecuteAsync(finalSql, parameters, transaction, commandTimeout: 300);
-            _logger.LogDebug("Created {StepCount} step instances in bulk for workflow instance {InstanceId}", 
-                steps.Count, workflowInstanceId);
+            _logger.LogInformation("Creating step instances for workflow {WorkflowInstanceId}: {Steps}", 
+                workflowInstanceId, string.Join(", ", steps.Select(s => s.StepId)));
+
+            const string sql = @"
+                INSERT INTO WorkflowStepInstances (WorkflowInstanceId, StepId, Status, StartedAt)
+                VALUES (@WorkflowInstanceId, @StepId, @Status, @StartedAt)";
+
+            var stepInstances = steps.Select(step => new
+            {
+                WorkflowInstanceId = workflowInstanceId,
+                StepId = step.StepId,
+                Status = step.StepId == currentStepId ? WorkflowStepInstanceStatus.InProgress.ToString() : WorkflowStepInstanceStatus.Pending.ToString(),
+                StartedAt = step.StepId == currentStepId ? DateTime.UtcNow : (DateTime?)null
+            }).ToList();
+
+            _logger.LogInformation("Prepared {Count} step instances. Executing bulk insert...", stepInstances.Count);
+
+            var affectedRows = await connection.ExecuteAsync(sql, stepInstances, transaction, commandTimeout: 120);
+            
+            _logger.LogInformation("Bulk insert completed. Affected rows: {AffectedRows}. Created {Count} step instances for workflow instance {WorkflowInstanceId}. Current step: {CurrentStepId}", 
+                affectedRows, stepInstances.Count, workflowInstanceId, currentStepId);
+
+            // Verify the inserts
+            const string verifySql = "SELECT COUNT(*) FROM WorkflowStepInstances WHERE WorkflowInstanceId = @WorkflowInstanceId";
+            var actualCount = await connection.QuerySingleAsync<int>(verifySql, new { WorkflowInstanceId = workflowInstanceId }, transaction);
+            
+            _logger.LogInformation("Verification: Found {ActualCount} step instances in database for workflow {WorkflowInstanceId}", 
+                actualCount, workflowInstanceId);
+
+            if (actualCount != stepInstances.Count)
+            {
+                _logger.LogError("Step instance count mismatch! Expected: {Expected}, Actual: {Actual}", 
+                    stepInstances.Count, actualCount);
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating step instances in bulk for workflow instance {InstanceId}", workflowInstanceId);
-            
-            // Fallback to individual inserts if bulk fails
-            _logger.LogInformation("Falling back to individual step instance creation for workflow instance {InstanceId}", workflowInstanceId);
-            
-            foreach (var step in steps)
-            {
-                var stepInstance = new WorkflowStepInstance
-                {
-                    WorkflowInstanceId = workflowInstanceId,
-                    StepId = step.StepId,
-                    Status = step.StepId == startStepId ? WorkflowStepInstanceStatus.InProgress : WorkflowStepInstanceStatus.Pending
-                };
-
-                if (step.StepId == startStepId)
-                {
-                    stepInstance.StartedAt = DateTime.UtcNow;
-                }
-
-                await InsertStepInstanceAsync(connection, transaction, stepInstance);
-            }
+            _logger.LogError(ex, "Error creating step instances for workflow instance {WorkflowInstanceId}", workflowInstanceId);
+            throw;
         }
     }
 
     private async Task MoveToNextStepAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId, string nextStepId)
     {
-        try
-        {
-            // Update workflow instance current step
-            const string updateWorkflowSql = "UPDATE WorkflowInstances SET CurrentStepId = @NextStepId WHERE Id = @WorkflowInstanceId";
-            await connection.ExecuteAsync(updateWorkflowSql, new { NextStepId = nextStepId, WorkflowInstanceId = workflowInstanceId }, transaction, commandTimeout: 300);
+        // Update workflow instance current step
+        const string updateWorkflowSql = "UPDATE WorkflowInstances SET CurrentStepId = @CurrentStepId WHERE Id = @Id";
+        await connection.ExecuteAsync(updateWorkflowSql, new { CurrentStepId = nextStepId, Id = workflowInstanceId }, transaction);
 
-            // Update step instance status
-            const string updateStepSql = @"
-                UPDATE WorkflowStepInstances 
-                SET Status = @Status, StartedAt = @StartedAt 
-                WHERE WorkflowInstanceId = @WorkflowInstanceId AND StepId = @StepId";
-
-            await connection.ExecuteAsync(updateStepSql, new
-            {
-                Status = WorkflowStepInstanceStatus.InProgress.ToString(),
-                StartedAt = DateTime.UtcNow,
-                WorkflowInstanceId = workflowInstanceId,
-                StepId = nextStepId
-            }, transaction, commandTimeout: 300);
-            
-            _logger.LogDebug("Moved workflow instance {WorkflowInstanceId} to step {StepId}", workflowInstanceId, nextStepId);
-        }
-        catch (SqlException ex) when (ex.Number == -2) // Timeout
-        {
-            _logger.LogError(ex, "Timeout moving workflow instance {WorkflowInstanceId} to next step {StepId}", workflowInstanceId, nextStepId);
-            throw new TimeoutException($"Timeout moving workflow instance {workflowInstanceId} to next step {nextStepId}", ex);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error moving workflow instance {WorkflowInstanceId} to next step {StepId}", workflowInstanceId, nextStepId);
-            throw;
-        }
+        // Update step instance status
+        const string updateStepSql = @"
+            UPDATE WorkflowStepInstances 
+            SET Status = @Status, StartedAt = @StartedAt 
+            WHERE WorkflowInstanceId = @WorkflowInstanceId AND StepId = @StepId";
+        
+        await connection.ExecuteAsync(updateStepSql, new 
+        { 
+            Status = WorkflowStepInstanceStatus.InProgress,
+            StartedAt = DateTime.UtcNow,
+            WorkflowInstanceId = workflowInstanceId,
+            StepId = nextStepId
+        }, transaction);
     }
 
     private async Task CompleteWorkflowAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId, string completedBy)
     {
+        // Update workflow instance status
         const string sql = @"
             UPDATE WorkflowInstances 
             SET Status = @Status, CompletedAt = @CompletedAt, CompletedBy = @CompletedBy 
-            WHERE Id = @WorkflowInstanceId";
+            WHERE Id = @Id";
 
-        await connection.ExecuteAsync(sql, new
-        {
-            Status = WorkflowInstanceStatus.Completed.ToString(),
+        await connection.ExecuteAsync(sql, new 
+        { 
+            Status = WorkflowInstanceStatus.Completed,
             CompletedAt = DateTime.UtcNow,
             CompletedBy = completedBy,
-            WorkflowInstanceId = workflowInstanceId
+            Id = workflowInstanceId
         }, transaction);
+
+        // Check if workflow was approved (all approval steps were approved)
+        var wasApproved = await CheckIfWorkflowWasApprovedAsync(connection, transaction, workflowInstanceId);
+        
+        if (wasApproved)
+        {
+            // Auto-apply the form request
+            await AutoApplyFormRequestAsync(connection, transaction, workflowInstanceId);
+        }
+
+        _logger.LogInformation("Completed workflow instance {WorkflowInstanceId} by user {UserId}. Approved: {WasApproved}", 
+            workflowInstanceId, completedBy, wasApproved);
+    }
+
+    private async Task<bool> CheckIfWorkflowWasApprovedAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId)
+    {
+        // Check if any approval steps were rejected
+        const string sql = @"
+            SELECT COUNT(*) FROM WorkflowStepInstances wsi
+            INNER JOIN WorkflowInstances wi ON wsi.WorkflowInstanceId = wi.Id
+            INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId AND ws.StepId = wsi.StepId
+            WHERE wi.Id = @WorkflowInstanceId 
+            AND ws.StepType = 'Approval'
+            AND wsi.Action = @RejectedAction";
+
+        var rejectedCount = await connection.QuerySingleAsync<int>(sql, new 
+        { 
+            WorkflowInstanceId = workflowInstanceId,
+            RejectedAction = WorkflowStepAction.Rejected.ToString()
+        }, transaction);
+
+        return rejectedCount == 0;
+    }
+
+    private async Task AutoApplyFormRequestAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId)
+    {
+        try
+        {
+            // Get the form request ID
+            const string getRequestSql = "SELECT FormRequestId FROM WorkflowInstances WHERE Id = @WorkflowInstanceId";
+            var formRequestId = await connection.QuerySingleAsync<int>(getRequestSql, new { WorkflowInstanceId = workflowInstanceId }, transaction);
+
+            // Use the FormRequestService to apply the request
+            // Note: We need to inject IFormRequestService into this service for this to work
+            // For now, we'll update the request status to Approved and let a background service handle application
+            const string updateRequestSql = @"
+                UPDATE FormRequests 
+                SET Status = @Status, ApprovedAt = @ApprovedAt, ApprovedBy = 'Workflow System'
+                WHERE Id = @FormRequestId";
+
+            await connection.ExecuteAsync(updateRequestSql, new
+            {
+                Status = (int)RequestStatus.Approved,
+                ApprovedAt = DateTime.UtcNow,
+                FormRequestId = formRequestId
+            }, transaction);
+
+            _logger.LogInformation("Auto-approved form request {FormRequestId} after workflow completion", formRequestId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error auto-applying form request for workflow {WorkflowInstanceId}", workflowInstanceId);
+            // Don't rethrow - workflow completion should still succeed even if auto-application fails
+        }
     }
 
     #endregion
@@ -1151,93 +1232,54 @@ public class WorkflowService : IWorkflowService
     {
         try
         {
-            var workflowInstance = await GetWorkflowInstanceAsync(workflowInstanceId);
-            if (workflowInstance == null)
-            {
-                return new WorkflowActionResult
-                {
-                    Success = false,
-                    Message = "Workflow instance not found"
-                };
-            }
-
-            if (workflowInstance.Status != WorkflowInstanceStatus.InProgress)
-            {
-                return new WorkflowActionResult
-                {
-                    Success = false,
-                    Message = "Workflow is not in progress"
-                };
-            }
-
             var currentStep = await GetCurrentStepInstanceAsync(workflowInstanceId);
             if (currentStep == null)
             {
-                return new WorkflowActionResult
-                {
-                    Success = false,
-                    Message = "No current step found"
+                return new WorkflowActionResult 
+                { 
+                    Success = false, 
+                    Message = "No current step found for workflow instance"
                 };
             }
 
-            // Convert action type to enum
             var action = actionType.ToLower() switch
             {
                 "approve" => WorkflowStepAction.Approved,
                 "reject" => WorkflowStepAction.Rejected,
                 "complete" => WorkflowStepAction.Completed,
-                "skip" => WorkflowStepAction.Skipped,
-                _ => WorkflowStepAction.Completed
+                _ => throw new ArgumentException($"Unknown action type: {actionType}")
             };
 
-            // Get current step name for result
-            var workflowDefinition = await GetWorkflowDefinitionAsync(workflowInstance.WorkflowDefinitionId);
-            var currentStepDefinition = workflowDefinition?.Steps.FirstOrDefault(s => s.StepId == currentStep.StepId);
-            var previousStepName = currentStepDefinition?.Name ?? currentStep.StepId;
-
-            // Complete the step
             var stepCompleted = await CompleteStepAsync(workflowInstanceId, currentStep.StepId, userId, userId, action, comments, fieldUpdates);
             
-            if (!stepCompleted)
+            if (stepCompleted)
             {
+                // Check if workflow is now complete
+                var workflowInstance = await GetWorkflowInstanceAsync(workflowInstanceId);
+                var workflowCompleted = workflowInstance?.Status == WorkflowInstanceStatus.Completed;
+                var workflowApproved = workflowCompleted && action == WorkflowStepAction.Approved;
+
                 return new WorkflowActionResult
                 {
-                    Success = false,
-                    Message = "Failed to complete workflow step"
+                    Success = true,
+                    Message = $"Step {action.ToString().ToLower()} successfully",
+                    WorkflowCompleted = workflowCompleted,
+                    WorkflowApproved = workflowApproved,
+                    PreviousStepName = currentStep.StepId,
+                    CurrentStepName = workflowInstance?.CurrentStepId,
+                    ActorName = userId
                 };
             }
 
-            // Refresh workflow instance to get updated status
-            workflowInstance = await GetWorkflowInstanceAsync(workflowInstanceId);
-            var isCompleted = workflowInstance?.Status == WorkflowInstanceStatus.Completed;
-            var isApproved = isCompleted && action == WorkflowStepAction.Approved;
-            
-            // Get current step name (may be different after step completion)
-            string? currentStepName = null;
-            if (!isCompleted && workflowInstance != null)
-            {
-                var newCurrentStep = workflowDefinition?.Steps.FirstOrDefault(s => s.StepId == workflowInstance.CurrentStepId);
-                currentStepName = newCurrentStep?.Name ?? workflowInstance.CurrentStepId;
-            }
-
-            return new WorkflowActionResult
-            {
-                Success = true,
-                Message = $"Workflow action '{actionType}' completed successfully",
-                WorkflowCompleted = isCompleted,
-                WorkflowApproved = isApproved,
-                PreviousStepName = previousStepName,
-                CurrentStepName = currentStepName,
-                ActorName = userId
-            };
+            return new WorkflowActionResult { Success = false, Message = "Failed to complete step" };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing workflow action {ActionType} for workflow instance {InstanceId}", actionType, workflowInstanceId);
-            return new WorkflowActionResult
-            {
-                Success = false,
-                Message = $"Error processing workflow action: {ex.Message}"
+            _logger.LogError(ex, "Error processing workflow action {ActionType} for instance {WorkflowInstanceId}", actionType, workflowInstanceId);
+            return new WorkflowActionResult 
+            { 
+                Success = false, 
+                Message = $"Error processing action: {ex.Message}"
             };
         }
     }
@@ -1254,17 +1296,239 @@ public class WorkflowService : IWorkflowService
         const string sql = @"
             SELECT * FROM WorkflowStepInstances 
             WHERE WorkflowInstanceId = @WorkflowInstanceId 
-              AND Status = @CompletedStatus
+            AND Status = @CompletedStatus
             ORDER BY CompletedAt";
-            
+
         var stepInstances = await connection.QueryAsync<WorkflowStepInstance>(sql, new 
         { 
             WorkflowInstanceId = workflowInstanceId,
-            CompletedStatus = WorkflowStepInstanceStatus.Completed.ToString()
+            CompletedStatus = WorkflowStepInstanceStatus.Completed
         });
         
         return stepInstances.ToList();
     }
 
     #endregion
+
+    #region Workflow Progress
+
+    public async Task<WorkflowProgress?> GetWorkflowProgressAsync(int formRequestId)
+    {
+        using var connection = new SqlConnection(_connectionString);
+        
+        _logger.LogInformation("GetWorkflowProgressAsync called for FormRequestId: {FormRequestId}", formRequestId);
+        
+        const string sql = @"
+            SELECT wi.Id as WorkflowInstanceId, wi.Status, wi.CurrentStepId, wi.StartedAt, wi.CompletedAt,
+                   wd.Name as WorkflowName,
+                   ws.Name as CurrentStepName,
+                   wsi.Status as CurrentStepStatus,
+                   wsi.AssignedTo as CurrentStepAssignedTo,
+                   wsi.StartedAt as CurrentStepStartedAt
+            FROM WorkflowInstances wi
+            INNER JOIN WorkflowDefinitions wd ON wi.WorkflowDefinitionId = wd.Id
+            LEFT JOIN WorkflowSteps ws ON wd.Id = ws.WorkflowDefinitionId AND ws.StepId = wi.CurrentStepId
+            LEFT JOIN WorkflowStepInstances wsi ON wi.Id = wsi.WorkflowInstanceId AND wsi.StepId = wi.CurrentStepId
+            WHERE wi.FormRequestId = @FormRequestId";
+
+        var result = await connection.QueryFirstOrDefaultAsync(sql, new { FormRequestId = formRequestId });
+        
+        if (result == null) 
+        {
+            _logger.LogWarning("No workflow instance found for form request {FormRequestId}", formRequestId);
+            return null;
+        }
+
+        var workflowInstanceId = (int)result.WorkflowInstanceId;
+        _logger.LogInformation("Found workflow instance {WorkflowInstanceId} for FormRequestId {FormRequestId}", workflowInstanceId, formRequestId);
+
+        // Get step counts (excluding Start/End steps for progress calculation)
+        const string countSql = @"
+            SELECT 
+                COUNT(*) as TotalSteps,
+                SUM(CASE WHEN wsi.Status = @CompletedStatus THEN 1 ELSE 0 END) as CompletedSteps
+            FROM WorkflowStepInstances wsi
+            INNER JOIN WorkflowInstances wi ON wsi.WorkflowInstanceId = wi.Id
+            INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId AND ws.StepId = wsi.StepId
+            WHERE wi.FormRequestId = @FormRequestId
+            AND ws.StepType != @StartStepType AND ws.StepType != @EndStepType";
+
+        var counts = await connection.QueryFirstAsync(countSql, new 
+        { 
+            FormRequestId = formRequestId,
+            CompletedStatus = WorkflowStepInstanceStatus.Completed.ToString(),
+            StartStepType = WorkflowStepType.Start.ToString(),
+            EndStepType = WorkflowStepType.End.ToString()
+        });
+
+        _logger.LogInformation("Step counts for FormRequestId {FormRequestId}: Total={TotalSteps}, Completed={CompletedSteps}", 
+            formRequestId, (int)counts.TotalSteps, (int)counts.CompletedSteps);
+
+        // Get all step details for the workflow
+        const string stepsSql = @"
+            SELECT 
+                ws.StepId,
+                ws.Name as StepName,
+                ws.Description as StepDescription,
+                ws.StepType,
+                ws.AssignedRoles,
+                wsi.Status,
+                wsi.AssignedTo,
+                wsi.StartedAt,
+                wsi.CompletedAt,
+                wsi.CompletedBy,
+                wsi.CompletedByName,
+                wsi.Action,
+                wsi.Comments
+            FROM WorkflowStepInstances wsi
+            INNER JOIN WorkflowInstances wi ON wsi.WorkflowInstanceId = wi.Id
+            INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId AND ws.StepId = wsi.StepId
+            WHERE wi.FormRequestId = @FormRequestId
+            ORDER BY 
+                CASE ws.StepType 
+                    WHEN 'Start' THEN 1 
+                    WHEN 'Approval' THEN 2 
+                    WHEN 'End' THEN 3 
+                    ELSE 2 
+                END,
+                wsi.StartedAt";
+
+        var stepData = await connection.QueryAsync(stepsSql, new { FormRequestId = formRequestId });
+        
+        _logger.LogInformation("Retrieved {StepCount} step instances for FormRequestId {FormRequestId}", stepData.Count(), formRequestId);
+
+        var steps = stepData.Select(step => new WorkflowStepProgress
+        {
+            StepId = step.StepId,
+            StepName = step.StepName ?? step.StepId,
+            StepDescription = step.StepDescription ?? "",
+            StepType = Enum.Parse<WorkflowStepType>(step.StepType),
+            Status = Enum.Parse<WorkflowStepInstanceStatus>(step.Status),
+            AssignedTo = step.AssignedTo,
+            StartedAt = step.StartedAt,
+            CompletedAt = step.CompletedAt,
+            CompletedBy = step.CompletedBy,
+            CompletedByName = step.CompletedByName,
+            Action = step.Action != null ? Enum.Parse<WorkflowStepAction>(step.Action) : null,
+            Comments = step.Comments,
+            IsCurrent = step.StepId == (string)result.CurrentStepId,
+            DaysInStep = step.StartedAt != null ? 
+                (int)(DateTime.UtcNow - ((DateTime)step.StartedAt)).TotalDays : 0,
+            AssignedRoles = !string.IsNullOrEmpty(step.AssignedRoles) ? 
+                JsonSerializer.Deserialize<List<string>>(step.AssignedRoles) ?? new List<string>() : 
+                new List<string>()
+        }).ToList();
+
+        _logger.LogInformation("Created {StepProgressCount} step progress objects for FormRequestId {FormRequestId}", steps.Count, formRequestId);
+        foreach (var step in steps)
+        {
+            _logger.LogInformation("Step: {StepId} - {StepName} ({StepType}) - Status: {Status}", 
+                step.StepId, step.StepName, step.StepType, step.Status);
+        }
+
+        var currentStepStartedAt = (DateTime?)result.CurrentStepStartedAt;
+        var daysInCurrentStep = currentStepStartedAt.HasValue ? 
+            (int)(DateTime.UtcNow - currentStepStartedAt.Value).TotalDays : 0;
+
+        var progress = new WorkflowProgress
+        {
+            FormRequestId = formRequestId,
+            WorkflowInstanceId = workflowInstanceId,
+            Status = Enum.Parse<WorkflowInstanceStatus>((string)result.Status),
+            WorkflowName = (string)result.WorkflowName,
+            CurrentStepId = (string)result.CurrentStepId,
+            CurrentStepName = (string?)result.CurrentStepName ?? result.CurrentStepId,
+            CurrentStepStatus = result.CurrentStepStatus != null ? 
+                Enum.Parse<WorkflowStepInstanceStatus>((string)result.CurrentStepStatus) : 
+                WorkflowStepInstanceStatus.Pending,
+            CurrentStepStartedAt = currentStepStartedAt,
+            TotalStepsCount = (int)counts.TotalSteps,
+            CompletedStepsCount = (int)counts.CompletedSteps,
+            WorkflowStartedAt = (DateTime)result.StartedAt,
+            WorkflowCompletedAt = (DateTime?)result.CompletedAt,
+            CurrentStepAssignedTo = (string?)result.CurrentStepAssignedTo,
+            Steps = steps,
+            DaysInCurrentStep = daysInCurrentStep,
+            IsStalled = daysInCurrentStep > 7 // Consider stalled if step is pending for more than 7 days
+        };
+
+        // Calculate progress percentage
+        progress.ProgressPercentage = progress.TotalStepsCount > 0 ? 
+            Math.Round((double)progress.CompletedStepsCount / progress.TotalStepsCount * 100, 1) : 0;
+
+        _logger.LogInformation("Loaded workflow progress for form request {FormRequestId}: {StepCount} steps, {ProgressPercentage}% complete", 
+            formRequestId, steps.Count, progress.ProgressPercentage);
+
+        return progress;
+    }
+
+    public async Task<List<WorkflowProgress>> GetWorkflowProgressBatchAsync(List<int> formRequestIds)
+    {
+        var results = new List<WorkflowProgress>();
+        
+        foreach (var formRequestId in formRequestIds)
+        {
+            var progress = await GetWorkflowProgressAsync(formRequestId);
+            if (progress != null)
+            {
+                results.Add(progress);
+            }
+        }
+        
+        return results;
+    }
+
+    #endregion
+
+    private async Task<WorkflowStep?> GetWorkflowStepAsync(int workflowInstanceId, string stepId)
+    {
+        using var connection = new SqlConnection(_connectionString);
+        
+        const string sql = @"
+            SELECT ws.Id, ws.WorkflowDefinitionId, ws.StepId, ws.StepType, ws.Name, ws.Description, 
+                   ws.AssignedRoles, ws.PositionX, ws.PositionY, ws.Configuration, ws.IsRequired, ws.CreatedAt
+            FROM WorkflowSteps ws
+            INNER JOIN WorkflowInstances wi ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId
+            WHERE wi.Id = @WorkflowInstanceId AND ws.StepId = @StepId";
+
+        var stepData = await connection.QueryFirstOrDefaultAsync(sql, new 
+        { 
+            WorkflowInstanceId = workflowInstanceId, 
+            StepId = stepId 
+        });
+
+        if (stepData == null) return null;
+
+        var step = new WorkflowStep
+        {
+            Id = stepData.Id,
+            WorkflowDefinitionId = stepData.WorkflowDefinitionId,
+            StepId = stepData.StepId,
+            StepType = Enum.Parse<WorkflowStepType>(stepData.StepType),
+            Name = stepData.Name,
+            Description = stepData.Description ?? string.Empty,
+            PositionX = stepData.PositionX,
+            PositionY = stepData.PositionY,
+            IsRequired = stepData.IsRequired
+        };
+
+        // Parse AssignedRoles from JSON string
+        if (!string.IsNullOrEmpty(stepData.AssignedRoles))
+        {
+            try
+            {
+                step.AssignedRoles = JsonSerializer.Deserialize<List<string>>(stepData.AssignedRoles) ?? new List<string>();
+            }
+            catch
+            {
+                step.AssignedRoles = new List<string>();
+            }
+        }
+        else
+        {
+            step.AssignedRoles = new List<string>();
+        }
+
+        return step;
+    }
 }

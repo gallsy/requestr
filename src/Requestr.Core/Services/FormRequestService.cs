@@ -104,6 +104,7 @@ public class FormRequestService : IFormRequestService
             Comments = (string?)row.Comments,
             AppliedRecordKey = (string?)row.AppliedRecordKey,
             FailureMessage = (string?)row.FailureMessage,
+            WorkflowInstanceId = (int?)row.WorkflowInstanceId,
             FormDefinition = new FormDefinition { Name = (string)row.FormName, Description = (string)row.FormDescription },
             FieldValues = JsonSerializer.Deserialize<Dictionary<string, object?>>((string)(row.FieldValuesJson ?? "{}")) ?? new Dictionary<string, object?>(),
             OriginalValues = JsonSerializer.Deserialize<Dictionary<string, object?>>((string)(row.OriginalValuesJson ?? "{}")) ?? new Dictionary<string, object?>()
@@ -121,7 +122,7 @@ public class FormRequestService : IFormRequestService
                 SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
                        fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
                        fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                       fr.AppliedRecordKey, fr.FailureMessage,
+                       fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
                        fd.Name as FormName, fd.Description as FormDescription
                 FROM FormRequests fr
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
@@ -156,7 +157,7 @@ public class FormRequestService : IFormRequestService
                 SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
                        fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
                        fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                       fr.AppliedRecordKey, fr.FailureMessage,
+                       fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
                        fd.Name as FormName, fd.Description as FormDescription
                 FROM FormRequests fr
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
@@ -200,7 +201,7 @@ public class FormRequestService : IFormRequestService
                 SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
                        fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
                        fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                       fr.AppliedRecordKey, fr.FailureMessage,
+                       fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
                        fd.Name as FormName, fd.Description as FormDescription, fd.ApproverRoles
                 FROM FormRequests fr
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
@@ -243,7 +244,7 @@ public class FormRequestService : IFormRequestService
                 SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
                        fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
                        fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                       fr.AppliedRecordKey, fr.FailureMessage,
+                       fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
                        fd.Name as FormName, fd.Description as FormDescription
                 FROM FormRequests fr
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
@@ -1519,6 +1520,9 @@ public class FormRequestService : IFormRequestService
     {
         try
         {
+            _logger.LogInformation("GetFormRequestsForWorkflowApprovalAsync called for userId: {UserId}, userRoles: {UserRoles}", 
+                userId, string.Join(", ", userRoles));
+
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();
 
@@ -1527,24 +1531,39 @@ public class FormRequestService : IFormRequestService
                        fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
                        fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
                        fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
-                       fd.Name as FormName, fd.Description as FormDescription
+                       fd.Name as FormName, fd.Description as FormDescription,
+                       wsi.Status as WorkflowStepStatus, ws.AssignedRoles, ws.Name as StepName, wsi.Id as WorkflowStepInstanceId
                 FROM FormRequests fr
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
                 INNER JOIN WorkflowInstances wi ON fr.WorkflowInstanceId = wi.Id
                 INNER JOIN WorkflowStepInstances wsi ON wi.Id = wsi.WorkflowInstanceId
                 INNER JOIN WorkflowSteps ws ON wsi.StepId = ws.StepId AND wi.WorkflowDefinitionId = ws.WorkflowDefinitionId
-                WHERE wsi.Status = @PendingStatus
-                  AND (ws.AssignedRoles IS NULL OR EXISTS (
-                      SELECT 1 FROM STRING_SPLIT(ws.AssignedRoles, ',') s
-                      WHERE s.value IN @UserRoles
-                  ))
+                WHERE wsi.Status = @InProgressStatus
+                  AND (@IsAdmin = 1 
+                       OR (ws.AssignedRoles IS NOT NULL 
+                           AND ws.AssignedRoles != '[]' 
+                           AND JSON_QUERY(ws.AssignedRoles, '$') IS NOT NULL 
+                           AND EXISTS (
+                               SELECT 1 FROM OPENJSON(ws.AssignedRoles) AS roles
+                               WHERE roles.value IN @UserRoles
+                           )))
                 ORDER BY fr.RequestedAt DESC";
 
             var parameters = new DynamicParameters();
-            parameters.Add("PendingStatus", WorkflowStepInstanceStatus.Pending.ToString());
+            parameters.Add("InProgressStatus", WorkflowStepInstanceStatus.InProgress.ToString());
             parameters.Add("UserRoles", userRoles);
+            
+            // Check if user is admin - they can see all approvals
+            var isAdmin = userRoles.Contains("Admin");
+            parameters.Add("IsAdmin", isAdmin ? 1 : 0);
+
+            _logger.LogInformation("Executing SQL query with InProgressStatus: {Status} (string), IsAdmin: {IsAdmin}, UserRoles: {UserRoles}", 
+                WorkflowStepInstanceStatus.InProgress.ToString(), isAdmin, string.Join(", ", userRoles));
 
             var requests = await connection.QueryAsync(sql, parameters);
+            
+            _logger.LogInformation("Raw SQL query returned {Count} rows", requests.Count());
+
             var result = new List<FormRequest>();
 
             foreach (var row in requests)
@@ -1554,6 +1573,7 @@ public class FormRequestService : IFormRequestService
                 result.Add(request);
             }
 
+            _logger.LogInformation("Returning {Count} form requests for workflow approval", result.Count);
             return result;
         }
         catch (Exception ex)
@@ -1647,13 +1667,24 @@ public class FormRequestService : IFormRequestService
     {
         try
         {
+            _logger.LogInformation("GetCurrentWorkflowStepAsync called for formRequestId: {FormRequestId}", formRequestId);
+            
             var formRequest = await GetFormRequestAsync(formRequestId);
             if (formRequest?.WorkflowInstanceId == null)
             {
+                _logger.LogWarning("Form request {FormRequestId} has no WorkflowInstanceId", formRequestId);
                 return null;
             }
 
-            return await _workflowService.GetCurrentWorkflowStepAsync(formRequest.WorkflowInstanceId.Value);
+            _logger.LogInformation("Form request {FormRequestId} has WorkflowInstanceId: {WorkflowInstanceId}", 
+                formRequestId, formRequest.WorkflowInstanceId);
+
+            var result = await _workflowService.GetCurrentWorkflowStepAsync(formRequest.WorkflowInstanceId.Value);
+            
+            _logger.LogInformation("GetCurrentWorkflowStepAsync result for formRequestId {FormRequestId}: {StepId}", 
+                formRequestId, result?.StepId ?? "null");
+                
+            return result;
         }
         catch (Exception ex)
         {

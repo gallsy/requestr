@@ -5,15 +5,37 @@
 @using Requestr.Core.Interfaces
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
-@attribute [Authorize(Roles = "Admin,FormAdmin,DataAdmin,ReferenceDataApprover")]
+@attribute [Authorize]
 @inject IFormRequestService FormRequestService
 @inject IBulkFormRequestService BulkFormRequestService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
-@inject IJSRuntime JSRuntime
+@inject IWorkflowService WorkflowService
 
 <PageTitle>Pending Approvals - Requestr</PageTitle>
 
+@if (!HasAccess)
+{
+    <div class="container-fluid">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card mt-5">
+                    <div class="card-body text-center">
+                        <i class="bi bi-shield-lock display-1 text-muted mb-3"></i>
+                        <h3>Access Denied</h3>
+                        <p class="text-muted">You don't have permission to access this page. You need either administrative roles or workflow steps assigned to you.</p>
+                        <a href="/" class="btn btn-primary">
+                            <i class="bi bi-house-door me-2"></i>
+                            Go Home
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
@@ -318,6 +340,7 @@
         </div>
     </div>
 </div>
+}
 
 @code {
     // Individual requests
@@ -330,6 +353,7 @@
     
     private List<string> UserRoles = new();
     private bool IsLoading = true;
+    private bool HasAccess = false;
     private string SelectedFormFilter = "";
     private string SelectedRequestTypeFilter = "";
     private string SortOrder = "newest";
@@ -353,7 +377,25 @@
                     .Select(c => c.Value)
                     .ToList();
 
-                await LoadPendingApprovalsAsync();
+                // Check if user has access (admin roles or pending workflow steps)
+                var hasAdminRole = UserRoles.Any(role => new[] { "Admin", "FormAdmin", "DataAdmin", "ReferenceDataApprover" }.Contains(role));
+                
+                var currentUserId = authState.User.FindFirst("sub")?.Value ?? 
+                                  authState.User.FindFirst("oid")?.Value ?? 
+                                  authState.User.Identity?.Name ?? "";
+                
+                var pendingSteps = new List<WorkflowStepInstance>();
+                if (!string.IsNullOrEmpty(currentUserId))
+                {
+                    pendingSteps = await WorkflowService.GetPendingStepsForUserAsync(currentUserId, UserRoles);
+                }
+                
+                HasAccess = hasAdminRole || pendingSteps.Any();
+
+                if (HasAccess)
+                {
+                    await LoadPendingApprovalsAsync();
+                }
             }
         }
         catch (Exception ex)

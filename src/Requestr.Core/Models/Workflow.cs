@@ -138,3 +138,43 @@ public class WorkflowActionResult
     public string? ActorName { get; set; }
     public Dictionary<string, object?> AdditionalData { get; set; } = new();
 }
+
+public class WorkflowProgress
+{
+    public int FormRequestId { get; set; }
+    public int WorkflowInstanceId { get; set; }
+    public WorkflowInstanceStatus Status { get; set; }
+    public string WorkflowName { get; set; } = string.Empty;
+    public string CurrentStepId { get; set; } = string.Empty;
+    public string CurrentStepName { get; set; } = string.Empty;
+    public WorkflowStepInstanceStatus CurrentStepStatus { get; set; }
+    public string? CurrentStepAssignedTo { get; set; }
+    public DateTime? CurrentStepStartedAt { get; set; }
+    public int CompletedStepsCount { get; set; }
+    public int TotalStepsCount { get; set; }
+    public double ProgressPercentage { get; set; }
+    public List<WorkflowStepProgress> Steps { get; set; } = new();
+    public DateTime WorkflowStartedAt { get; set; }
+    public DateTime? WorkflowCompletedAt { get; set; }
+    public bool IsStalled { get; set; } // If step has been pending for too long
+    public int DaysInCurrentStep { get; set; }
+}
+
+public class WorkflowStepProgress
+{
+    public string StepId { get; set; } = string.Empty;
+    public string StepName { get; set; } = string.Empty;
+    public string StepDescription { get; set; } = string.Empty;
+    public WorkflowStepType StepType { get; set; }
+    public WorkflowStepInstanceStatus Status { get; set; }
+    public string? AssignedTo { get; set; }
+    public DateTime? StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public string? CompletedBy { get; set; }
+    public string? CompletedByName { get; set; }
+    public WorkflowStepAction? Action { get; set; }
+    public string? Comments { get; set; }
+    public int DaysInStep { get; set; }
+    public bool IsCurrent { get; set; }
+    public List<string> AssignedRoles { get; set; } = new();
+}

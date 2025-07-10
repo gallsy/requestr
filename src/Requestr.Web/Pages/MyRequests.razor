@@ -8,6 +8,7 @@
 @attribute [Authorize]
 @inject IFormRequestService FormRequestService
 @inject IBulkFormRequestService BulkFormRequestService
+@inject IWorkflowService WorkflowService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 
@@ -95,6 +96,7 @@
                                     <th>Form</th>
                                     <th>Details</th>
                                     <th>Status</th>
+                                    <th>Workflow Progress</th>
                                     <th>Requested Date</th>
                                     <th>Last Updated</th>
                                     <th>Actions</th>
@@ -132,6 +134,9 @@
                                                 <span class="badge @GetStatusBadgeClass(bulkRequest.Status)">
                                                     @bulkRequest.Status
                                                 </span>
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">Bulk requests don't use workflows</small>
                                             </td>
                                             <td>
                                                 <div>
@@ -192,6 +197,9 @@
                                                 <span class="badge @GetStatusBadgeClass(request.Status)">
                                                     @request.Status
                                                 </span>
+                                            </td>
+                                            <td>
+                                                <WorkflowProgressDisplay FormRequestId="request.Id" ShowCompact="true" AutoLoad="true" />
                                             </td>
                                             <td>
                                                 <div>

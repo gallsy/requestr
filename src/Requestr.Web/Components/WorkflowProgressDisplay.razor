@@ -1,0 +1,442 @@
+@using Requestr.Core.Models
+@using Requestr.Core.Interfaces
+@using Microsoft.Extensions.Logging
+@inject IWorkflowService WorkflowService
+@inject ILogger<WorkflowProgressDisplay> Logger
+
+@if (ShowCompact)
+{
+    <!-- Compact Progress Display for Lists/Tables -->
+    @if (Progress != null)
+    {
+        <div class="workflow-progress-compact">
+            <div class="d-flex align-items-center mb-1">
+                <div class="flex-grow-1">
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar bg-@GetProgressColor()" 
+                             style="width: @(Progress.ProgressPercentage)%"
+                             role="progressbar">
+                        </div>
+                    </div>
+                </div>
+                <small class="text-muted ms-2">@Progress.CompletedStepsCount/@Progress.TotalStepsCount</small>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <small class="fw-medium">@Progress.CurrentStepName</small>
+                    @if (Progress.IsStalled)
+                    {
+                        <span class="badge badge-warning ms-1" title="Step has been pending for @Progress.DaysInCurrentStep days">
+                            <i class="bi bi-exclamation-triangle"></i>
+                        </span>
+                    }
+                </div>
+                <span class="badge bg-@GetStatusBadgeColor(Progress.Status)">
+                    @Progress.Status
+                </span>
+            </div>
+            @if (!string.IsNullOrEmpty(Progress.CurrentStepAssignedTo))
+            {
+                <div class="mt-1">
+                    <small class="text-muted">
+                        <i class="bi bi-person"></i> @Progress.CurrentStepAssignedTo
+                    </small>
+                </div>
+            }
+        </div>
+    }
+    else if (IsLoading)
+    {
+        <div class="text-center">
+            <div class="spinner-border spinner-border-sm text-muted" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <small class="text-muted">No workflow</small>
+    }
+}
+else
+{
+    <!-- Detailed Progress Display for Individual Request Views -->
+    @if (Progress != null)
+    {
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-diagram-3 me-2"></i>
+                    Workflow Progress: @Progress.WorkflowName
+                </h6>
+                <span class="badge bg-@GetStatusBadgeColor(Progress.Status)">
+                    @Progress.Status
+                </span>
+            </div>
+            <div class="card-body">
+                <!-- Overall Progress -->
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-medium">Overall Progress</span>
+                        <span class="text-muted">@Progress.CompletedStepsCount of @Progress.TotalStepsCount steps completed</span>
+                    </div>
+                    <div class="progress mb-2" style="height: 10px;">
+                        <div class="progress-bar bg-@GetProgressColor()" 
+                             style="width: @(Progress.ProgressPercentage)%"
+                             role="progressbar">
+                        </div>
+                    </div>
+                    <div class="small text-muted">
+                        @if (Progress.Status == WorkflowInstanceStatus.Completed)
+                        {
+                            <text>Completed @GetTimeAgo(Progress.WorkflowCompletedAt)</text>
+                        }
+                        else
+                        {
+                            <text>Started @GetTimeAgo(Progress.WorkflowStartedAt)</text>
+                            @if (Progress.IsStalled)
+                            {
+                                <span class="text-warning ms-2">
+                                    <i class="bi bi-exclamation-triangle"></i>
+                                    Stalled - @Progress.DaysInCurrentStep days in current step
+                                </span>
+                            }
+                        }
+                    </div>
+                </div>
+
+                <!-- Step Timeline -->
+                <div class="workflow-timeline">
+                    <h6 class="mb-3">Step Progress</h6>
+                    @if (Progress.Steps != null && Progress.Steps.Any())
+                    {
+                        @foreach (var step in Progress.Steps)
+                        {
+                            @if (step.StepType == WorkflowStepType.Start || step.StepType == WorkflowStepType.End)
+                            {
+                                <!-- Compact Start/End Steps -->
+                                <div class="timeline-item compact @(step.IsCurrent ? "current" : "") @(step.Status == WorkflowStepInstanceStatus.Completed ? "completed" : "")">
+                                    <div class="timeline-marker">
+                                        @if (step.Status == WorkflowStepInstanceStatus.Completed)
+                                        {
+                                            <i class="bi bi-check-circle-fill text-success"></i>
+                                        }
+                                        else if (step.StepType == WorkflowStepType.Start)
+                                        {
+                                            <i class="bi bi-play-circle text-muted"></i>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-stop-circle text-muted"></i>
+                                        }
+                                    </div>
+                                    <div class="timeline-content">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <small class="text-muted fw-medium">
+                                                @if (step.StepType == WorkflowStepType.Start)
+                                                {
+                                                    <text>Workflow Started</text>
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-flag-checkered me-1"></i><text>Workflow Complete</text>
+                                                }
+                                            </small>
+                                            @if (step.StepType == WorkflowStepType.End && step.Status != WorkflowStepInstanceStatus.Pending)
+                                            {
+                                                <span class="badge bg-@GetStepStatusBadgeColor(step.Status) badge-sm">
+                                                    @step.Status
+                                                </span>
+                                            }
+                                        </div>
+                                        @if (step.StartedAt.HasValue)
+                                        {
+                                            <div class="mt-1">
+                                                <small class="text-muted">
+                                                    @step.StartedAt.Value.ToString("MMM dd, yyyy HH:mm")
+                                                    @if (step.CompletedAt.HasValue && step.StepType == WorkflowStepType.End)
+                                                    {
+                                                        <span class="ms-2">(@((step.CompletedAt.Value - step.StartedAt.Value).TotalMinutes < 1 ? "<1 min" : $"{(int)(step.CompletedAt.Value - step.StartedAt.Value).TotalMinutes} min"))</span>
+                                                    }
+                                                </small>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <!-- Full Detail for Approval/Parallel/Branch Steps -->
+                                <div class="timeline-item @(step.IsCurrent ? "current" : "") @(step.Status == WorkflowStepInstanceStatus.Completed ? "completed" : "")">
+                                    <div class="timeline-marker">
+                                        @if (step.Status == WorkflowStepInstanceStatus.Completed)
+                                        {
+                                            <i class="bi bi-check-circle-fill text-success"></i>
+                                        }
+                                        else if (step.IsCurrent)
+                                        {
+                                            @if (step.Status == WorkflowStepInstanceStatus.InProgress)
+                                            {
+                                                <i class="bi bi-clock text-primary"></i>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-pause-circle text-warning"></i>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-circle text-muted"></i>
+                                        }
+                                    </div>
+                                    <div class="timeline-content">
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <div>
+                                                <h6 class="mb-1 @(step.IsCurrent ? "text-primary" : "")">
+                                                    @step.StepName
+                                                    @if (step.StepType == WorkflowStepType.Approval)
+                                                    {
+                                                        <span class="badge bg-info ms-1">Approval</span>
+                                                    }
+                                                    else if (step.StepType == WorkflowStepType.Parallel)
+                                                    {
+                                                        <span class="badge bg-secondary ms-1">Parallel</span>
+                                                    }
+                                                    else if (step.StepType == WorkflowStepType.Branch)
+                                                    {
+                                                        <span class="badge bg-warning ms-1">Branch</span>
+                                                    }
+                                                </h6>
+                                                @if (!string.IsNullOrEmpty(step.StepDescription))
+                                                {
+                                                    <p class="text-muted mb-1">@step.StepDescription</p>
+                                                }
+                                                
+                                                @if (step.AssignedRoles.Any())
+                                                {
+                                                    <div class="mb-2">
+                                                        <small class="text-muted">Assigned to roles: </small>
+                                                        @foreach (var role in step.AssignedRoles)
+                                                        {
+                                                            <span class="badge bg-light text-dark me-1">@role</span>
+                                                        }
+                                                    </div>
+                                                }
+
+                                                @if (!string.IsNullOrEmpty(step.AssignedTo))
+                                                {
+                                                    <div class="mb-2">
+                                                        <small class="text-muted">
+                                                            <i class="bi bi-person"></i> 
+                                                            Currently with: @step.AssignedTo
+                                                        </small>
+                                                    </div>
+                                                }
+
+                                                @if (step.StartedAt.HasValue)
+                                                {
+                                                    <div class="mb-1">
+                                                        <small class="text-muted">
+                                                            Started: @step.StartedAt.Value.ToString("MMM dd, yyyy HH:mm")
+                                                            @if (step.DaysInStep > 0)
+                                                            {
+                                                                <span class="ms-2">(@step.DaysInStep days)</span>
+                                                            }
+                                                        </small>
+                                                    </div>
+                                                }
+
+                                                @if (step.CompletedAt.HasValue)
+                                                {
+                                                    <div class="mb-1">
+                                                        <small class="text-muted">
+                                                            Completed: @step.CompletedAt.Value.ToString("MMM dd, yyyy HH:mm")
+                                                            by @(step.CompletedByName ?? step.CompletedBy)
+                                                        </small>
+                                                    </div>
+                                                    @if (step.Action.HasValue)
+                                                    {
+                                                        <div class="mb-1">
+                                                            <span class="badge bg-@GetActionBadgeColor(step.Action.Value)">
+                                                                @step.Action.Value
+                                                            </span>
+                                                        </div>
+                                                    }
+                                                }
+
+                                                @if (!string.IsNullOrEmpty(step.Comments))
+                                                {
+                                                    <div class="mt-2 p-2 bg-light rounded">
+                                                        <small>
+                                                            <strong>Comments:</strong> @step.Comments
+                                                        </small>
+                                                    </div>
+                                                }
+                                            </div>
+                                            <span class="badge bg-@GetStepStatusBadgeColor(step.Status)">
+                                                @step.Status
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    }
+                    else
+                    {
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            No workflow steps found. This may indicate an issue with workflow step creation.
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+    else if (IsLoading)
+    {
+        <div class="card mb-4">
+            <div class="card-body text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2 mb-0">Loading workflow progress...</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card mb-4">
+            <div class="card-body text-center py-4">
+                <i class="bi bi-info-circle text-muted mb-3" style="font-size: 2rem;"></i>
+                <h6 class="text-muted">No Workflow</h6>
+                <p class="text-muted small mb-0">This request is not part of a workflow process.</p>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int FormRequestId { get; set; }
+    [Parameter] public bool ShowCompact { get; set; } = false;
+    [Parameter] public WorkflowProgress? Progress { get; set; }
+    [Parameter] public bool AutoLoad { get; set; } = true;
+
+    private bool IsLoading = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AutoLoad && Progress == null && FormRequestId > 0)
+        {
+            await LoadProgressAsync();
+        }
+    }
+
+    public async Task LoadProgressAsync()
+    {
+        IsLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            Logger.LogInformation("Loading workflow progress for FormRequestId: {FormRequestId}", FormRequestId);
+            Progress = await WorkflowService.GetWorkflowProgressAsync(FormRequestId);
+            
+            if (Progress == null)
+            {
+                Logger.LogWarning("GetWorkflowProgressAsync returned null for FormRequestId: {FormRequestId}", FormRequestId);
+            }
+            else
+            {
+                Logger.LogInformation("Loaded workflow progress for FormRequestId: {FormRequestId}, Steps count: {StepsCount}", 
+                    FormRequestId, Progress.Steps?.Count ?? 0);
+                
+                if (Progress.Steps != null)
+                {
+                    foreach (var step in Progress.Steps)
+                    {
+                        Logger.LogInformation("Step in UI: {StepId} - {StepName} ({StepType}) - Status: {Status}", 
+                            step.StepId, step.StepName, step.StepType, step.Status);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading workflow progress for FormRequestId: {FormRequestId}", FormRequestId);
+            Progress = null;
+        }
+        finally
+        {
+            IsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GetProgressColor()
+    {
+        if (Progress == null) return "secondary";
+        
+        return Progress.Status switch
+        {
+            WorkflowInstanceStatus.Completed => "success",
+            WorkflowInstanceStatus.InProgress => "primary",
+            WorkflowInstanceStatus.Cancelled => "danger",
+            WorkflowInstanceStatus.Failed => "danger",
+            _ => "secondary"
+        };
+    }
+
+    private string GetStatusBadgeColor(WorkflowInstanceStatus status)
+    {
+        return status switch
+        {
+            WorkflowInstanceStatus.Completed => "success",
+            WorkflowInstanceStatus.InProgress => "primary",
+            WorkflowInstanceStatus.Cancelled => "secondary",
+            WorkflowInstanceStatus.Failed => "danger",
+            _ => "secondary"
+        };
+    }
+
+    private string GetStepStatusBadgeColor(WorkflowStepInstanceStatus status)
+    {
+        return status switch
+        {
+            WorkflowStepInstanceStatus.Completed => "success",
+            WorkflowStepInstanceStatus.InProgress => "primary",
+            WorkflowStepInstanceStatus.Pending => "secondary",
+            WorkflowStepInstanceStatus.Skipped => "warning",
+            WorkflowStepInstanceStatus.Failed => "danger",
+            _ => "secondary"
+        };
+    }
+
+    private string GetActionBadgeColor(WorkflowStepAction action)
+    {
+        return action switch
+        {
+            WorkflowStepAction.Approved => "success",
+            WorkflowStepAction.Rejected => "danger",
+            WorkflowStepAction.Completed => "info",
+            WorkflowStepAction.Skipped => "warning",
+            _ => "secondary"
+        };
+    }
+
+    private string GetTimeAgo(DateTime? dateTime)
+    {
+        if (!dateTime.HasValue) return "Unknown";
+        
+        var timeSpan = DateTime.UtcNow - dateTime.Value;
+        
+        if (timeSpan.TotalDays >= 1)
+            return $"{(int)timeSpan.TotalDays} day{(timeSpan.TotalDays >= 2 ? "s" : "")} ago";
+        else if (timeSpan.TotalHours >= 1)
+            return $"{(int)timeSpan.TotalHours} hour{(timeSpan.TotalHours >= 2 ? "s" : "")} ago";
+        else if (timeSpan.TotalMinutes >= 1)
+            return $"{(int)timeSpan.TotalMinutes} minute{(timeSpan.TotalMinutes >= 2 ? "s" : "")} ago";
+        else
+            return "Just now";
+    }
+}

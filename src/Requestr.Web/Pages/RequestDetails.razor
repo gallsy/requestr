@@ -123,108 +123,8 @@ else
                             </div>
                         </div>
 
-                        <!-- Workflow Information Card -->
-                        @if (_request.WorkflowInstanceId.HasValue)
-                        {
-                            <div class="card mb-4">
-                                <div class="card-header">
-                                    <h5 class="mb-0">
-                                        <i class="bi bi-diagram-3 me-2"></i>Workflow Status
-                                    </h5>
-                                </div>
-                                <div class="card-body">
-                                    @if (_currentWorkflowStep != null)
-                                    {
-                                        <div class="row">
-                                            <div class="col-md-6">
-                                                <strong>Current Step:</strong> @_currentWorkflowStep.StepId<br>
-                                                <strong>Status:</strong>
-                                                <span class="badge @GetWorkflowStepBadgeColor(_currentWorkflowStep.Status)">
-                                                    @_currentWorkflowStep.Status
-                                                </span><br>
-                                                @if (_currentWorkflowStep.StartedAt.HasValue)
-                                                {
-                                                    <strong>Started:</strong> @_currentWorkflowStep.StartedAt.Value.ToString("MMM dd, yyyy 'at' h:mm tt")<br>
-                                                }
-                                            </div>
-                                            <div class="col-md-6">
-                                                @if (!string.IsNullOrEmpty(_currentWorkflowStep.AssignedTo))
-                                                {
-                                                    <strong>Assigned To:</strong> @_currentWorkflowStep.AssignedTo<br>
-                                                }
-                                                @if (_currentWorkflowStep.CompletedAt.HasValue)
-                                                {
-                                                    <strong>Completed:</strong> @_currentWorkflowStep.CompletedAt.Value.ToString("MMM dd, yyyy 'at' h:mm tt")<br>
-                                                    <strong>Completed By:</strong> @_currentWorkflowStep.CompletedByName<br>
-                                                }
-                                            </div>
-                                        </div>
-                                        
-                                        @if (!string.IsNullOrEmpty(_currentWorkflowStep.Comments))
-                                        {
-                                            <hr>
-                                            <div>
-                                                <strong>Step Comments:</strong>
-                                                <div class="mt-2 p-3 bg-light rounded">
-                                                    @_currentWorkflowStep.Comments
-                                                </div>
-                                            </div>
-                                        }
-                                    }
-                                    else if (_isLoadingWorkflow)
-                                    {
-                                        <div class="text-center py-3">
-                                            <div class="spinner-border spinner-border-sm text-primary" role="status">
-                                                <span class="visually-hidden">Loading workflow...</span>
-                                            </div>
-                                            <p class="mt-2 mb-0">Loading workflow information...</p>
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <p class="text-muted">No current workflow step information available.</p>
-                                    }
-
-                                    @if (_completedWorkflowSteps?.Any() == true)
-                                    {
-                                        <hr>
-                                        <h6>Completed Steps</h6>
-                                        <div class="table-responsive">
-                                            <table class="table table-sm">
-                                                <thead>
-                                                    <tr>
-                                                        <th>Step</th>
-                                                        <th>Action</th>
-                                                        <th>Completed By</th>
-                                                        <th>Completed At</th>
-                                                        <th>Comments</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    @foreach (var step in _completedWorkflowSteps.OrderBy(s => s.CompletedAt))
-                                                    {
-                                                        <tr>
-                                                            <td>@step.StepId</td>
-                                                            <td>
-                                                                @if (step.Action.HasValue)
-                                                                {
-                                                                    <span class="badge @GetWorkflowActionBadgeColor(step.Action.Value)">
-                                                                        @step.Action.Value
-                                                                    </span>
-                                                                }
-                                                            </td>
-                                                            <td>@step.CompletedByName</td>
-                                                            <td>@step.CompletedAt?.ToString("MMM dd, yyyy h:mm tt")</td>
-                                                            <td>@step.Comments</td>
-                                                        </tr>
-                                                    }
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    }
-                                </div>
-                            </div>
-                        }
+                        <!-- Workflow Progress -->
+                        <WorkflowProgressDisplay FormRequestId="@RequestId" ShowCompact="false" AutoLoad="true" />
 
                         <!-- Field Values Card -->
                         <div class="card mb-4">
@@ -558,7 +458,6 @@ else
     // Workflow-related fields
     private WorkflowStepInstance? _currentWorkflowStep;
     private List<WorkflowStepInstance>? _completedWorkflowSteps;
-    private bool _isLoadingWorkflow = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -598,8 +497,6 @@ else
     {
         try
         {
-            _isLoadingWorkflow = true;
-            
             if (_request != null)
             {
                 _currentWorkflowStep = await FormRequestService.GetCurrentWorkflowStepAsync(_request.Id);
@@ -609,10 +506,6 @@ else
         catch (Exception)
         {
             // Log error - workflow information will remain null
-        }
-        finally
-        {
-            _isLoadingWorkflow = false;
         }
     }
 

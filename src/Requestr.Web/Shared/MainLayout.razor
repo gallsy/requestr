@@ -1,5 +1,7 @@
 @inherits LayoutComponentBase
 @inject ThemeService ThemeService
+@inject IWorkflowService WorkflowService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @implements IDisposable
 
 <div class="page" data-theme="@(_isDarkMode ? "dark" : "light")">
@@ -26,33 +28,47 @@
             </NavLink>
             
             <AuthorizeView Roles="Admin">
-                <NavLink class="nav-link sidebar-nav-link" href="admin/forms">
-                    <i class="bi bi-gear-fill me-2"></i>
-                    Manage Forms
-                </NavLink>
-                <NavLink class="nav-link sidebar-nav-link" href="admin/workflows">
-                    <i class="bi bi-diagram-2 me-2"></i>
-                    Manage Workflows
-                </NavLink>
-                <NavLink class="nav-link sidebar-nav-link" href="admin/permissions">
-                    <i class="bi bi-shield-lock me-2"></i>
-                    Manage Permissions
-                </NavLink>
-                <NavLink class="nav-link sidebar-nav-link" href="admin/requests/history">
-                    <i class="bi bi-clock-history me-2"></i>
-                    Request History
-                </NavLink>
+                <Authorized>
+                    <NavLink class="nav-link sidebar-nav-link" href="admin/forms">
+                        <i class="bi bi-gear-fill me-2"></i>
+                        Manage Forms
+                    </NavLink>
+                    <NavLink class="nav-link sidebar-nav-link" href="admin/workflows">
+                        <i class="bi bi-diagram-2 me-2"></i>
+                        Manage Workflows
+                    </NavLink>
+                    <NavLink class="nav-link sidebar-nav-link" href="admin/permissions">
+                        <i class="bi bi-shield-lock me-2"></i>
+                        Manage Permissions
+                    </NavLink>
+                    <NavLink class="nav-link sidebar-nav-link" href="admin/requests/history">
+                        <i class="bi bi-clock-history me-2"></i>
+                        Request History
+                    </NavLink>
+                </Authorized>
             </AuthorizeView>
             
-            <AuthorizeView Roles="Admin,FormAdmin,DataAdmin,ReferenceDataApprover">
-                <NavLink class="nav-link sidebar-nav-link" href="pending-approvals">
-                    <i class="bi bi-check-circle-fill me-2"></i>
-                    Pending Approvals
-                </NavLink>
-                <NavLink class="nav-link sidebar-nav-link" href="workflow-approvals">
-                    <i class="bi bi-diagram-3 me-2"></i>
-                    Workflow Approvals
-                </NavLink>
+            <AuthorizeView>
+                <Authorized>
+                    @{
+                        var hasAdminRole = context.User.IsInRole("Admin") || 
+                                          context.User.IsInRole("FormAdmin") || 
+                                          context.User.IsInRole("DataAdmin") || 
+                                          context.User.IsInRole("ReferenceDataApprover");
+                    }
+                    
+                    @if (hasAdminRole || UserHasPendingWorkflowSteps)
+                    {
+                        <NavLink class="nav-link sidebar-nav-link" href="pending-approvals">
+                            <i class="bi bi-check-circle-fill me-2"></i>
+                            Pending Approvals
+                        </NavLink>
+                        <NavLink class="nav-link sidebar-nav-link" href="workflow-approvals">
+                            <i class="bi bi-diagram-3 me-2"></i>
+                            Workflow Approvals
+                        </NavLink>
+                    }
+                </Authorized>
             </AuthorizeView>
         </nav>
     </div>
@@ -75,11 +91,46 @@
 
 @code {
     private bool _isDarkMode;
+    private bool UserHasPendingWorkflowSteps = false;
+    private string? CurrentUserId;
+    private List<string> UserRoles = new();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         _isDarkMode = ThemeService.IsDarkMode;
         ThemeService.OnThemeChanged += OnThemeChanged;
+        
+        await CheckUserWorkflowSteps();
+    }
+
+    private async Task CheckUserWorkflowSteps()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            if (authState.User.Identity?.IsAuthenticated == true)
+            {
+                CurrentUserId = authState.User.FindFirst("sub")?.Value ?? 
+                               authState.User.FindFirst("oid")?.Value ?? 
+                               authState.User.Identity.Name;
+
+                UserRoles = authState.User.Claims
+                    .Where(c => c.Type == "roles" || c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role")
+                    .Select(c => c.Value)
+                    .ToList();
+
+                if (!string.IsNullOrEmpty(CurrentUserId))
+                {
+                    var pendingSteps = await WorkflowService.GetPendingStepsForUserAsync(CurrentUserId, UserRoles);
+                    UserHasPendingWorkflowSteps = pendingSteps?.Any() == true;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Silent fail - navigation will default to role-based access only
+            UserHasPendingWorkflowSteps = false;
+        }
     }
 
     private void OnThemeChanged()

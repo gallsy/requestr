@@ -1,0 +1,535 @@
+@page "/workflow/{WorkflowInstanceId:int}/step/{StepId}"
+@using Requestr.Core.Models
+@using Requestr.Core.Interfaces
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@inject IWorkflowService WorkflowService
+@inject IFormRequestService FormRequestService
+@inject IFormDefinitionService FormDefinitionService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<WorkflowApproval> Logger
+@attribute [Authorize]
+
+<PageTitle>Workflow Step Approval</PageTitle>
+
+@if (_isLoading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2">Loading workflow step...</p>
+    </div>
+}
+else if (_workflowInstance == null || _currentStep == null || _formRequest == null)
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="text-center p-5">
+                <i class="bi bi-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
+                <h4 class="mt-3">Workflow Step Not Found</h4>
+                <p class="text-muted">The requested workflow step could not be found or you don't have permission to access it.</p>
+                <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">
+                    Go Home
+                </button>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-10">
+                <!-- Workflow Progress Header -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <h4 class="mb-1">@_workflowDefinition?.Name</h4>
+                                <p class="text-muted mb-2">@_formRequest.FormDefinition?.Name Request</p>
+                                <small class="text-muted">
+                                    Requested by @_formRequest.RequestedByName on @_formRequest.RequestedAt.ToString("MMM dd, yyyy HH:mm")
+                                </small>
+                            </div>
+                            <div class="col-md-4 text-md-end">
+                                <span class="badge bg-info fs-6">
+                                    Step @(_currentStepIndex + 1) of @_totalSteps
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <!-- Progress Bar -->
+                        <div class="mt-3">
+                            <div class="progress" style="height: 8px;">
+                                <div class="progress-bar bg-info" 
+                                     style="width: @((_currentStepIndex / (double)_totalSteps) * 100)%"
+                                     role="progressbar">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Current Step Details -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-1">@_currentStepDefinition?.Name</h5>
+                                @if (!string.IsNullOrEmpty(_currentStepDefinition?.Description))
+                                {
+                                    <p class="text-muted mb-0">@_currentStepDefinition.Description</p>
+                                }
+                            </div>
+                            <span class="badge bg-@GetStepStatusBadgeColor(_currentStep.Status) fs-6">
+                                @_currentStep.Status
+                            </span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        @if (!string.IsNullOrEmpty(_errorMessage))
+                        {
+                            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                @_errorMessage
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        }
+                        
+                        @if (!string.IsNullOrEmpty(_successMessage))
+                        {
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                @_successMessage
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        }
+
+                        <!-- Request Summary -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <strong>Request Type:</strong>
+                                <span class="badge bg-@GetRequestTypeBadgeColor(_formRequest.RequestType) ms-2">
+                                    @_formRequest.RequestType.ToString()
+                                </span>
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Current Status:</strong>
+                                <span class="badge bg-@GetStatusBadgeColor(_formRequest.Status) ms-2">
+                                    @_formRequest.Status
+                                </span>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(_formRequest.Comments))
+                        {
+                            <div class="mb-4">
+                                <strong>Request Comments:</strong>
+                                <div class="border rounded p-3 mt-2 bg-light">
+                                    @_formRequest.Comments
+                                </div>
+                            </div>
+                        }
+
+                        <!-- Field Values -->
+                        <div class="mb-4">
+                            <h6>Requested Changes</h6>
+                            <div class="table-responsive">
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Field</th>
+                                            @if (_formRequest.RequestType != RequestType.Insert)
+                                            {
+                                                <th>Original Value</th>
+                                            }
+                                            <th>New Value</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var fieldValue in GetVisibleFields())
+                                        {
+                                            <tr>
+                                                <td><strong>@fieldValue.Key</strong></td>
+                                                @if (_formRequest.RequestType != RequestType.Insert)
+                                                {
+                                                    <td>
+                                                        @if (_formRequest.OriginalValues.ContainsKey(fieldValue.Key))
+                                                        {
+                                                            <span class="text-muted">@_formRequest.OriginalValues[fieldValue.Key]</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="text-muted">-</span>
+                                                        }
+                                                    </td>
+                                                }
+                                                <td>
+                                                    @if (_formRequest.RequestType == RequestType.Delete)
+                                                    {
+                                                        <span class="text-danger">[DELETE]</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <strong>@fieldValue.Value</strong>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Previous Step History -->
+                        @if (_stepHistory.Any())
+                        {
+                            <div class="mb-4">
+                                <h6>Previous Approvals</h6>
+                                <div class="list-group">
+                                    @foreach (var step in _stepHistory.OrderBy(s => s.CompletedAt))
+                                    {
+                                        <div class="list-group-item">
+                                            <div class="d-flex w-100 justify-content-between">
+                                                <h6 class="mb-1">@GetStepName(step.StepId)</h6>
+                                                <small>@step.CompletedAt?.ToString("MMM dd, yyyy HH:mm")</small>
+                                            </div>
+                                            <p class="mb-1">
+                                                <span class="badge bg-@GetActionBadgeColor(step.Action)">
+                                                    @step.Action
+                                                </span>
+                                                by @step.CompletedByName
+                                            </p>
+                                            @if (!string.IsNullOrEmpty(step.Comments))
+                                            {
+                                                <small class="text-muted">@step.Comments</small>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        <!-- Approval Actions -->
+                        @if (_currentStep.Status == WorkflowStepInstanceStatus.Pending || _currentStep.Status == WorkflowStepInstanceStatus.InProgress)
+                        {
+                            @if (_canUserApprove)
+                            {
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <label class="form-label">Comments</label>
+                                        <textarea class="form-control" rows="3" @bind="_approvalComments" 
+                                                  placeholder="Add any comments about this approval/rejection..."></textarea>
+                                    </div>
+                                </div>
+                                
+                                <div class="d-flex justify-content-between">
+                                    <button type="button" class="btn btn-secondary" @onclick="Cancel">
+                                        <i class="bi bi-arrow-left me-1"></i>
+                                        Back
+                                    </button>
+                                    <div>
+                                        <button type="button" class="btn btn-danger me-2" @onclick="RejectStep" disabled="@_isProcessing">
+                                            @if (_isProcessing && _actionType == "reject")
+                                            {
+                                                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                            }
+                                            <i class="bi bi-x-circle me-1"></i>
+                                            Reject
+                                        </button>
+                                        <button type="button" class="btn btn-success" @onclick="ApproveStep" disabled="@_isProcessing">
+                                            @if (_isProcessing && _actionType == "approve")
+                                            {
+                                                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                            }
+                                            <i class="bi bi-check-circle me-1"></i>
+                                            Approve
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="alert alert-warning">
+                                    <i class="bi bi-exclamation-triangle me-2"></i>
+                                    You do not have permission to approve this step. This step is assigned to: 
+                                    <strong>@string.Join(", ", _currentStepDefinition?.AssignedRoles ?? new List<string>())</strong>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="text-center p-3 bg-light rounded">
+                                <i class="bi bi-info-circle text-info"></i>
+                                <p class="mb-0 mt-2">This step has already been @_currentStep.Status.ToString().ToLower().</p>
+                                @if (!string.IsNullOrEmpty(_currentStep.CompletedByName))
+                                {
+                                    <small class="text-muted">
+                                        By @_currentStep.CompletedByName on @_currentStep.CompletedAt?.ToString("MMM dd, yyyy HH:mm")
+                                    </small>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int WorkflowInstanceId { get; set; }
+    [Parameter] public string StepId { get; set; } = string.Empty;
+    
+    private WorkflowInstance? _workflowInstance;
+    private WorkflowDefinition? _workflowDefinition;
+    private WorkflowStepInstance? _currentStep;
+    private WorkflowStep? _currentStepDefinition;
+    private FormRequest? _formRequest;
+    private List<WorkflowStepInstance> _stepHistory = new();
+    private List<WorkflowStepFieldConfiguration> _fieldConfigurations = new();
+    
+    private string _approvalComments = "";
+    private string _errorMessage = "";
+    private string _successMessage = "";
+    private bool _isLoading = true;
+    private bool _isProcessing = false;
+    private string _actionType = "";
+    private bool _canUserApprove = false;
+    private int _currentStepIndex = 0;
+    private int _totalSteps = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await LoadWorkflowDataAsync();
+            await CheckUserPermissionsAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading workflow step: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task LoadWorkflowDataAsync()
+    {
+        Logger.LogInformation("LoadWorkflowDataAsync: Starting for WorkflowInstanceId={WorkflowInstanceId}, StepId={StepId}", WorkflowInstanceId, StepId);
+        
+        // Load workflow instance
+        _workflowInstance = await WorkflowService.GetWorkflowInstanceAsync(WorkflowInstanceId);
+        Logger.LogInformation("LoadWorkflowDataAsync: WorkflowInstance loaded: {Found}", _workflowInstance != null);
+        if (_workflowInstance == null) return;
+
+        // Load workflow definition
+        _workflowDefinition = await WorkflowService.GetWorkflowDefinitionAsync(_workflowInstance.WorkflowDefinitionId);
+        Logger.LogInformation("LoadWorkflowDataAsync: WorkflowDefinition loaded: {Found}", _workflowDefinition != null);
+        if (_workflowDefinition == null) return;
+
+        // Load form request
+        _formRequest = await FormRequestService.GetByIdAsync(_workflowInstance.FormRequestId);
+        Logger.LogInformation("LoadWorkflowDataAsync: FormRequest loaded: {Found}", _formRequest != null);
+        if (_formRequest == null) return;
+
+        // Load current step instance
+        var allStepInstances = await WorkflowService.GetStepInstancesAsync(WorkflowInstanceId);
+        Logger.LogInformation("LoadWorkflowDataAsync: Found {Count} step instances", allStepInstances?.Count ?? 0);
+        _currentStep = allStepInstances.FirstOrDefault(s => s.StepId == StepId);
+        Logger.LogInformation("LoadWorkflowDataAsync: CurrentStep for StepId '{StepId}' found: {Found}", StepId, _currentStep != null);
+        if (_currentStep == null) return;
+
+        // Load step definition
+        _currentStepDefinition = _workflowDefinition.Steps.FirstOrDefault(s => s.StepId == StepId);
+        Logger.LogInformation("LoadWorkflowDataAsync: CurrentStepDefinition found: {Found}", _currentStepDefinition != null);
+
+        // Load step history (completed steps)
+        _stepHistory = allStepInstances.Where(s => s.Status == WorkflowStepInstanceStatus.Completed).ToList();
+
+        // Load field configurations for this step
+        if (_currentStepDefinition != null)
+        {
+            _fieldConfigurations = await WorkflowService.GetStepFieldConfigurationsAsync(_currentStepDefinition.Id);
+        }
+
+        // Calculate progress
+        _totalSteps = _workflowDefinition.Steps.Count(s => s.StepType != WorkflowStepType.Start && s.StepType != WorkflowStepType.End);
+        _currentStepIndex = _stepHistory.Count;
+
+        Logger.LogInformation("LoadWorkflowDataAsync: Completed successfully");
+    }
+
+    private async Task CheckUserPermissionsAsync()
+    {
+        if (_currentStepDefinition == null) return;
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        // Get user roles
+        var userRoles = user.Claims
+            .Where(c => c.Type == "roles" || c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role")
+            .Select(c => c.Value)
+            .ToList();
+
+        // Check if user has any of the assigned roles for this step
+        _canUserApprove = _currentStepDefinition.AssignedRoles.Any(role => userRoles.Contains(role)) ||
+                         user.IsInRole("Admin"); // Admin can always approve
+    }
+
+    private async Task ApproveStep()
+    {
+        await ProcessStep("approve", WorkflowStepAction.Approved);
+    }
+
+    private async Task RejectStep()
+    {
+        await ProcessStep("reject", WorkflowStepAction.Rejected);
+    }
+
+    private async Task ProcessStep(string actionType, WorkflowStepAction action)
+    {
+        try
+        {
+            _isProcessing = true;
+            _actionType = actionType;
+            _errorMessage = "";
+            _successMessage = "";
+
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var currentUser = GetUserIdentifier(authState.User);
+            var currentUserName = GetUserDisplayName(authState.User);
+
+            var success = await WorkflowService.CompleteStepAsync(
+                WorkflowInstanceId, 
+                StepId, 
+                currentUser, 
+                currentUserName, 
+                action, 
+                _approvalComments);
+
+            if (success)
+            {
+                _successMessage = action == WorkflowStepAction.Approved ? 
+                    "Step approved successfully!" : "Step rejected successfully!";
+                
+                // Reload data to show updated status
+                await LoadWorkflowDataAsync();
+                
+                // Redirect after a brief delay
+                await Task.Delay(2000);
+                Navigation.NavigateTo("/");
+            }
+            else
+            {
+                _errorMessage = "Failed to process the step. Please try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error processing step: {ex.Message}";
+        }
+        finally
+        {
+            _isProcessing = false;
+            _actionType = "";
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    private Dictionary<string, object?> GetVisibleFields()
+    {
+        if (_fieldConfigurations.Any())
+        {
+            // Filter fields based on step configuration
+            return _formRequest!.FieldValues
+                .Where(kvp => _fieldConfigurations.Any(fc => fc.FieldName == kvp.Key && fc.IsVisible))
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        }
+        
+        // Show all fields if no configuration exists
+        return _formRequest!.FieldValues;
+    }
+
+    private string GetStepName(string stepId)
+    {
+        return _workflowDefinition?.Steps.FirstOrDefault(s => s.StepId == stepId)?.Name ?? stepId;
+    }
+
+    // Badge color helper methods
+    private string GetStepStatusBadgeColor(WorkflowStepInstanceStatus status)
+    {
+        return status switch
+        {
+            WorkflowStepInstanceStatus.Pending => "warning",
+            WorkflowStepInstanceStatus.InProgress => "info",
+            WorkflowStepInstanceStatus.Completed => "success",
+            WorkflowStepInstanceStatus.Failed => "danger",
+            WorkflowStepInstanceStatus.Skipped => "secondary",
+            _ => "secondary"
+        };
+    }
+
+    private string GetStatusBadgeColor(RequestStatus status)
+    {
+        return status switch
+        {
+            RequestStatus.Pending => "warning",
+            RequestStatus.Approved => "success",
+            RequestStatus.Rejected => "danger",
+            RequestStatus.Applied => "info",
+            RequestStatus.Failed => "danger",
+            _ => "secondary"
+        };
+    }
+
+    private string GetRequestTypeBadgeColor(RequestType requestType)
+    {
+        return requestType switch
+        {
+            RequestType.Insert => "success",
+            RequestType.Update => "primary",
+            RequestType.Delete => "danger",
+            _ => "secondary"
+        };
+    }
+
+    private string GetActionBadgeColor(WorkflowStepAction? action)
+    {
+        return action switch
+        {
+            WorkflowStepAction.Approved => "success",
+            WorkflowStepAction.Rejected => "danger",
+            WorkflowStepAction.Completed => "info",
+            _ => "secondary"
+        };
+    }
+
+    private string GetUserIdentifier(System.Security.Claims.ClaimsPrincipal user)
+    {
+        return user.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value ??
+               user.FindFirst("oid")?.Value ??
+               user.FindFirst("sub")?.Value ??
+               user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ??
+               user.Identity?.Name ?? "Unknown";
+    }
+
+    private string GetUserDisplayName(System.Security.Claims.ClaimsPrincipal user)
+    {
+        return user.FindFirst("name")?.Value ??
+               user.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name")?.Value ??
+               user.FindFirst("preferred_username")?.Value ??
+               user.FindFirst("upn")?.Value ??
+               user.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")?.Value ??
+               user.Identity?.Name ?? "Unknown User";
+    }
+}

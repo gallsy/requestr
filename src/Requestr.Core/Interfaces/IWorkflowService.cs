@@ -42,6 +42,10 @@ public interface IWorkflowService
     Task<WorkflowActionResult> ProcessWorkflowActionAsync(int workflowInstanceId, string actionType, string userId, string? comments = null, Dictionary<string, object?>? fieldUpdates = null);
     Task<WorkflowStepInstance?> GetCurrentWorkflowStepAsync(int workflowInstanceId);
     Task<List<WorkflowStepInstance>> GetCompletedWorkflowStepsAsync(int workflowInstanceId);
+    
+    // Workflow Progress
+    Task<WorkflowProgress?> GetWorkflowProgressAsync(int formRequestId);
+    Task<List<WorkflowProgress>> GetWorkflowProgressBatchAsync(List<int> formRequestIds);
 }
 
 public interface IWorkflowDesignerService
