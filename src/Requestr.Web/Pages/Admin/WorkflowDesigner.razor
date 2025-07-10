@@ -1,0 +1,993 @@
+@page "/admin/workflows/{WorkflowId:int}/design"
+@using Requestr.Core.Interfaces
+@using Requestr.Core.Models
+@using Requestr.Core.Models.DTOs
+@using Microsoft.JSInterop
+@inject IWorkflowService WorkflowService
+@inject IWorkflowDesignerService WorkflowDesignerService
+@inject IFormDefinitionService FormDefinitionService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@attribute [Authorize(Roles = "Admin,FormAdmin")]
+
+<PageTitle>Workflow Designer</PageTitle>
+
+<style>
+    .workflow-canvas {
+        background-image: radial-gradient(circle, #dee2e6 1px, transparent 1px);
+        background-size: 20px 20px;
+    }
+    
+    .workflow-step.dragging {
+        opacity: 0.8;
+        transform: scale(1.05);
+        transition: transform 0.1s ease;
+    }
+    
+    .workflow-step:hover {
+        transform: scale(1.02);
+        transition: transform 0.1s ease;
+    }
+    
+    .workflow-step .card {
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: box-shadow 0.2s ease;
+    }
+    
+    .workflow-step:hover .card {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    .workflow-step.linking-source {
+        outline: 3px solid #0d6efd;
+        outline-offset: 2px;
+        animation: pulse 1s infinite;
+    }
+    
+    .workflow-step.linking-target {
+        outline: 3px solid #198754;
+        outline-offset: 2px;
+    }
+    
+    .workflow-step.linking-invalid {
+        outline: 3px solid #dc3545;
+        outline-offset: 2px;
+    }
+    
+    @@keyframes pulse {
+        0% { outline-color: #0d6efd; }
+        50% { outline-color: rgba(13, 110, 253, 0.5); }
+        100% { outline-color: #0d6efd; }
+    }
+    
+    .link-mode-banner {
+        background: linear-gradient(45deg, #0d6efd, #198754);
+        color: white;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 10px;
+        text-align: center;
+        animation: slideDown 0.3s ease;
+    }
+    
+    @@keyframes slideDown {
+        from { transform: translateY(-100%); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+    
+    .workflow-step.delete-mode {
+        outline: 3px solid #dc3545;
+        outline-offset: 2px;
+    }
+    
+    .workflow-step.delete-mode .step-delete-icon {
+        display: block !important;
+    }
+    
+    .step-delete-icon {
+        display: none;
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        background: #dc3545;
+        color: white;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        font-size: 12px;
+        line-height: 20px;
+        text-align: center;
+        cursor: pointer;
+        z-index: 1001;
+    }
+    
+    .step-delete-icon:hover {
+        background: #bb2d3b;
+        transform: scale(1.1);
+    }
+    
+    .card-header-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+    
+    .action-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        border: 1px solid #6c757d;
+        background: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-decoration: none;
+        color: #212529;
+        font-weight: 600;
+    }
+    
+    .action-icon:hover {
+        background: #f8f9fa;
+        border-color: #212529;
+        color: #000000;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    }
+    
+    .action-icon.active {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: white;
+    }
+    
+    .action-icon.active.danger {
+        background: #dc3545;
+        border-color: #dc3545;
+    }
+    
+    .action-icon.active.warning {
+        background: #ffc107;
+        border-color: #ffc107;
+        color: #000;
+    }
+</style>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item"><a href="/admin/workflows">Workflows</a></li>
+                            <li class="breadcrumb-item active">@(workflow?.Name ?? "Designer")</li>
+                        </ol>
+                    </nav>
+                    <h1 class="display-6">
+                        <i class="bi bi-diagram-2 me-3"></i>
+                        Workflow Designer
+                    </h1>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-primary" @onclick="SaveWorkflow">
+                        <i class="bi bi-save"></i> Save
+                    </button>
+                    <button class="btn btn-secondary" @onclick="GoBack">
+                        <i class="bi bi-arrow-left"></i> Back
+                    </button>
+                </div>
+            </div>
+
+            @if (workflow == null)
+            {
+                <div class="text-center p-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading workflow...</p>
+                </div>
+            }
+            else
+            {
+                <div class="row">
+                    <!-- Workflow Steps Panel -->
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">
+                                    <i class="bi bi-plus-circle me-2"></i>
+                                    Add Steps
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-outline-primary btn-sm" @onclick="() => AddStep(WorkflowStepType.Approval)">
+                                        <i class="bi bi-person-check"></i> Approval Step
+                                    </button>
+                                    <button class="btn btn-outline-info btn-sm" @onclick="() => AddStep(WorkflowStepType.Parallel)">
+                                        <i class="bi bi-arrows-fullscreen"></i> Parallel Step
+                                    </button>
+                                    <button class="btn btn-outline-warning btn-sm" @onclick="() => AddStep(WorkflowStepType.Branch)">
+                                        <i class="bi bi-signpost-split"></i> Branch Step
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (validationErrors.Any())
+                        {
+                            <div class="card mt-3">
+                                <div class="card-header">
+                                    <h6 class="mb-0 text-danger">
+                                        <i class="bi bi-exclamation-triangle me-2"></i>
+                                        Validation Errors
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    @foreach (var error in validationErrors)
+                                    {
+                                        <div class="alert alert-danger py-2 px-3 mb-2">
+                                            <small>@error</small>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Workflow Designer Canvas -->
+                    <div class="col-md-9">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0">
+                                        <i class="bi bi-diagram-2 me-2"></i>
+                                        Workflow: @workflow.Name
+                                    </h6>
+                                    <div class="card-header-actions">
+                                        <div class="action-icon @(isLinkingMode ? "active" : "")" 
+                                             @onclick="ToggleLinkingMode" 
+                                             title="@(isLinkingMode ? "Cancel Linking" : "Link Steps")">
+                                            <i class="bi @(isLinkingMode ? "bi-x-lg" : "bi-link-45deg")"></i>
+                                        </div>
+                                        <div class="action-icon @(isDeletingConnections ? "active danger" : "")" 
+                                             @onclick="ToggleDeleteConnectionMode" 
+                                             title="@(isDeletingConnections ? "Cancel Delete Connections" : "Delete Connections")">
+                                            <i class="bi @(isDeletingConnections ? "bi-x-lg" : "bi-scissors")"></i>
+                                        </div>
+                                        <div class="action-icon @(isDeletingSteps ? "active warning" : "")" 
+                                             @onclick="ToggleDeleteStepMode" 
+                                             title="@(isDeletingSteps ? "Cancel Delete Steps" : "Delete Steps")">
+                                            <i class="bi @(isDeletingSteps ? "bi-x-lg" : "bi-trash")"></i>
+                                        </div>
+                                        <div class="action-icon" 
+                                             @onclick="ValidateWorkflow" 
+                                             title="Validate Workflow">
+                                            <i class="bi bi-check-circle"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                @if (isLinkingMode)
+                                {
+                                    <div class="link-mode-banner">
+                                        <i class="bi bi-link-45deg me-2"></i>
+                                        <strong>Link Mode Active:</strong> Click on a step to start, then click on another step to create a connection.
+                                        @if (linkingSourceStep != null)
+                                        {
+                                            <br><small>Source: <strong>@linkingSourceStep.Name</strong> - Now click on the target step</small>
+                                        }
+                                    </div>
+                                }
+                                @if (isDeletingConnections)
+                                {
+                                    <div class="link-mode-banner" style="background: linear-gradient(45deg, #dc3545, #fd7e14);">
+                                        <i class="bi bi-scissors me-2"></i>
+                                        <strong>Delete Connection Mode:</strong> Click on any arrow/connection to delete it.
+                                    </div>
+                                }
+                                @if (isDeletingSteps)
+                                {
+                                    <div class="link-mode-banner" style="background: linear-gradient(45deg, #ffc107, #fd7e14);">
+                                        <i class="bi bi-trash me-2"></i>
+                                        <strong>Delete Step Mode:</strong> Click on any step to delete it. Click the X icon on steps.
+                                    </div>
+                                }
+
+                                <div class="workflow-canvas" id="workflowCanvas" style="min-height: 600px; position: relative; border: 1px dashed #dee2e6; border-radius: 0.375rem; overflow: hidden;">
+                                    @if (workflow.Steps.Any())
+                                    {
+                                        @foreach (var step in workflow.Steps)
+                                        {
+                                            var linkingClass = GetLinkingClass(step);
+                                            var deleteClass = isDeletingSteps ? "delete-mode" : "";
+                                            <div class="workflow-step draggable @linkingClass @deleteClass" 
+                                                 id="step-@step.StepId"
+                                                 data-step-id="@step.StepId"
+                                                 style="position: absolute; left: @(step.PositionX)px; top: @(step.PositionY)px; cursor: @(isLinkingMode ? "pointer" : isDeletingSteps ? "pointer" : "move"); z-index: 10;"
+                                                 @onclick="@((e) => HandleStepClick(step, e))"
+                                                 @onclick:stopPropagation="true">
+                                                
+                                                @if (isDeletingSteps)
+                                                {
+                                                    <div class="step-delete-icon" @onclick="@((e) => DeleteStepDirectly(step, e))" @onclick:stopPropagation="true">
+                                                        <i class="bi bi-x"></i>
+                                                    </div>
+                                                }
+                                                
+                                                <div class="card border-@GetStepColorClass(step.StepType) @(selectedStep?.Id == step.Id ? "border-3" : "")" 
+                                                     style="width: 120px; height: 80px; user-select: none;">
+                                                    <div class="card-body p-2 text-center">
+                                                        <i class="bi @GetStepIcon(step.StepType) mb-1"></i>
+                                                        <div class="small fw-bold">@step.Name</div>
+                                                        <div class="text-muted" style="font-size: 0.7rem;">@step.StepType</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+
+                                        <!-- Draw connections -->
+                                        <svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: @(isDeletingConnections ? "auto" : "none"); z-index: 1;">
+                                            <defs>
+                                                <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+                                                        refX="9" refY="3.5" orient="auto" markerUnits="strokeWidth">
+                                                    <polygon points="0 0, 10 3.5, 0 7" fill="#6c757d" />
+                                                </marker>
+                                            </defs>
+                                            @foreach (var transition in workflow.Transitions)
+                                            {
+                                                var fromStep = workflow.Steps.FirstOrDefault(s => s.StepId == transition.FromStepId);
+                                                var toStep = workflow.Steps.FirstOrDefault(s => s.StepId == transition.ToStepId);
+                                                if (fromStep != null && toStep != null)
+                                                {
+                                                    var (x1, y1, x2, y2) = CalculateConnectionPoints(fromStep, toStep);
+                                                    <line x1="@x1" y1="@y1" x2="@x2" y2="@y2"
+                                                          stroke="@(isDeletingConnections ? "#dc3545" : "#6c757d")" 
+                                                          stroke-width="@(isDeletingConnections ? "4" : "2")" 
+                                                          marker-end="url(#arrowhead)"
+                                                          style="cursor: @(isDeletingConnections ? "pointer" : "default")"
+                                                          @onclick="@(() => DeleteConnection(transition))"
+                                                          @onclick:stopPropagation="true" />
+                                                }
+                                            }
+                                        </svg>
+                                    }
+                                    else
+                                    {
+                                        <div class="text-center p-5 text-muted">
+                                            <i class="bi bi-diagram-2 display-1 mb-3"></i>
+                                            <h5>Empty Workflow</h5>
+                                            <p>Add steps from the panel on the left to start designing your workflow.</p>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step Configuration Panel -->
+                @if (selectedStep != null)
+                {
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h6 class="mb-0">
+                                            <i class="bi @GetStepIcon(selectedStep.StepType) me-2"></i>
+                                            Configure Step: @selectedStep.Name
+                                        </h6>
+                                        <button class="btn btn-outline-danger btn-sm" @onclick="DeleteSelectedStep">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label class="form-label">Step Name</label>
+                                                <input type="text" class="form-control" @bind="selectedStep.Name" />
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Description</label>
+                                                <textarea class="form-control" rows="2" @bind="selectedStep.Description"></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            @if (selectedStep.StepType == WorkflowStepType.Approval)
+                                            {
+                                                <div class="mb-3">
+                                                    <label class="form-label">Assigned Roles</label>
+                                                    <div class="border rounded p-2" style="min-height: 100px;">
+                                                        @if (selectedStep.AssignedRoles.Any())
+                                                        {
+                                                            @foreach (var role in selectedStep.AssignedRoles)
+                                                            {
+                                                                <span class="badge bg-primary me-1 mb-1">
+                                                                    @role
+                                                                    <button type="button" class="btn-close btn-close-white btn-sm ms-1" 
+                                                                            @onclick="() => RemoveRoleFromStep(role)"></button>
+                                                                </span>
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            <div class="text-muted small">No roles assigned</div>
+                                                        }
+                                                    </div>
+                                                    <div class="input-group mt-2">
+                                                        <input type="text" class="form-control" placeholder="Role name" @bind="newRoleName" />
+                                                        <button class="btn btn-outline-primary" @onclick="AddRoleToStep">Add</button>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int WorkflowId { get; set; }
+
+    private WorkflowDefinition? workflow;
+    private WorkflowStep? selectedStep;
+    private List<string> validationErrors = new();
+    private string newRoleName = string.Empty;
+
+    // Linking mode state
+    private bool isLinkingMode = false;
+    private WorkflowStep? linkingSourceStep = null;
+
+    // Delete connection mode state
+    private bool isDeletingConnections = false;
+
+    // Delete step mode state
+    private bool isDeletingSteps = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadWorkflow();
+    }
+
+    private async Task LoadWorkflow()
+    {
+        try
+        {
+            workflow = await WorkflowService.GetWorkflowDefinitionAsync(WorkflowId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading workflow: {ex.Message}");
+        }
+    }
+
+    private async Task HandleStepClick(WorkflowStep step, MouseEventArgs e)
+    {
+        if (isLinkingMode)
+        {
+            await HandleLinkingClick(step);
+        }
+        else if (isDeletingSteps)
+        {
+            await DeleteStepDirectly(step, e);
+        }
+        else
+        {
+            SelectStep(step);
+        }
+    }
+
+    private async Task HandleLinkingClick(WorkflowStep step)
+    {
+        if (linkingSourceStep == null)
+        {
+            // First click - select source
+            linkingSourceStep = step;
+            StateHasChanged();
+        }
+        else if (linkingSourceStep.StepId == step.StepId)
+        {
+            // Clicking on the same step - deselect
+            linkingSourceStep = null;
+            StateHasChanged();
+        }
+        else
+        {
+            // Second click - create connection
+            await CreateConnection(linkingSourceStep, step);
+            linkingSourceStep = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CreateConnection(WorkflowStep fromStep, WorkflowStep toStep)
+    {
+        try
+        {
+            // Check if connection already exists
+            var existingTransition = workflow?.Transitions
+                .FirstOrDefault(t => t.FromStepId == fromStep.StepId && t.ToStepId == toStep.StepId);
+            
+            if (existingTransition != null)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Connection already exists between {fromStep.Name} and {toStep.Name}");
+                return;
+            }
+
+            // Create new transition
+            var newTransition = new WorkflowTransition
+            {
+                WorkflowDefinitionId = workflow!.Id,
+                FromStepId = fromStep.StepId,
+                ToStepId = toStep.StepId,
+                Condition = null, // Default condition
+                Name = $"{fromStep.Name} → {toStep.Name}"
+            };
+
+            workflow.Transitions.Add(newTransition);
+            
+            await JSRuntime.InvokeVoidAsync("alert", $"Connected {fromStep.Name} to {toStep.Name}");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error creating connection: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error creating connection: {ex.Message}");
+        }
+    }
+
+    private string GetLinkingClass(WorkflowStep step)
+    {
+        if (!isLinkingMode) return "";
+        
+        if (linkingSourceStep?.StepId == step.StepId)
+            return "linking-source";
+            
+        if (linkingSourceStep != null)
+        {
+            // Check if this would be a valid target
+            var wouldCreateCycle = WouldCreateCycle(linkingSourceStep, step);
+            return wouldCreateCycle ? "linking-invalid" : "linking-target";
+        }
+        
+        return "";
+    }
+
+    private bool WouldCreateCycle(WorkflowStep fromStep, WorkflowStep toStep)
+    {
+        // Simple cycle detection - check if there's already a path from toStep to fromStep
+        if (fromStep.StepId == toStep.StepId) return true;
+        
+        var visited = new HashSet<string>();
+        return HasPathTo(toStep.StepId, fromStep.StepId, visited);
+    }
+
+    private bool HasPathTo(string fromStepId, string toStepId, HashSet<string> visited)
+    {
+        if (visited.Contains(fromStepId)) return false;
+        visited.Add(fromStepId);
+        
+        var transitions = workflow?.Transitions?.Where(t => t.FromStepId == fromStepId) ?? Enumerable.Empty<WorkflowTransition>();
+        
+        foreach (var transition in transitions)
+        {
+            if (transition.ToStepId == toStepId) return true;
+            if (HasPathTo(transition.ToStepId, toStepId, visited)) return true;
+        }
+        
+        return false;
+    }
+
+    // Linking mode functionality
+    private void ToggleLinkingMode()
+    {
+        isLinkingMode = !isLinkingMode;
+        if (isLinkingMode)
+        {
+            // Cancel other modes if active
+            isDeletingConnections = false;
+            isDeletingSteps = false;
+            linkingSourceStep = null;
+        }
+        StateHasChanged();
+    }
+
+    // Delete connection functionality
+    private void ToggleDeleteConnectionMode()
+    {
+        isDeletingConnections = !isDeletingConnections;
+        if (isDeletingConnections)
+        {
+            // Cancel other modes if active
+            isLinkingMode = false;
+            isDeletingSteps = false;
+            linkingSourceStep = null;
+        }
+        StateHasChanged();
+    }
+
+    // Delete step functionality
+    private void ToggleDeleteStepMode()
+    {
+        isDeletingSteps = !isDeletingSteps;
+        if (isDeletingSteps)
+        {
+            // Cancel other modes if active
+            isLinkingMode = false;
+            isDeletingConnections = false;
+            linkingSourceStep = null;
+        }
+        StateHasChanged();
+    }
+
+    private async Task DeleteConnection(WorkflowTransition transition)
+    {
+        if (!isDeletingConnections) return;
+
+        try
+        {
+            workflow?.Transitions.Remove(transition);
+            await JSRuntime.InvokeVoidAsync("alert", $"Deleted connection");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error deleting connection: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error deleting connection: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteStepDirectly(WorkflowStep step, MouseEventArgs e)
+    {
+        if (!isDeletingSteps) return;
+
+        try
+        {
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete the step '{step.Name}'?");
+            if (confirmed)
+            {
+                await WorkflowDesignerService.DeleteStepAsync(step.Id);
+                if (selectedStep?.Id == step.Id)
+                {
+                    selectedStep = null;
+                }
+                await LoadWorkflow();
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error deleting step: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error deleting step: {ex.Message}");
+        }
+    }
+
+    private async Task AddStep(WorkflowStepType stepType)
+    {
+        try
+        {
+            if (workflow == null) return;
+
+            // Calculate position (simple grid layout)
+            var existingSteps = workflow.Steps.Count;
+            var x = 150 + (existingSteps % 4) * 150;
+            var y = 50 + (existingSteps / 4) * 120;
+
+            var stepName = $"{stepType} {existingSteps + 1}";
+            var newStep = await WorkflowDesignerService.AddStepAsync(workflow.Id, stepType, stepName, x, y);
+
+            // Reload workflow to get updated data
+            await LoadWorkflow();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error adding step: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error adding step: {ex.Message}");
+        }
+    }
+
+    private void SelectStep(WorkflowStep step)
+    {
+        selectedStep = step;
+        StateHasChanged();
+    }
+
+    private async Task DeleteSelectedStep()
+    {
+        if (selectedStep == null) return;
+
+        try
+        {
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete the step '{selectedStep.Name}'?");
+            if (confirmed)
+            {
+                await WorkflowDesignerService.DeleteStepAsync(selectedStep.Id);
+                selectedStep = null;
+                await LoadWorkflow();
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error deleting step: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error deleting step: {ex.Message}");
+        }
+    }
+
+    private async Task AddRoleToStep()
+    {
+        if (selectedStep == null || string.IsNullOrWhiteSpace(newRoleName)) return;
+
+        if (!selectedStep.AssignedRoles.Contains(newRoleName))
+        {
+            selectedStep.AssignedRoles.Add(newRoleName);
+            await UpdateSelectedStep();
+        }
+
+        newRoleName = string.Empty;
+        StateHasChanged();
+    }
+
+    private async Task RemoveRoleFromStep(string roleName)
+    {
+        if (selectedStep == null) return;
+
+        selectedStep.AssignedRoles.Remove(roleName);
+        await UpdateSelectedStep();
+        StateHasChanged();
+    }
+
+    private async Task UpdateSelectedStep()
+    {
+        if (selectedStep == null) return;
+
+        try
+        {
+            await WorkflowDesignerService.UpdateStepAsync(selectedStep.Id, selectedStep);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating step: {ex.Message}");
+        }
+    }
+
+    private async Task ValidateWorkflow()
+    {
+        if (workflow == null) return;
+
+        try
+        {
+            validationErrors = await WorkflowDesignerService.ValidateWorkflowAsync(workflow.Id);
+            
+            if (validationErrors.Any())
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Validation completed with {validationErrors.Count} error(s). Check the validation panel for details.");
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Workflow validation passed successfully!");
+            }
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error validating workflow: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error validating workflow: {ex.Message}");
+        }
+    }
+
+    private async Task SaveWorkflow()
+    {
+        if (workflow == null) return;
+
+        try
+        {
+            await WorkflowService.UpdateWorkflowDefinitionAsync(workflow);
+            await JSRuntime.InvokeVoidAsync("alert", "Workflow saved successfully!");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error saving workflow: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error saving workflow: {ex.Message}");
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/admin/workflows");
+    }
+
+    private string GetStepColorClass(WorkflowStepType stepType)
+    {
+        return stepType switch
+        {
+            WorkflowStepType.Start => "success",
+            WorkflowStepType.Approval => "primary",
+            WorkflowStepType.Parallel => "info",
+            WorkflowStepType.Branch => "warning",
+            WorkflowStepType.End => "danger",
+            _ => "secondary"
+        };
+    }
+
+    private string GetStepIcon(WorkflowStepType stepType)
+    {
+        return stepType switch
+        {
+            WorkflowStepType.Start => "bi-play-circle",
+            WorkflowStepType.Approval => "bi-person-check",
+            WorkflowStepType.Parallel => "bi-arrows-fullscreen",
+            WorkflowStepType.Branch => "bi-signpost-split",
+            WorkflowStepType.End => "bi-stop-circle",
+            _ => "bi-circle"
+        };
+    }
+
+    private (double x1, double y1, double x2, double y2) CalculateConnectionPoints(WorkflowStep fromStep, WorkflowStep toStep)
+    {
+        const double stepWidth = 120;
+        const double stepHeight = 80;
+        
+        // Calculate center points
+        double fromCenterX = fromStep.PositionX + stepWidth / 2;
+        double fromCenterY = fromStep.PositionY + stepHeight / 2;
+        double toCenterX = toStep.PositionX + stepWidth / 2;
+        double toCenterY = toStep.PositionY + stepHeight / 2;
+        
+        // Calculate direction vector
+        double deltaX = toCenterX - fromCenterX;
+        double deltaY = toCenterY - fromCenterY;
+        double distance = Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
+        
+        if (distance == 0)
+            return (fromCenterX, fromCenterY, toCenterX, toCenterY);
+        
+        // Normalize direction
+        double dirX = deltaX / distance;
+        double dirY = deltaY / distance;
+        
+        // Calculate connection points at borders
+        double x1 = fromCenterX + dirX * (stepWidth / 2);
+        double y1 = fromCenterY + dirY * (stepHeight / 2);
+        double x2 = toCenterX - dirX * (stepWidth / 2);
+        double y2 = toCenterY - dirY * (stepHeight / 2);
+        
+        return (x1, y1, x2, y2);
+    }
+
+    [JSInvokable]
+    public async Task UpdateStepPositionInstance(string stepId, double x, double y)
+    {
+        if (workflow?.Steps != null)
+        {
+            var step = workflow.Steps.FirstOrDefault(s => s.StepId == stepId);
+            if (step != null)
+            {
+                step.PositionX = (int)x;
+                step.PositionY = (int)y;
+                StateHasChanged();
+            }
+        }
+        await Task.CompletedTask;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                window.workflowDesignerInstance = {
+                    component: null,
+                    isDragging: false,
+                    dragElement: null,
+                    startX: 0,
+                    startY: 0,
+                    initialX: 0,
+                    initialY: 0,
+                    
+                    setComponent: function(component) {
+                        this.component = component;
+                    },
+                    
+                    init: function() {
+                        const canvas = document.getElementById('workflowCanvas');
+                        if (!canvas) return;
+                        
+                        document.addEventListener('mousemove', this.handleMouseMove.bind(this));
+                        document.addEventListener('mouseup', this.handleMouseUp.bind(this));
+                        this.setupDraggableElements();
+                    },
+                    
+                    setupDraggableElements: function() {
+                        const draggableElements = document.querySelectorAll('.draggable');
+                        draggableElements.forEach(element => {
+                            element.addEventListener('mousedown', this.handleMouseDown.bind(this));
+                        });
+                    },
+                    
+                    handleMouseDown: function(e) {
+                        if (e.target.closest('.draggable') && !e.target.closest('.step-delete-icon')) {
+                            this.isDragging = true;
+                            this.dragElement = e.target.closest('.draggable');
+                            
+                            const rect = this.dragElement.getBoundingClientRect();
+                            const canvasRect = document.getElementById('workflowCanvas').getBoundingClientRect();
+                            
+                            this.startX = e.clientX;
+                            this.startY = e.clientY;
+                            this.initialX = rect.left - canvasRect.left;
+                            this.initialY = rect.top - canvasRect.top;
+                            
+                            this.dragElement.style.zIndex = '1000';
+                            this.dragElement.classList.add('dragging');
+                            e.preventDefault();
+                        }
+                    },
+                    
+                    handleMouseMove: function(e) {
+                        if (!this.isDragging || !this.dragElement) return;
+                        
+                        e.preventDefault();
+                        
+                        const deltaX = e.clientX - this.startX;
+                        const deltaY = e.clientY - this.startY;
+                        
+                        const newX = Math.max(0, this.initialX + deltaX);
+                        const newY = Math.max(0, this.initialY + deltaY);
+                        
+                        this.dragElement.style.left = newX + 'px';
+                        this.dragElement.style.top = newY + 'px';
+                    },
+                    
+                    handleMouseUp: function(e) {
+                        if (this.isDragging && this.dragElement) {
+                            this.dragElement.style.zIndex = '10';
+                            this.dragElement.classList.remove('dragging');
+                            
+                            const stepId = this.dragElement.getAttribute('data-step-id');
+                            if (stepId && this.component) {
+                                const rect = this.dragElement.getBoundingClientRect();
+                                const canvasRect = document.getElementById('workflowCanvas').getBoundingClientRect();
+                                const newX = rect.left - canvasRect.left;
+                                const newY = rect.top - canvasRect.top;
+                                
+                                this.component.invokeMethodAsync('UpdateStepPositionInstance', stepId, newX, newY);
+                            }
+                            
+                            this.isDragging = false;
+                            this.dragElement = null;
+                        }
+                    }
+                };
+                
+                window.workflowDesignerInstance.init();
+                
+                window.setWorkflowDesignerComponent = function(component) {
+                    window.workflowDesignerInstance.setComponent(component);
+                };
+            ");
+            
+            // Register this component instance with the JavaScript
+            var objRef = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("setWorkflowDesignerComponent", objRef);
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("eval", "if(window.workflowDesignerInstance) window.workflowDesignerInstance.setupDraggableElements();");
+        }
+    }
+}

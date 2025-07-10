@@ -18,6 +18,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBulkFormRequestService, BulkFormRequestService>();
         services.AddScoped<IDataViewService, DataViewService>();
         
+        // Workflow Services
+        services.AddScoped<IWorkflowService, WorkflowService>();
+        services.AddScoped<IWorkflowDesignerService, WorkflowDesignerService>();
+        services.AddScoped<IPermissionService, PermissionService>();
+        
         // Business Logic Services (to be implemented)
         // services.AddScoped<IValidationService, ValidationService>();
         // services.AddScoped<IAuthorizationService, AuthorizationService>();

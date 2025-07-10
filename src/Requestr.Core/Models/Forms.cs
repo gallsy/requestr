@@ -9,9 +9,13 @@ public class FormDefinition : AuditableEntity
     public string TableName { get; set; } = string.Empty;
     public string Schema { get; set; } = "dbo";
     public List<FormField> Fields { get; set; } = new();
-    public List<string> ApproverRoles { get; set; } = new();
+    public List<string> ApproverRoles { get; set; } = new(); // Legacy - will be replaced by workflow system
     public bool RequiresApproval { get; set; } = true;
     public bool IsActive { get; set; } = true;
+    
+    // Workflow system integration
+    public int? WorkflowDefinitionId { get; set; }
+    public WorkflowDefinition? WorkflowDefinition { get; set; }
 }
 
 public class FormField : BaseEntity

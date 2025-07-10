@@ -14,18 +14,21 @@ public class FormRequestService : IFormRequestService
     private readonly ILogger<FormRequestService> _logger;
     private readonly IDataService _dataService;
     private readonly IFormDefinitionService _formDefinitionService;
+    private readonly IWorkflowService _workflowService;
     private readonly string _connectionString;
 
     public FormRequestService(
         IConfiguration configuration, 
         ILogger<FormRequestService> logger,
         IDataService dataService,
-        IFormDefinitionService formDefinitionService)
+        IFormDefinitionService formDefinitionService,
+        IWorkflowService workflowService)
     {
         _configuration = configuration;
         _logger = logger;
         _dataService = dataService;
         _formDefinitionService = formDefinitionService;
+        _workflowService = workflowService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
     }
@@ -263,15 +266,22 @@ public class FormRequestService : IFormRequestService
 
     public async Task<FormRequest> CreateFormRequestAsync(FormRequest formRequest)
     {
+        using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        using var transaction = connection.BeginTransaction();
+
         try
         {
-            using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
-
+            // Check if the form has a workflow definition
+            var workflowDefinition = await _workflowService.GetWorkflowDefinitionByFormAsync(formRequest.FormDefinitionId);
+            
             var sql = @"
-                INSERT INTO FormRequests (FormDefinitionId, RequestType, FieldValues, OriginalValues, Status, RequestedBy, RequestedByName, RequestedAt, Comments, AppliedRecordKey, FailureMessage)
+                INSERT INTO FormRequests (FormDefinitionId, RequestType, FieldValues, OriginalValues, Status, RequestedBy, RequestedByName, RequestedAt, Comments, AppliedRecordKey, FailureMessage, WorkflowInstanceId)
                 OUTPUT INSERTED.Id
-                VALUES (@FormDefinitionId, @RequestType, @FieldValues, @OriginalValues, @Status, @RequestedBy, @RequestedByName, @RequestedAt, @Comments, @AppliedRecordKey, @FailureMessage)";
+                VALUES (@FormDefinitionId, @RequestType, @FieldValues, @OriginalValues, @Status, @RequestedBy, @RequestedByName, @RequestedAt, @Comments, @AppliedRecordKey, @FailureMessage, @WorkflowInstanceId)";
+
+            // Set initial status based on whether workflow exists
+            formRequest.Status = workflowDefinition != null ? RequestStatus.Pending : RequestStatus.Approved;
 
             var id = await connection.QuerySingleAsync<int>(sql, new
             {
@@ -285,13 +295,41 @@ public class FormRequestService : IFormRequestService
                 formRequest.RequestedAt,
                 formRequest.Comments,
                 formRequest.AppliedRecordKey,
-                formRequest.FailureMessage
-            });
+                formRequest.FailureMessage,
+                WorkflowInstanceId = (int?)null // Will be updated after workflow creation
+            }, transaction);
 
             formRequest.Id = id;
+
+            // Start workflow if one exists
+            if (workflowDefinition != null)
+            {
+                var workflowInstance = await _workflowService.StartWorkflowAsync(id, workflowDefinition.Id);
+                formRequest.WorkflowInstanceId = workflowInstance.Id;
+
+                // Update the form request with the workflow instance ID
+                await connection.ExecuteAsync(
+                    "UPDATE FormRequests SET WorkflowInstanceId = @WorkflowInstanceId WHERE Id = @Id",
+                    new { WorkflowInstanceId = workflowInstance.Id, Id = id },
+                    transaction);
+
+                _logger.LogInformation("Started workflow {WorkflowId} for form request {RequestId}", workflowInstance.Id, id);
+            }
+            else
+            {
+                // No workflow - auto-approve and apply if needed
+                if (formRequest.Status == RequestStatus.Approved)
+                {
+                    // Auto-apply approved requests without workflows
+                    // Note: This would be done outside the transaction in a real implementation
+                    _logger.LogInformation("Form request {RequestId} auto-approved (no workflow)", id);
+                }
+            }
             
             // Record the creation in history
-            await RecordChangeAsync(
+            await RecordChangeWithTransactionAsync(
+                connection,
+                transaction,
                 formRequest.Id,
                 FormRequestChangeType.Created,
                 null,
@@ -301,17 +339,20 @@ public class FormRequestService : IFormRequestService
                     { "FieldValues", formRequest.FieldValues },
                     { "OriginalValues", formRequest.OriginalValues },
                     { "Status", formRequest.Status.ToString() },
-                    { "Comments", formRequest.Comments }
+                    { "Comments", formRequest.Comments },
+                    { "WorkflowInstanceId", formRequest.WorkflowInstanceId }
                 },
                 formRequest.RequestedBy,
                 formRequest.RequestedByName,
-                "Request created"
+                workflowDefinition != null ? "Request created and workflow started" : "Request created (no workflow)"
             );
 
+            await transaction.CommitAsync();
             return formRequest;
         }
         catch (Exception ex)
         {
+            await transaction.RollbackAsync();
             _logger.LogError(ex, "Error creating form request");
             throw;
         }
@@ -1468,6 +1509,173 @@ public class FormRequestService : IFormRequestService
         {
             await transaction.RollbackAsync();
             _logger.LogError(ex, "Error retrying failed form request {Id}", id);
+            throw;
+        }
+    }
+
+    // Workflow integration methods
+    public async Task<List<FormRequest>> GetFormRequestsForWorkflowApprovalAsync(string userId, List<string> userRoles)
+    {
+        try
+        {
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var sql = @"
+                SELECT DISTINCT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
+                       fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
+                       fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
+                       fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
+                       fd.Name as FormName, fd.Description as FormDescription
+                FROM FormRequests fr
+                INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+                INNER JOIN WorkflowInstances wi ON fr.WorkflowInstanceId = wi.Id
+                INNER JOIN WorkflowStepInstances wsi ON wi.Id = wsi.WorkflowInstanceId
+                INNER JOIN WorkflowSteps ws ON wsi.WorkflowStepId = ws.Id
+                WHERE wsi.Status = @PendingStatus
+                  AND (ws.AssignedRoles IS NULL OR EXISTS (
+                      SELECT 1 FROM STRING_SPLIT(ws.AssignedRoles, ',') s
+                      WHERE s.value IN @UserRoles
+                  ))
+                ORDER BY fr.RequestedAt DESC";
+
+            var parameters = new DynamicParameters();
+            parameters.Add("PendingStatus", (int)WorkflowStepInstanceStatus.Pending);
+            parameters.Add("UserRoles", userRoles);
+
+            var requests = await connection.QueryAsync(sql, parameters);
+            var result = new List<FormRequest>();
+
+            foreach (var row in requests)
+            {
+                var request = CreateFormRequestFromRow(row);
+                request.WorkflowInstanceId = (int?)row.WorkflowInstanceId;
+                result.Add(request);
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting form requests for workflow approval for user {UserId} with roles {Roles}", userId, string.Join(", ", userRoles));
+            throw;
+        }
+    }
+
+    public async Task<bool> ProcessWorkflowActionAsync(int formRequestId, string actionType, string userId, string? comments = null, Dictionary<string, object?>? fieldUpdates = null)
+    {
+        try
+        {
+            // Get the form request and current workflow step
+            var formRequest = await GetFormRequestAsync(formRequestId);
+            if (formRequest?.WorkflowInstanceId == null)
+            {
+                _logger.LogWarning("Form request {FormRequestId} does not have an active workflow", formRequestId);
+                return false;
+            }
+
+            // Process the workflow action
+            var result = await _workflowService.ProcessWorkflowActionAsync(
+                formRequest.WorkflowInstanceId.Value,
+                actionType,
+                userId,
+                comments,
+                fieldUpdates);
+
+            if (!result.Success)
+            {
+                _logger.LogWarning("Workflow action {ActionType} failed for form request {FormRequestId}: {Message}", 
+                    actionType, formRequestId, result.Message);
+                return false;
+            }
+
+            // Update form request status based on workflow status
+            if (result.WorkflowCompleted)
+            {
+                formRequest.Status = result.WorkflowApproved ? RequestStatus.Approved : RequestStatus.Rejected;
+                
+                if (result.WorkflowApproved)
+                {
+                    // Auto-apply approved requests
+                    await ApplyFormRequestAsync(formRequestId);
+                }
+            }
+
+            // Apply any field updates
+            if (fieldUpdates?.Any() == true)
+            {
+                foreach (var update in fieldUpdates)
+                {
+                    formRequest.FieldValues[update.Key] = update.Value;
+                }
+                await UpdateFormRequestAsync(formRequest);
+            }
+
+            // Record the action in form request history
+            await RecordChangeAsync(
+                formRequestId,
+                actionType.ToLower() switch
+                {
+                    "approve" => FormRequestChangeType.Approved,
+                    "reject" => FormRequestChangeType.Rejected,
+                    _ => FormRequestChangeType.StatusChanged
+                },
+                new Dictionary<string, object?> { { "PreviousStep", result.PreviousStepName } },
+                new Dictionary<string, object?> 
+                { 
+                    { "CurrentStep", result.CurrentStepName },
+                    { "ActionType", actionType },
+                    { "Comments", comments },
+                    { "FieldUpdates", fieldUpdates }
+                },
+                userId,
+                result.ActorName ?? userId,
+                $"Workflow action: {actionType}" + (string.IsNullOrEmpty(comments) ? "" : $" - {comments}")
+            );
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing workflow action {ActionType} for form request {FormRequestId}", actionType, formRequestId);
+            throw;
+        }
+    }
+
+    public async Task<WorkflowStepInstance?> GetCurrentWorkflowStepAsync(int formRequestId)
+    {
+        try
+        {
+            var formRequest = await GetFormRequestAsync(formRequestId);
+            if (formRequest?.WorkflowInstanceId == null)
+            {
+                return null;
+            }
+
+            return await _workflowService.GetCurrentWorkflowStepAsync(formRequest.WorkflowInstanceId.Value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting current workflow step for form request {FormRequestId}", formRequestId);
+            throw;
+        }
+    }
+
+    public async Task<List<WorkflowStepInstance>> GetCompletedWorkflowStepsAsync(int formRequestId)
+    {
+        try
+        {
+            var formRequest = await GetFormRequestAsync(formRequestId);
+            if (formRequest?.WorkflowInstanceId == null)
+            {
+                return new List<WorkflowStepInstance>();
+            }
+
+            return await _workflowService.GetCompletedWorkflowStepsAsync(formRequest.WorkflowInstanceId.Value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting completed workflow steps for form request {FormRequestId}", formRequestId);
             throw;
         }
     }

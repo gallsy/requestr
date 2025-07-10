@@ -1,0 +1,317 @@
+@page "/admin/workflows"
+@using Requestr.Core.Interfaces
+@using Requestr.Core.Models
+@using Requestr.Core.Models.DTOs
+@using Microsoft.JSInterop
+@inject IWorkflowService WorkflowService
+@inject IWorkflowDesignerService WorkflowDesignerService
+@inject IFormDefinitionService FormDefinitionService
+@inject IPermissionService PermissionService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@attribute [Authorize(Roles = "Admin,FormAdmin")]
+
+<PageTitle>Workflow Management</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="display-5">
+                        <i class="bi bi-diagram-2 me-3"></i>
+                        Workflow Management
+                    </h1>
+                    <p class="lead">Design and manage approval workflows for your forms</p>
+                </div>
+                <button class="btn btn-primary" @onclick="ShowCreateWorkflowModal">
+                    <i class="bi bi-plus-lg"></i> Create New Workflow
+                </button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    @errorMessage
+                    <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
+                </div>
+            }
+
+            @if (workflows == null)
+            {
+                <div class="text-center p-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading workflows...</p>
+                </div>
+            }
+            else if (!workflows.Any())
+            {
+                <div class="card">
+                    <div class="card-body">
+                        <div class="text-center py-5">
+                            <i class="bi bi-diagram-2 display-1 text-muted mb-3"></i>
+                            <h3>No workflows yet</h3>
+                            <p class="text-muted">Create your first workflow to get started with approval processes.</p>
+                            <button class="btn btn-primary" @onclick="ShowCreateWorkflowModal">
+                                <i class="bi bi-plus-lg"></i> Create Workflow
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="row">
+                    @foreach (var workflow in workflows)
+                    {
+                        <div class="col-md-6 col-lg-4 mb-4">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <h5 class="card-title">@workflow.Name</h5>
+                                        <span class="badge @(workflow.IsActive ? "bg-success" : "bg-secondary")">
+                                            @(workflow.IsActive ? "Active" : "Inactive")
+                                        </span>
+                                    </div>
+                                    <h6 class="card-subtitle mb-2 text-muted">
+                                        Form: @GetFormName(workflow.FormDefinitionId)
+                                    </h6>
+                                    <p class="card-text">@workflow.Description</p>
+                                    <small class="text-muted">Version @workflow.Version</small>
+                                </div>
+                                <div class="card-footer">
+                                    <div class="btn-group w-100" role="group">
+                                        <button class="btn btn-outline-primary btn-sm" @onclick="() => EditWorkflow(workflow.Id)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-outline-info btn-sm" @onclick="() => DesignWorkflow(workflow.Id)">
+                                            <i class="bi bi-diagram-2"></i>
+                                        </button>
+                                        <button class="btn @(workflow.IsActive ? "btn-outline-warning" : "btn-outline-success") btn-sm" 
+                                                @onclick="() => ToggleWorkflowStatus(workflow.Id, workflow.IsActive)">
+                                            <i class="bi @(workflow.IsActive ? "bi-pause" : "bi-play")"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Create Workflow Modal -->
+<div class="modal fade" id="createWorkflowModal" tabindex="-1" @ref="createWorkflowModalElement">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create New Workflow</h5>
+                <button type="button" class="btn-close" @onclick="HideCreateWorkflowModal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Form</label>
+                    <select class="form-select" @bind="createWorkflowRequest.FormDefinitionId">
+                        <option value="0">Select a form...</option>
+                        @if (forms != null)
+                        {
+                            @foreach (var form in forms)
+                            {
+                                <option value="@form.Id">@form.Name</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Workflow Name</label>
+                    <input type="text" class="form-control" @bind="createWorkflowRequest.Name" placeholder="Enter workflow name" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control" rows="3" @bind="createWorkflowRequest.Description" placeholder="Enter workflow description"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @onclick="HideCreateWorkflowModal" disabled="@isCreating">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="CreateWorkflow" 
+                        disabled="@(isCreating || createWorkflowRequest.FormDefinitionId == 0 || string.IsNullOrWhiteSpace(createWorkflowRequest.Name))">
+                    @if (isCreating)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                        <span>Creating...</span>
+                    }
+                    else
+                    {
+                        <span>Create Workflow</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<WorkflowDefinition>? workflows;
+    private List<FormDefinition>? forms;
+    private ElementReference createWorkflowModalElement;
+    private CreateWorkflowRequest createWorkflowRequest = new();
+    private string? errorMessage;
+    private bool isCreating = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            errorMessage = null;
+            Console.WriteLine("Starting to load workflow data...");
+            
+            workflows = await WorkflowService.GetWorkflowDefinitionsAsync();
+            Console.WriteLine($"Loaded {workflows?.Count ?? 0} workflows");
+            
+            forms = await FormDefinitionService.GetActiveAsync();
+            Console.WriteLine($"Loaded {forms?.Count ?? 0} forms");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading data: {ex.Message}";
+            Console.WriteLine($"Error loading workflow data: {ex}");
+        }
+    }
+
+    private string GetFormName(int formDefinitionId)
+    {
+        return forms?.FirstOrDefault(f => f.Id == formDefinitionId)?.Name ?? "Unknown Form";
+    }
+
+    private async Task ShowCreateWorkflowModal()
+    {
+        try
+        {
+            createWorkflowRequest = new CreateWorkflowRequest();
+            errorMessage = null;
+            Console.WriteLine("Opening create workflow modal");
+            await JSRuntime.InvokeVoidAsync("showModal", createWorkflowModalElement);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error showing modal: {ex}");
+            errorMessage = $"Error opening modal: {ex.Message}";
+        }
+    }
+
+    private async Task HideCreateWorkflowModal()
+    {
+        try
+        {
+            Console.WriteLine("Hiding create workflow modal");
+            await JSRuntime.InvokeVoidAsync("hideModal", createWorkflowModalElement);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error hiding modal: {ex}");
+        }
+    }
+
+    private async Task CreateWorkflow()
+    {
+        if (isCreating) return; // Prevent double-clicking
+        
+        try
+        {
+            isCreating = true;
+            errorMessage = null;
+            
+            Console.WriteLine($"Creating workflow for form {createWorkflowRequest.FormDefinitionId} with name '{createWorkflowRequest.Name}'");
+            
+            // Validate input before making service call
+            if (createWorkflowRequest.FormDefinitionId <= 0)
+            {
+                throw new ArgumentException("Please select a form");
+            }
+            
+            if (string.IsNullOrWhiteSpace(createWorkflowRequest.Name))
+            {
+                throw new ArgumentException("Please enter a workflow name");
+            }
+
+            // Call the service
+            var workflow = await WorkflowDesignerService.CreateEmptyWorkflowAsync(
+                createWorkflowRequest.FormDefinitionId,
+                createWorkflowRequest.Name,
+                createWorkflowRequest.Description);
+
+            Console.WriteLine($"Successfully created workflow with ID: {workflow.Id}");
+            
+            await HideCreateWorkflowModal();
+            
+            // Navigate to the workflow designer
+            Navigation.NavigateTo($"/admin/workflows/{workflow.Id}/design");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to create workflow: {ex.Message}";
+            Console.WriteLine($"Detailed error creating workflow: {ex}");
+            
+            // Show error message to user
+            await JSRuntime.InvokeVoidAsync("alert", errorMessage);
+        }
+        finally
+        {
+            isCreating = false;
+            StateHasChanged();
+        }
+    }
+
+    private void EditWorkflow(int workflowId)
+    {
+        Navigation.NavigateTo($"/admin/workflows/{workflowId}/edit");
+    }
+
+    private void DesignWorkflow(int workflowId)
+    {
+        Navigation.NavigateTo($"/admin/workflows/{workflowId}/design");
+    }
+
+    private async Task ToggleWorkflowStatus(int workflowId, bool isCurrentlyActive)
+    {
+        try
+        {
+            if (isCurrentlyActive)
+            {
+                await WorkflowService.DeactivateWorkflowDefinitionAsync(workflowId);
+            }
+            else
+            {
+                // Check if workflow is valid before activating
+                var isValid = await WorkflowDesignerService.IsWorkflowValidAsync(workflowId);
+                if (!isValid)
+                {
+                    var errors = await WorkflowDesignerService.ValidateWorkflowAsync(workflowId);
+                    var errorMessage = string.Join("\n", errors);
+                    await JSRuntime.InvokeVoidAsync("alert", $"Cannot activate workflow. Please fix the following issues:\n\n{errorMessage}");
+                    return;
+                }
+
+                await WorkflowService.ActivateWorkflowDefinitionAsync(workflowId);
+            }
+
+            await LoadData();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error toggling workflow status: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error updating workflow status: {ex.Message}");
+        }
+    }
+}

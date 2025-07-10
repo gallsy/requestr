@@ -27,4 +27,10 @@ public interface IFormRequestService
     Task<FormRequestHistory> AddFormRequestHistoryAsync(FormRequestHistory history);
     Task<FormRequest?> GetFormRequestWithHistoryAsync(int id);
     Task<string> GetDebugInfoAsync(int formRequestId); // Debug method
+    
+    // Workflow integration methods
+    Task<List<FormRequest>> GetFormRequestsForWorkflowApprovalAsync(string userId, List<string> userRoles);
+    Task<bool> ProcessWorkflowActionAsync(int formRequestId, string actionType, string userId, string? comments = null, Dictionary<string, object?>? fieldUpdates = null);
+    Task<WorkflowStepInstance?> GetCurrentWorkflowStepAsync(int formRequestId);
+    Task<List<WorkflowStepInstance>> GetCompletedWorkflowStepsAsync(int formRequestId);
 }

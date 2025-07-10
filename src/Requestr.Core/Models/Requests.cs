@@ -23,6 +23,10 @@ public class FormRequest : AuditableEntity
     // Bulk request properties
     public int? BulkFormRequestId { get; set; }
     public BulkFormRequest? BulkFormRequest { get; set; }
+    
+    // Workflow system integration
+    public int? WorkflowInstanceId { get; set; }
+    public WorkflowInstance? WorkflowInstance { get; set; }
 }
 
 public class FormRequestHistory : BaseEntity

@@ -48,3 +48,54 @@ public enum AuthorizationResult
     Unauthorized,
     Forbidden
 }
+
+// Workflow system enums
+public enum WorkflowStepType
+{
+    Start,
+    Approval,
+    Parallel,
+    Branch,
+    End
+}
+
+public enum WorkflowInstanceStatus
+{
+    InProgress,
+    Completed,
+    Cancelled,
+    Failed
+}
+
+public enum WorkflowStepInstanceStatus
+{
+    Pending,
+    InProgress,
+    Completed,
+    Skipped,
+    Failed
+}
+
+public enum WorkflowStepAction
+{
+    Approved,
+    Rejected,
+    Completed,
+    Skipped
+}
+
+public enum BranchOperator
+{
+    Equals,
+    NotEquals,
+    GreaterThan,
+    GreaterThanOrEqual,
+    LessThan,
+    LessThanOrEqual,
+    Contains,
+    NotContains,
+    StartsWith,
+    EndsWith,
+    IsEmpty,
+    IsNotEmpty
+}
