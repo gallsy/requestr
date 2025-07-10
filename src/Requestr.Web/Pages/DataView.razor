@@ -1,13 +1,19 @@
 @page "/data-view/{FormDefinitionId:int}"
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
+@using Requestr.Core.Models.DTOs
 @using System.Linq
+@using System.Security.Claims
 @inject IDataViewService DataViewService
 @inject IFormDefinitionService FormDefinitionService
+@inject IPermissionService PermissionService
+@inject IBulkFormRequestService BulkFormRequestService
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JSRuntime
 @attribute [Authorize]
+
+<PageTitle>Data View - Requestr</PageTitle>
 
 <h1 class="visually-hidden">Data View - Requestr</h1>
 
@@ -101,6 +107,12 @@ else
                                     <button class="btn btn-primary" @onclick="RefreshData">
                                         <i class="bi bi-arrow-clockwise"></i> Refresh
                                     </button>
+                                    @if (_canUploadCsv)
+                                    {
+                                        <button class="btn btn-success" @onclick="ShowCsvUploadModal">
+                                            <i class="bi bi-upload"></i> Upload CSV
+                                        </button>
+                                    }
                                 </div>
                             </div>
                         </div>
@@ -108,45 +120,65 @@ else
                 </div>
 
                 <!-- Bulk Actions Section -->
-                <div class="card mb-4">
-                    <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0">
-                            <i class="bi bi-check-square me-2"></i>
-                            Bulk Actions (@_selectedRecords.Count selected)
-                        </h5>
+                @if (_canExecuteBulkActions)
+                {
+                    <div class="card mb-4">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0">
+                                <i class="bi bi-check-square me-2"></i>
+                                Bulk Actions (@_selectedRecords.Count selected)
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            @if (_selectedRecords.Any())
+                            {
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-warning" @onclick="ShowBulkUpdateModal">
+                                        <i class="bi bi-pencil-square"></i> Bulk Update
+                                    </button>
+                                    <button class="btn btn-danger" @onclick="ShowBulkDeleteModal">
+                                        <i class="bi bi-trash"></i> Bulk Delete
+                                    </button>
+                                    <button class="btn btn-secondary" @onclick="ClearSelection">
+                                        <i class="bi bi-x-circle"></i> Clear Selection
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-warning" disabled>
+                                        <i class="bi bi-pencil-square"></i> Bulk Update
+                                    </button>
+                                    <button class="btn btn-danger" disabled>
+                                        <i class="bi bi-trash"></i> Bulk Delete
+                                    </button>
+                                    <button class="btn btn-secondary" disabled>
+                                        <i class="bi bi-x-circle"></i> Clear Selection
+                                    </button>
+                                </div>
+                                <small class="text-muted mt-2 d-block">Select records to enable bulk actions</small>
+                            }
+                        </div>
                     </div>
-                    <div class="card-body">
-                        @if (_selectedRecords.Any())
-                        {
-                            <div class="d-flex gap-2">
-                                <button class="btn btn-warning" @onclick="ShowBulkUpdateModal">
-                                    <i class="bi bi-pencil-square"></i> Bulk Update
-                                </button>
-                                <button class="btn btn-danger" @onclick="ShowBulkDeleteModal">
-                                    <i class="bi bi-trash"></i> Bulk Delete
-                                </button>
-                                <button class="btn btn-secondary" @onclick="ClearSelection">
-                                    <i class="bi bi-x-circle"></i> Clear Selection
-                                </button>
+                }
+                else
+                {
+                    <div class="card mb-4">
+                        <div class="card-header bg-secondary text-white">
+                            <h5 class="mb-0">
+                                <i class="bi bi-lock me-2"></i>
+                                Bulk Actions (Access Restricted)
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-warning mb-0">
+                                <i class="bi bi-shield-exclamation me-2"></i>
+                                You do not have permission to perform bulk actions on this data.
                             </div>
-                        }
-                        else
-                        {
-                            <div class="d-flex gap-2">
-                                <button class="btn btn-warning" disabled>
-                                    <i class="bi bi-pencil-square"></i> Bulk Update
-                                </button>
-                                <button class="btn btn-danger" disabled>
-                                    <i class="bi bi-trash"></i> Bulk Delete
-                                </button>
-                                <button class="btn btn-secondary" disabled>
-                                    <i class="bi bi-x-circle"></i> Clear Selection
-                                </button>
-                            </div>
-                            <small class="text-muted mt-2 d-block">Select records to enable bulk actions</small>
-                        }
+                        </div>
                     </div>
-                </div>
+                }
 
                 <!-- Data Table -->
                 <div class="card">
@@ -338,6 +370,156 @@ else
     <div class="modal-backdrop fade show"></div>
 }
 
+<!-- CSV Upload Modal -->
+@if (_showCsvUploadModal)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-upload me-2"></i>
+                        Upload CSV File
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CloseCsvUploadModal"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_csvUploadResult == null)
+                    {
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>CSV Format Guidelines:</strong>
+                            <ul class="mb-0 mt-2">
+                                <li>First row must contain column headers</li>
+                                <li>Column names must match form field names exactly</li>
+                                <li>All required fields must be included</li>
+                                <li>Date format: YYYY-MM-DD or MM/DD/YYYY</li>
+                                <li>Boolean values: true/false, yes/no, 1/0</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Select CSV File</label>
+                            <InputFile OnChange="HandleCsvFileSelected" class="form-control" accept=".csv" />
+                            @if (!string.IsNullOrEmpty(_csvFileName))
+                            {
+                                <small class="text-muted mt-1 d-block">Selected: @_csvFileName</small>
+                            }
+                        </div>
+                        
+                        @if (_csvFile != null)
+                        {
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-primary" @onclick="ValidateCsvFile" disabled="@_isProcessing">
+                                    @if (_isProcessing)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                    }
+                                    <i class="bi bi-check-circle me-2"></i>
+                                    Validate CSV
+                                </button>
+                                <button type="button" class="btn btn-secondary" @onclick="ClearCsvFile">
+                                    <i class="bi bi-x-circle me-2"></i>
+                                    Clear
+                                </button>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <!-- Validation Results -->
+                        <div class="alert @(_csvUploadResult.IsValid ? "alert-success" : "alert-warning")">
+                            <h6 class="alert-heading">
+                                <i class="bi @(_csvUploadResult.IsValid ? "bi-check-circle" : "bi-exclamation-triangle") me-2"></i>
+                                Validation Results
+                            </h6>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <strong>Total Rows:</strong> @_csvUploadResult.TotalRows
+                                </div>
+                                <div class="col-md-4">
+                                    <strong>Valid Rows:</strong> <span class="text-success">@_csvUploadResult.ValidRows</span>
+                                </div>
+                                <div class="col-md-4">
+                                    <strong>Invalid Rows:</strong> <span class="text-danger">@_csvUploadResult.InvalidRows</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        @if (_csvUploadResult.Errors.Any())
+                        {
+                            <div class="alert alert-danger">
+                                <h6>File Errors:</h6>
+                                <ul class="mb-0">
+                                    @foreach (var error in _csvUploadResult.Errors)
+                                    {
+                                        <li>@error</li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                        
+                        @if (_csvUploadResult.ValidationResults.Any(v => !v.IsValid))
+                        {
+                            <div class="mb-3">
+                                <h6>Row Validation Issues:</h6>
+                                <div style="max-height: 300px; overflow-y: auto;">
+                                    @foreach (var validation in _csvUploadResult.ValidationResults.Where(v => !v.IsValid))
+                                    {
+                                        <div class="alert alert-warning py-2 mb-2">
+                                            <strong>Row @validation.RowNumber:</strong>
+                                            <ul class="mb-0 mt-1">
+                                                @foreach (var error in validation.Errors)
+                                                {
+                                                    <li><small>@error</small></li>
+                                                }
+                                            </ul>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        
+                        @if (_csvUploadResult.ValidRows > 0)
+                        {
+                            <div class="mb-3">
+                                <label class="form-label">Comments</label>
+                                <textarea class="form-control" rows="3" @bind="_csvUploadComments" 
+                                         placeholder="Optional comments about this CSV upload..."></textarea>
+                            </div>
+                        }
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseCsvUploadModal">Cancel</button>
+                    @if (_csvUploadResult == null)
+                    {
+                        <!-- No action buttons until validation is done -->
+                    }
+                    else if (_csvUploadResult.ValidRows > 0)
+                    {
+                        <button type="button" class="btn btn-success" @onclick="ProcessCsvUpload" disabled="@_isProcessing">
+                            @if (_isProcessing)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                            }
+                            Create Bulk Request (@_csvUploadResult.ValidRows rows)
+                        </button>
+                    }
+                    @if (_csvUploadResult != null)
+                    {
+                        <button type="button" class="btn btn-outline-primary" @onclick="ResetCsvUpload">
+                            <i class="bi bi-arrow-left me-2"></i>
+                            Choose Different File
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
 @code {
     [Parameter] public int FormDefinitionId { get; set; }
 
@@ -351,17 +533,64 @@ else
     private DataViewResult? _dataResult;
     private HashSet<string> _selectedRecords = new();
     
+    // Permission state
+    private bool _canAccessDataView = false;
+    private bool _canExecuteBulkActions = false;
+    private bool _canUploadCsv = false;
+    private List<string> _userRoles = new();
+    
     // Bulk operations
     private bool _showBulkUpdateModal = false;
     private bool _showBulkDeleteModal = false;
+    private bool _showCsvUploadModal = false;
     private Dictionary<string, object?> _bulkUpdateFields = new();
     private string _bulkUpdateComments = string.Empty;
     private string _bulkDeleteComments = string.Empty;
+    
+    // CSV upload
+    private IBrowserFile? _csvFile;
+    private string _csvFileName = string.Empty;
+    private CsvUploadResult? _csvUploadResult;
+    private string _csvUploadComments = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadFormDefinition();
-        await LoadData();
+        await CheckPermissions();
+        if (_canAccessDataView)
+        {
+            await LoadFormDefinition();
+            await LoadData();
+        }
+        else
+        {
+            _errorMessage = "You do not have permission to access the data view for this form.";
+        }
+    }
+
+    private async Task CheckPermissions()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            _userRoles = GetUserRoles(authState.User);
+            
+            // Check specific permissions
+            _canAccessDataView = await PermissionService.CanAccessFormDataViewAsync(_userRoles, FormDefinitionId);
+            _canExecuteBulkActions = await PermissionService.CanExecuteBulkActionsAsync(_userRoles);
+            _canUploadCsv = await PermissionService.CanUploadCsvAsync(_userRoles);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error checking permissions: {ex.Message}";
+        }
+    }
+
+    private List<string> GetUserRoles(ClaimsPrincipal user)
+    {
+        return user.Claims
+            .Where(c => c.Type == ClaimTypes.Role)
+            .Select(c => c.Value)
+            .ToList();
     }
 
     private async Task LoadFormDefinition()
@@ -492,6 +721,158 @@ else
     {
         _showBulkDeleteModal = true;
         _bulkDeleteComments = string.Empty;
+    }
+
+    private void ShowCsvUploadModal()
+    {
+        _showCsvUploadModal = true;
+        _csvUploadResult = null;
+        _csvFile = null;
+        _csvFileName = string.Empty;
+        _csvUploadComments = string.Empty;
+    }
+
+    private void CloseCsvUploadModal()
+    {
+        _showCsvUploadModal = false;
+        _csvUploadResult = null;
+        _csvFile = null;
+        _csvFileName = string.Empty;
+        _csvUploadComments = string.Empty;
+    }
+
+    private void HandleCsvFileSelected(InputFileChangeEventArgs e)
+    {
+        _csvFile = e.File;
+        _csvFileName = e.File.Name;
+        _csvUploadResult = null; // Reset validation results when new file is selected
+    }
+
+    private void ClearCsvFile()
+    {
+        _csvFile = null;
+        _csvFileName = string.Empty;
+        _csvUploadResult = null;
+    }
+
+    private void ResetCsvUpload()
+    {
+        _csvUploadResult = null;
+        _csvUploadComments = string.Empty;
+    }
+
+    private async Task ValidateCsvFile()
+    {
+        if (_csvFile == null)
+        {
+            _errorMessage = "Please select a CSV file first.";
+            return;
+        }
+
+        try
+        {
+            _isProcessing = true;
+            _errorMessage = string.Empty;
+
+            // Validate file size (limit to 10MB)
+            const long maxFileSize = 10 * 1024 * 1024; // 10MB
+            if (_csvFile.Size > maxFileSize)
+            {
+                _errorMessage = "File size exceeds the maximum limit of 10MB.";
+                return;
+            }
+
+            // Validate file type
+            if (!_csvFile.Name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+            {
+                _errorMessage = "Please select a valid CSV file.";
+                return;
+            }
+
+            // Process the CSV file
+            using var stream = _csvFile.OpenReadStream(maxFileSize);
+            _csvUploadResult = await BulkFormRequestService.ProcessCsvUploadAsync(FormDefinitionId, stream, _csvFile.Name);
+
+            if (_csvUploadResult.Errors.Any())
+            {
+                _errorMessage = string.Join("; ", _csvUploadResult.Errors);
+            }
+            else if (_csvUploadResult.ValidRows == 0)
+            {
+                _errorMessage = "No valid rows found in the CSV file.";
+            }
+            else
+            {
+                _successMessage = $"CSV validation completed. {_csvUploadResult.ValidRows} valid rows found.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error validating CSV file: {ex.Message}";
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    private async Task ProcessCsvUpload()
+    {
+        if (_csvUploadResult == null || _csvUploadResult.ValidRows == 0)
+        {
+            _errorMessage = "No valid data to process.";
+            return;
+        }
+
+        try
+        {
+            _isProcessing = true;
+            _errorMessage = string.Empty;
+
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var currentUser = GetUserIdentifier(authState.User);
+            var currentUserName = GetUserDisplayName(authState.User);
+
+            // Create form requests from CSV data
+            var formRequests = new List<CreateFormRequestDto>();
+            foreach (var rowData in _csvUploadResult.ParsedData)
+            {
+                var formRequest = new CreateFormRequestDto
+                {
+                    FormDefinitionId = FormDefinitionId,
+                    RequestType = RequestType.Insert,
+                    FieldValues = rowData,
+                    Comments = _csvUploadComments
+                };
+                formRequests.Add(formRequest);
+            }
+
+            // Create bulk form request
+            var createBulkDto = new CreateBulkFormRequestDto
+            {
+                FormDefinitionId = FormDefinitionId,
+                RequestType = RequestType.Insert,
+                FileName = _csvFileName,
+                FormRequests = formRequests,
+                Comments = _csvUploadComments
+            };
+
+            var bulkRequest = await BulkFormRequestService.CreateBulkFormRequestAsync(createBulkDto, currentUser, currentUserName);
+
+            _successMessage = $"CSV upload successful! Bulk request created with ID: {bulkRequest.Id}";
+            CloseCsvUploadModal();
+
+            // Navigate to the created bulk request
+            Navigation.NavigateTo($"/bulk-requests/{bulkRequest.Id}");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error processing CSV upload: {ex.Message}";
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
     }
 
     private void ToggleFieldForUpdate(string fieldName, object? isSelected)

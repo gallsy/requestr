@@ -304,14 +304,15 @@ public class FormRequestService : IFormRequestService
             // Start workflow if one exists
             if (workflowDefinition != null)
             {
-                var workflowInstance = await _workflowService.StartWorkflowAsync(id, workflowDefinition.Id);
+                // Use the overload that accepts existing connection and transaction to avoid deadlocks
+                var workflowInstance = await _workflowService.StartWorkflowAsync(id, workflowDefinition.Id, connection, transaction);
                 formRequest.WorkflowInstanceId = workflowInstance.Id;
 
                 // Update the form request with the workflow instance ID
                 await connection.ExecuteAsync(
                     "UPDATE FormRequests SET WorkflowInstanceId = @WorkflowInstanceId WHERE Id = @Id",
                     new { WorkflowInstanceId = workflowInstance.Id, Id = id },
-                    transaction);
+                    transaction, commandTimeout: 300);
 
                 _logger.LogInformation("Started workflow {WorkflowId} for form request {RequestId}", workflowInstance.Id, id);
             }
@@ -1531,7 +1532,7 @@ public class FormRequestService : IFormRequestService
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
                 INNER JOIN WorkflowInstances wi ON fr.WorkflowInstanceId = wi.Id
                 INNER JOIN WorkflowStepInstances wsi ON wi.Id = wsi.WorkflowInstanceId
-                INNER JOIN WorkflowSteps ws ON wsi.WorkflowStepId = ws.Id
+                INNER JOIN WorkflowSteps ws ON wsi.StepId = ws.StepId AND wi.WorkflowDefinitionId = ws.WorkflowDefinitionId
                 WHERE wsi.Status = @PendingStatus
                   AND (ws.AssignedRoles IS NULL OR EXISTS (
                       SELECT 1 FROM STRING_SPLIT(ws.AssignedRoles, ',') s
@@ -1540,7 +1541,7 @@ public class FormRequestService : IFormRequestService
                 ORDER BY fr.RequestedAt DESC";
 
             var parameters = new DynamicParameters();
-            parameters.Add("PendingStatus", (int)WorkflowStepInstanceStatus.Pending);
+            parameters.Add("PendingStatus", WorkflowStepInstanceStatus.Pending.ToString());
             parameters.Add("UserRoles", userRoles);
 
             var requests = await connection.QueryAsync(sql, parameters);

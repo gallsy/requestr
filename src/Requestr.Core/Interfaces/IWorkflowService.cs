@@ -1,4 +1,5 @@
 using Requestr.Core.Models;
+using Microsoft.Data.SqlClient;
 
 namespace Requestr.Core.Interfaces;
 
@@ -16,6 +17,7 @@ public interface IWorkflowService
     
     // Workflow Instance Management
     Task<WorkflowInstance> StartWorkflowAsync(int formRequestId, int workflowDefinitionId);
+    Task<WorkflowInstance> StartWorkflowAsync(int formRequestId, int workflowDefinitionId, SqlConnection connection, SqlTransaction transaction);
     Task<WorkflowInstance?> GetWorkflowInstanceAsync(int id);
     Task<WorkflowInstance?> GetWorkflowInstanceByRequestAsync(int formRequestId);
     Task<List<WorkflowInstance>> GetActiveWorkflowInstancesAsync();

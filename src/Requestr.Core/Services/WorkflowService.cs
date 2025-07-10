@@ -125,7 +125,12 @@ public class WorkflowService : IWorkflowService
     public async Task<WorkflowDefinition?> GetWorkflowDefinitionAsync(int id)
     {
         using var connection = new SqlConnection(_connectionString);
-        
+        return await GetWorkflowDefinitionAsync(connection, null, id);
+    }
+
+    // Overload that uses existing connection and transaction to avoid deadlocks
+    private async Task<WorkflowDefinition?> GetWorkflowDefinitionAsync(SqlConnection connection, SqlTransaction? transaction, int id)
+    {
         const string sql = @"
             SELECT * FROM WorkflowDefinitions WHERE Id = @Id;
             
@@ -137,32 +142,52 @@ public class WorkflowService : IWorkflowService
             INNER JOIN WorkflowSteps ws ON wfc.WorkflowStepId = ws.Id
             WHERE ws.WorkflowDefinitionId = @Id;";
 
-        using var multi = await connection.QueryMultipleAsync(sql, new { Id = id });
-        
-        var workflowDefinition = await multi.ReadFirstOrDefaultAsync<WorkflowDefinition>();
-        if (workflowDefinition == null) return null;
-
-        var stepsDb = await multi.ReadAsync<WorkflowStepDb>();
-        var transitions = await multi.ReadAsync<WorkflowTransition>();
-        var fieldConfigurationsDb = await multi.ReadAsync<WorkflowStepFieldConfigurationDb>();
-
-        // Convert database models to domain models
-        var steps = stepsDb.Select(s => s.ToDomainModel()).ToList();
-        var fieldConfigurations = fieldConfigurationsDb.Select(f => f.ToDomainModel()).ToList();
-
-        // Map relationships
-        workflowDefinition.Steps = steps;
-        workflowDefinition.Transitions = transitions.ToList();
-
-        foreach (var step in workflowDefinition.Steps)
+        try
         {
-            step.WorkflowDefinition = workflowDefinition;
-            step.FieldConfigurations = fieldConfigurations
-                .Where(fc => fc.WorkflowStepId == step.Id)
-                .ToList();
-        }
+            using var multi = await connection.QueryMultipleAsync(sql, new { Id = id }, transaction, commandTimeout: 300);
+            
+            var workflowDefinition = await multi.ReadFirstOrDefaultAsync<WorkflowDefinition>();
+            if (workflowDefinition == null) 
+            {
+                _logger.LogWarning("Workflow definition {WorkflowDefinitionId} not found", id);
+                return null;
+            }
 
-        return workflowDefinition;
+            var stepsDb = await multi.ReadAsync<WorkflowStepDb>();
+            var transitions = await multi.ReadAsync<WorkflowTransition>();
+            var fieldConfigurationsDb = await multi.ReadAsync<WorkflowStepFieldConfigurationDb>();
+
+            // Convert database models to domain models
+            var steps = stepsDb.Select(s => s.ToDomainModel()).ToList();
+            var fieldConfigurations = fieldConfigurationsDb.Select(f => f.ToDomainModel()).ToList();
+
+            // Map relationships
+            workflowDefinition.Steps = steps;
+            workflowDefinition.Transitions = transitions.ToList();
+
+            foreach (var step in workflowDefinition.Steps)
+            {
+                step.WorkflowDefinition = workflowDefinition;
+                step.FieldConfigurations = fieldConfigurations
+                    .Where(fc => fc.WorkflowStepId == step.Id)
+                    .ToList();
+            }
+
+            _logger.LogDebug("Loaded workflow definition {WorkflowDefinitionId} with {StepCount} steps and {TransitionCount} transitions", 
+                id, steps.Count, transitions.Count());
+
+            return workflowDefinition;
+        }
+        catch (SqlException ex) when (ex.Number == -2) // Timeout
+        {
+            _logger.LogError(ex, "Timeout loading workflow definition {WorkflowDefinitionId}", id);
+            throw new TimeoutException($"Timeout loading workflow definition {id}. This may indicate database performance issues.", ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading workflow definition {WorkflowDefinitionId}", id);
+            throw;
+        }
     }
 
     public async Task<WorkflowDefinition?> GetWorkflowDefinitionByFormAsync(int formDefinitionId)
@@ -406,7 +431,7 @@ public class WorkflowService : IWorkflowService
 
         try
         {
-            var workflowDefinition = await GetWorkflowDefinitionAsync(workflowDefinitionId);
+            var workflowDefinition = await GetWorkflowDefinitionAsync(connection, transaction, workflowDefinitionId);
             if (workflowDefinition == null)
                 throw new InvalidOperationException($"Workflow definition {workflowDefinitionId} not found");
 
@@ -415,7 +440,7 @@ public class WorkflowService : IWorkflowService
             if (startStep == null)
                 throw new InvalidOperationException("Workflow has no start step");
 
-            // Create workflow instance
+            // Create workflow instance with increased timeout
             const string instanceSql = @"
                 INSERT INTO WorkflowInstances (FormRequestId, WorkflowDefinitionId, CurrentStepId, Status, StartedAt)
                 OUTPUT INSERTED.Id
@@ -430,31 +455,34 @@ public class WorkflowService : IWorkflowService
                 StartedAt = DateTime.UtcNow
             };
 
-            instanceId = await connection.QuerySingleAsync<int>(instanceSql, workflowInstance, transaction);
+            // Increased timeout and added retry logic
+            var maxRetries = 3;
+            var retryDelay = TimeSpan.FromSeconds(1);
+            
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    instanceId = await connection.QuerySingleAsync<int>(instanceSql, workflowInstance, transaction, commandTimeout: 300);
+                    break;
+                }
+                catch (SqlException ex) when (ex.Number == -2 && attempt < maxRetries) // Timeout
+                {
+                    _logger.LogWarning("Workflow instance creation timeout on attempt {Attempt}/{MaxRetries} for request {RequestId}", 
+                        attempt, maxRetries, formRequestId);
+                    await Task.Delay(retryDelay * attempt);
+                }
+            }
+            
             workflowInstance.Id = instanceId;
 
-            // Create step instances for all steps
-            foreach (var step in workflowDefinition.Steps)
-            {
-                var stepInstance = new WorkflowStepInstance
-                {
-                    WorkflowInstanceId = instanceId,
-                    StepId = step.StepId,
-                    Status = step.StepId == startStep.StepId ? WorkflowStepInstanceStatus.InProgress : WorkflowStepInstanceStatus.Pending
-                };
-
-                if (step.StepId == startStep.StepId)
-                {
-                    stepInstance.StartedAt = DateTime.UtcNow;
-                }
-
-                await InsertStepInstanceAsync(connection, transaction, stepInstance);
-            }
+            // Create step instances for all steps using bulk operation
+            await CreateStepInstancesBulkAsync(connection, transaction, instanceId, workflowDefinition.Steps, startStep.StepId);
 
             // If start step is not an approval step, move to next step immediately
             if (startStep.StepType != WorkflowStepType.Approval)
             {
-                var nextStepId = await GetNextStepIdAsync(instanceId, startStep.StepId, new Dictionary<string, object?>());
+                var nextStepId = await GetNextStepIdAsync(connection, transaction, instanceId, startStep.StepId, new Dictionary<string, object?>());
                 if (!string.IsNullOrEmpty(nextStepId))
                 {
                     await MoveToNextStepAsync(connection, transaction, instanceId, nextStepId);
@@ -501,6 +529,67 @@ public class WorkflowService : IWorkflowService
         }
     }
 
+    // Overload that accepts existing connection and transaction to avoid deadlocks
+    public async Task<WorkflowInstance> StartWorkflowAsync(int formRequestId, int workflowDefinitionId, 
+        SqlConnection connection, SqlTransaction transaction)
+    {
+        int instanceId = 0;
+        WorkflowInstance? workflowInstance = null;
+
+        try
+        {
+            var workflowDefinition = await GetWorkflowDefinitionAsync(connection, transaction, workflowDefinitionId);
+            if (workflowDefinition == null)
+                throw new InvalidOperationException($"Workflow definition {workflowDefinitionId} not found");
+
+            // Find start step
+            var startStep = workflowDefinition.Steps.FirstOrDefault(s => s.StepType == WorkflowStepType.Start);
+            if (startStep == null)
+                throw new InvalidOperationException("Workflow has no start step");
+
+            // Create workflow instance with increased timeout
+            const string instanceSql = @"
+                INSERT INTO WorkflowInstances (FormRequestId, WorkflowDefinitionId, CurrentStepId, Status, StartedAt)
+                OUTPUT INSERTED.Id
+                VALUES (@FormRequestId, @WorkflowDefinitionId, @CurrentStepId, @Status, @StartedAt)";
+
+            workflowInstance = new WorkflowInstance
+            {
+                FormRequestId = formRequestId,
+                WorkflowDefinitionId = workflowDefinitionId,
+                CurrentStepId = startStep.StepId,
+                Status = WorkflowInstanceStatus.InProgress,
+                StartedAt = DateTime.UtcNow
+            };
+
+            // No retry logic needed here since we're using an existing transaction
+            instanceId = await connection.QuerySingleAsync<int>(instanceSql, workflowInstance, transaction, commandTimeout: 300);
+            workflowInstance.Id = instanceId;
+
+            // Create step instances for all steps using bulk operation
+            await CreateStepInstancesBulkAsync(connection, transaction, instanceId, workflowDefinition.Steps, startStep.StepId);
+
+            // If start step is not an approval step, move to next step immediately
+            if (startStep.StepType != WorkflowStepType.Approval)
+            {
+                var nextStepId = await GetNextStepIdAsync(connection, transaction, instanceId, startStep.StepId, new Dictionary<string, object?>());
+                if (!string.IsNullOrEmpty(nextStepId))
+                {
+                    await MoveToNextStepAsync(connection, transaction, instanceId, nextStepId);
+                }
+            }
+            
+            _logger.LogInformation("Started workflow instance {InstanceId} for form request {RequestId} using existing transaction", instanceId, formRequestId);
+            
+            return workflowInstance;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error starting workflow instance for request {RequestId} using existing transaction", formRequestId);
+            throw;
+        }
+    }
+
     public async Task<WorkflowInstance?> GetWorkflowInstanceAsync(int id)
     {
         using var connection = new SqlConnection(_connectionString);
@@ -535,7 +624,7 @@ public class WorkflowService : IWorkflowService
         using var connection = new SqlConnection(_connectionString);
         
         const string sql = "SELECT * FROM WorkflowInstances WHERE Status = @Status ORDER BY StartedAt DESC";
-        var instances = await connection.QueryAsync<WorkflowInstance>(sql, new { Status = WorkflowInstanceStatus.InProgress });
+        var instances = await connection.QueryAsync<WorkflowInstance>(sql, new { Status = WorkflowInstanceStatus.InProgress.ToString() });
         
         return instances.ToList();
     }
@@ -775,6 +864,28 @@ public class WorkflowService : IWorkflowService
         return nextTransition?.ToStepId;
     }
 
+    // Overload that uses existing connection and transaction to avoid deadlocks
+    private async Task<string?> GetNextStepIdAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId, string currentStepId, Dictionary<string, object?> formData)
+    {
+        // Get transitions from current step
+        const string sql = @"
+            SELECT wt.* FROM WorkflowTransitions wt
+            INNER JOIN WorkflowInstances wi ON wt.WorkflowDefinitionId = wi.WorkflowDefinitionId
+            WHERE wi.Id = @WorkflowInstanceId AND wt.FromStepId = @CurrentStepId";
+
+        var transitions = await connection.QueryAsync<WorkflowTransition>(sql, new 
+        { 
+            WorkflowInstanceId = workflowInstanceId, 
+            CurrentStepId = currentStepId 
+        }, transaction, commandTimeout: 120);
+
+        // For now, return the first transition - in a full implementation,
+        // you'd evaluate conditions here
+        var nextTransition = transitions.FirstOrDefault();
+        
+        return nextTransition?.ToStepId;
+    }
+
     public async Task<List<string>> GetAvailableStepsForUserAsync(string userId, List<string> userRoles, int workflowInstanceId)
     {
         using var connection = new SqlConnection(_connectionString);
@@ -890,38 +1001,130 @@ public class WorkflowService : IWorkflowService
             OUTPUT INSERTED.Id
             VALUES (@WorkflowInstanceId, @StepId, @Status, @AssignedTo, @StartedAt, @FieldValues)";
 
-        var instanceId = await connection.QuerySingleAsync<int>(sql, new
+        try
         {
-            stepInstance.WorkflowInstanceId,
-            stepInstance.StepId,
-            Status = stepInstance.Status.ToString(),
-            stepInstance.AssignedTo,
-            stepInstance.StartedAt,
-            FieldValues = JsonSerializer.Serialize(stepInstance.FieldValues)
-        }, transaction);
+            var instanceId = await connection.QuerySingleAsync<int>(sql, new
+            {
+                stepInstance.WorkflowInstanceId,
+                stepInstance.StepId,
+                Status = stepInstance.Status.ToString(),
+                stepInstance.AssignedTo,
+                stepInstance.StartedAt,
+                FieldValues = JsonSerializer.Serialize(stepInstance.FieldValues)
+            }, transaction, commandTimeout: 300);
 
-        stepInstance.Id = instanceId;
+            stepInstance.Id = instanceId;
+        }
+        catch (SqlException ex) when (ex.Number == -2) // Timeout
+        {
+            _logger.LogError(ex, "Timeout inserting step instance for workflow {WorkflowInstanceId}, step {StepId}", 
+                stepInstance.WorkflowInstanceId, stepInstance.StepId);
+            throw new TimeoutException($"Timeout inserting step instance for workflow {stepInstance.WorkflowInstanceId}, step {stepInstance.StepId}", ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error inserting step instance for workflow {WorkflowInstanceId}, step {StepId}", 
+                stepInstance.WorkflowInstanceId, stepInstance.StepId);
+            throw;
+        }
+    }
+
+    private async Task CreateStepInstancesBulkAsync(SqlConnection connection, SqlTransaction transaction, 
+        int workflowInstanceId, List<WorkflowStep> steps, string startStepId)
+    {
+        if (!steps.Any()) return;
+
+        // Use a single bulk insert for better performance
+        const string bulkInsertSql = @"
+            INSERT INTO WorkflowStepInstances (WorkflowInstanceId, StepId, Status, AssignedTo, StartedAt, FieldValues)
+            VALUES ";
+
+        var parameters = new DynamicParameters();
+        var valuesClauses = new List<string>();
+        
+        for (int i = 0; i < steps.Count; i++)
+        {
+            var step = steps[i];
+            var isStartStep = step.StepId == startStepId;
+            
+            valuesClauses.Add($"(@WorkflowInstanceId{i}, @StepId{i}, @Status{i}, @AssignedTo{i}, @StartedAt{i}, @FieldValues{i})");
+            
+            parameters.Add($"WorkflowInstanceId{i}", workflowInstanceId);
+            parameters.Add($"StepId{i}", step.StepId);
+            parameters.Add($"Status{i}", isStartStep ? WorkflowStepInstanceStatus.InProgress.ToString() : WorkflowStepInstanceStatus.Pending.ToString());
+            parameters.Add($"AssignedTo{i}", (string?)null);
+            parameters.Add($"StartedAt{i}", isStartStep ? DateTime.UtcNow : (DateTime?)null);
+            parameters.Add($"FieldValues{i}", "{}"); // Empty JSON object
+        }
+
+        var finalSql = bulkInsertSql + string.Join(", ", valuesClauses);
+        
+        try
+        {
+            await connection.ExecuteAsync(finalSql, parameters, transaction, commandTimeout: 300);
+            _logger.LogDebug("Created {StepCount} step instances in bulk for workflow instance {InstanceId}", 
+                steps.Count, workflowInstanceId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating step instances in bulk for workflow instance {InstanceId}", workflowInstanceId);
+            
+            // Fallback to individual inserts if bulk fails
+            _logger.LogInformation("Falling back to individual step instance creation for workflow instance {InstanceId}", workflowInstanceId);
+            
+            foreach (var step in steps)
+            {
+                var stepInstance = new WorkflowStepInstance
+                {
+                    WorkflowInstanceId = workflowInstanceId,
+                    StepId = step.StepId,
+                    Status = step.StepId == startStepId ? WorkflowStepInstanceStatus.InProgress : WorkflowStepInstanceStatus.Pending
+                };
+
+                if (step.StepId == startStepId)
+                {
+                    stepInstance.StartedAt = DateTime.UtcNow;
+                }
+
+                await InsertStepInstanceAsync(connection, transaction, stepInstance);
+            }
+        }
     }
 
     private async Task MoveToNextStepAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId, string nextStepId)
     {
-        // Update workflow instance current step
-        const string updateWorkflowSql = "UPDATE WorkflowInstances SET CurrentStepId = @NextStepId WHERE Id = @WorkflowInstanceId";
-        await connection.ExecuteAsync(updateWorkflowSql, new { NextStepId = nextStepId, WorkflowInstanceId = workflowInstanceId }, transaction);
-
-        // Update step instance status
-        const string updateStepSql = @"
-            UPDATE WorkflowStepInstances 
-            SET Status = @Status, StartedAt = @StartedAt 
-            WHERE WorkflowInstanceId = @WorkflowInstanceId AND StepId = @StepId";
-
-        await connection.ExecuteAsync(updateStepSql, new
+        try
         {
-            Status = WorkflowStepInstanceStatus.InProgress.ToString(),
-            StartedAt = DateTime.UtcNow,
-            WorkflowInstanceId = workflowInstanceId,
-            StepId = nextStepId
-        }, transaction);
+            // Update workflow instance current step
+            const string updateWorkflowSql = "UPDATE WorkflowInstances SET CurrentStepId = @NextStepId WHERE Id = @WorkflowInstanceId";
+            await connection.ExecuteAsync(updateWorkflowSql, new { NextStepId = nextStepId, WorkflowInstanceId = workflowInstanceId }, transaction, commandTimeout: 300);
+
+            // Update step instance status
+            const string updateStepSql = @"
+                UPDATE WorkflowStepInstances 
+                SET Status = @Status, StartedAt = @StartedAt 
+                WHERE WorkflowInstanceId = @WorkflowInstanceId AND StepId = @StepId";
+
+            await connection.ExecuteAsync(updateStepSql, new
+            {
+                Status = WorkflowStepInstanceStatus.InProgress.ToString(),
+                StartedAt = DateTime.UtcNow,
+                WorkflowInstanceId = workflowInstanceId,
+                StepId = nextStepId
+            }, transaction, commandTimeout: 300);
+            
+            _logger.LogDebug("Moved workflow instance {WorkflowInstanceId} to step {StepId}", workflowInstanceId, nextStepId);
+        }
+        catch (SqlException ex) when (ex.Number == -2) // Timeout
+        {
+            _logger.LogError(ex, "Timeout moving workflow instance {WorkflowInstanceId} to next step {StepId}", workflowInstanceId, nextStepId);
+            throw new TimeoutException($"Timeout moving workflow instance {workflowInstanceId} to next step {nextStepId}", ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error moving workflow instance {WorkflowInstanceId} to next step {StepId}", workflowInstanceId, nextStepId);
+            throw;
+        }
     }
 
     private async Task CompleteWorkflowAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId, string completedBy)
