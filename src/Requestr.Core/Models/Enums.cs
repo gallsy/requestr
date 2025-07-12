@@ -63,6 +63,7 @@ public enum WorkflowInstanceStatus
 {
     InProgress,
     Completed,
+    Rejected,
     Cancelled,
     Failed
 }

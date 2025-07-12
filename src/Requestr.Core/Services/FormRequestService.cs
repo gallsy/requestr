@@ -1016,6 +1016,56 @@ public class FormRequestService : IFormRequestService
         }
     }
 
+    public async Task<List<int>> GetApprovedButNotAppliedRequestIdsAsync()
+    {
+        using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        const string sql = @"
+            SELECT Id 
+            FROM FormRequests 
+            WHERE Status = @Status 
+            ORDER BY Id";
+
+        var requestIds = await connection.QueryAsync<int>(sql, new { Status = (int)RequestStatus.Approved });
+        return requestIds.ToList();
+    }
+
+    public async Task<bool> ManuallyApplyApprovedRequestAsync(int id)
+    {
+        try
+        {
+            _logger.LogInformation("Manually applying approved form request {FormRequestId}", id);
+            
+            // Get the form request
+            var formRequest = await GetFormRequestAsync(id);
+            if (formRequest == null || formRequest.Status != RequestStatus.Approved)
+            {
+                _logger.LogWarning("Form request {FormRequestId} not found or not in approved status", id);
+                return false;
+            }
+
+            // Use the existing ApplyFormRequestAsync method
+            var success = await ApplyFormRequestAsync(id);
+            
+            if (success)
+            {
+                _logger.LogInformation("Successfully manually applied form request {FormRequestId}", id);
+            }
+            else
+            {
+                _logger.LogError("Failed to manually apply form request {FormRequestId}", id);
+            }
+            
+            return success;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error manually applying form request {FormRequestId}", id);
+            return false;
+        }
+    }
+
     // Alias methods for UI compatibility
     public async Task<FormRequest?> GetByIdAsync(int id)
     {
@@ -1217,7 +1267,7 @@ public class FormRequestService : IFormRequestService
     {
         return element.ValueKind switch
         {
-            JsonValueKind.String => element.GetString(),
+            JsonValueKind.String => ConvertStringValue(element.GetString()),
             JsonValueKind.Number => element.TryGetInt32(out int intValue) ? intValue : element.GetDouble(),
             JsonValueKind.True => true,
             JsonValueKind.False => false,
@@ -1225,6 +1275,30 @@ public class FormRequestService : IFormRequestService
             JsonValueKind.Undefined => null,
             _ => element.ToString()
         };
+    }
+
+    /// <summary>
+    /// Convert a string value to its appropriate .NET type, including DateTime handling
+    /// </summary>
+    private static object? ConvertStringValue(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value;
+
+        // Try to parse as DateTime first (common serialization format)
+        if (DateTime.TryParse(value, out var dateTime))
+        {
+            return dateTime;
+        }
+
+        // Try to parse as DateTimeOffset (ISO 8601 format)
+        if (DateTimeOffset.TryParse(value, out var dateTimeOffset))
+        {
+            return dateTimeOffset.DateTime;
+        }
+
+        // Return as string if no special conversion needed
+        return value;
     }
 
     public async Task<bool> RetryFailedFormRequestAsync(int id, string retriedBy, string retriedByName)
@@ -1538,7 +1612,8 @@ public class FormRequestService : IFormRequestService
                 INNER JOIN WorkflowInstances wi ON fr.WorkflowInstanceId = wi.Id
                 INNER JOIN WorkflowStepInstances wsi ON wi.Id = wsi.WorkflowInstanceId
                 INNER JOIN WorkflowSteps ws ON wsi.StepId = ws.StepId AND wi.WorkflowDefinitionId = ws.WorkflowDefinitionId
-                WHERE wsi.Status = @InProgressStatus
+                WHERE ws.StepType = @ApprovalStepType
+                  AND wsi.Status IN (@PendingStatus, @InProgressStatus, @CompletedStatus)
                   AND (@IsAdmin = 1 
                        OR (ws.AssignedRoles IS NOT NULL 
                            AND ws.AssignedRoles != '[]' 
@@ -1550,15 +1625,22 @@ public class FormRequestService : IFormRequestService
                 ORDER BY fr.RequestedAt DESC";
 
             var parameters = new DynamicParameters();
-            parameters.Add("InProgressStatus", WorkflowStepInstanceStatus.InProgress.ToString());
+            parameters.Add("ApprovalStepType", WorkflowStepType.Approval.ToString());
+            parameters.Add("PendingStatus", (int)WorkflowStepInstanceStatus.Pending);
+            parameters.Add("InProgressStatus", (int)WorkflowStepInstanceStatus.InProgress);
+            parameters.Add("CompletedStatus", (int)WorkflowStepInstanceStatus.Completed);
             parameters.Add("UserRoles", userRoles);
             
             // Check if user is admin - they can see all approvals
             var isAdmin = userRoles.Contains("Admin");
             parameters.Add("IsAdmin", isAdmin ? 1 : 0);
 
-            _logger.LogInformation("Executing SQL query with InProgressStatus: {Status} (string), IsAdmin: {IsAdmin}, UserRoles: {UserRoles}", 
-                WorkflowStepInstanceStatus.InProgress.ToString(), isAdmin, string.Join(", ", userRoles));
+            _logger.LogInformation("Executing SQL query for Approval steps only with integer status values: Pending={PendingStatus}, InProgress={InProgressStatus}, Completed={CompletedStatus}, IsAdmin: {IsAdmin}, UserRoles: {UserRoles}", 
+                (int)WorkflowStepInstanceStatus.Pending,
+                (int)WorkflowStepInstanceStatus.InProgress, 
+                (int)WorkflowStepInstanceStatus.Completed,
+                isAdmin, 
+                string.Join(", ", userRoles));
 
             var requests = await connection.QueryAsync(sql, parameters);
             
@@ -1569,9 +1651,11 @@ public class FormRequestService : IFormRequestService
             foreach (var row in requests)
             {
                 var request = CreateFormRequestFromRow(row);
-                request.WorkflowInstanceId = (int?)row.WorkflowInstanceId;
+                request.WorkflowInstanceId = (int?)((IDictionary<string, object>)row)["WorkflowInstanceId"];
                 result.Add(request);
             }
+
+            _logger.LogInformation("Returning {Count} form requests for workflow approval", result.Count);
 
             _logger.LogInformation("Returning {Count} form requests for workflow approval", result.Count);
             return result;
@@ -1615,11 +1699,11 @@ public class FormRequestService : IFormRequestService
             {
                 formRequest.Status = result.WorkflowApproved ? RequestStatus.Approved : RequestStatus.Rejected;
                 
-                if (result.WorkflowApproved)
-                {
-                    // Auto-apply approved requests
-                    await ApplyFormRequestAsync(formRequestId);
-                }
+                // Note: Auto-application is now handled elsewhere to avoid circular dependencies
+                // if (result.WorkflowApproved)
+                // {
+                //     await ApplyFormRequestAsync(formRequestId);
+                // }
             }
 
             // Apply any field updates

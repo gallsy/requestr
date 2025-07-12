@@ -38,6 +38,14 @@
                             }
                         }
                     </select>
+                    <select class="form-select form-select-sm" @bind="SelectedStatusFilter" @bind:after="ApplyFilters" title="Filter by workflow step status">
+                        <option value="">All Statuses</option>
+                        <option value="Pending">Pending</option>
+                        <option value="InProgress">In Progress</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Skipped">Skipped</option>
+                        <option value="Failed">Failed</option>
+                    </select>
                     <select class="form-select form-select-sm" @bind="SortOrder" @bind:after="ApplyFilters">
                         <option value="newest">Newest First</option>
                         <option value="oldest">Oldest First</option>
@@ -258,6 +266,7 @@
     private string ActionType = "";
     private string Comments = "";
     private string SelectedFormFilter = "";
+    private string SelectedStatusFilter = "";
     private string SortOrder = "newest";
     private string? SuccessMessage;
     private string? ErrorMessage;
@@ -372,6 +381,20 @@
         if (!string.IsNullOrEmpty(SelectedFormFilter) && int.TryParse(SelectedFormFilter, out var formId))
         {
             filtered = filtered.Where(r => r.FormDefinitionId == formId);
+        }
+
+        // Filter by workflow step status
+        if (!string.IsNullOrEmpty(SelectedStatusFilter))
+        {
+            filtered = filtered.Where(r =>
+            {
+                // Get the current step for this request from our WorkflowSteps dictionary
+                if (WorkflowSteps.TryGetValue(r.Id, out var step) && step != null)
+                {
+                    return step.Status.ToString() == SelectedStatusFilter;
+                }
+                return false; // If no step found, don't include in filtered results when status filter is applied
+            });
         }
 
         // Sort

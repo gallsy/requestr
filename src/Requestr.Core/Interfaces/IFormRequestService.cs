@@ -33,4 +33,6 @@ public interface IFormRequestService
     Task<bool> ProcessWorkflowActionAsync(int formRequestId, string actionType, string userId, string? comments = null, Dictionary<string, object?>? fieldUpdates = null);
     Task<WorkflowStepInstance?> GetCurrentWorkflowStepAsync(int formRequestId);
     Task<List<WorkflowStepInstance>> GetCompletedWorkflowStepsAsync(int formRequestId);
+    Task<List<int>> GetApprovedButNotAppliedRequestIdsAsync();
+    Task<bool> ManuallyApplyApprovedRequestAsync(int id);
 }
