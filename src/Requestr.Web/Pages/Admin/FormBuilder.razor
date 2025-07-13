@@ -6,9 +6,11 @@
 @using Microsoft.JSInterop
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Models
+@using Requestr.Core.Services
 @inject IFormDefinitionService FormDefinitionService
 @inject IDatabaseService DatabaseService
 @inject IDataService DataService
+@inject IFormPermissionService FormPermissionService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -416,8 +418,9 @@
             @if (ActiveTab == "permissions")
             {
                 <div class="row">
-                    <div class="col-lg-8 mx-auto">
-                        <div class="card">
+                    <div class="col-12">
+                        <!-- Approval Configuration Card -->
+                        <div class="card mb-4">
                             <div class="card-header">
                                 <h5 class="mb-0">
                                     <i class="bi bi-shield-check me-2"></i>
@@ -425,76 +428,242 @@
                                 </h5>
                             </div>
                             <div class="card-body">
-                                <div class="mb-4">
-                                    <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" @bind="_formDefinition.RequiresApproval" id="requiresApprovalSwitch">
-                                        <label class="form-check-label" for="requiresApprovalSwitch">
-                                            <strong>Requires Approval</strong>
-                                        </label>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" @bind="_formDefinition.RequiresApproval" id="requiresApprovalSwitch">
+                                            <label class="form-check-label" for="requiresApprovalSwitch">
+                                                <strong>Requires Approval</strong>
+                                            </label>
+                                        </div>
+                                        <small class="form-text text-muted">When enabled, all form submissions must be approved before being applied to the database</small>
+                                        
+                                        @if (_formDefinition.RequiresApproval)
+                                        {
+                                            <div class="mt-3">
+                                                <label class="form-label">Approver Roles *</label>
+                                                <input type="text" class="form-control" @bind="_approverRolesText" placeholder="Admin, FormAdmin, DataAdmin" />
+                                                <small class="form-text text-muted">Enter role names separated by commas. Users with these roles can approve requests for this form.</small>
+                                            </div>
+                                        }
                                     </div>
-                                    <small class="form-text text-muted">When enabled, all form submissions must be approved before being applied to the database</small>
+                                    <div class="col-md-6">
+                                        @if (_formDefinition.RequiresApproval)
+                                        {
+                                            <div class="alert alert-info">
+                                                <h6 class="alert-heading">
+                                                    <i class="bi bi-info-circle me-2"></i>
+                                                    How Approval Works
+                                                </h6>
+                                                <ul class="mb-0 small">
+                                                    <li>Users submit form requests that go into a "Pending" state</li>
+                                                    <li>Users with the specified roles can view and approve/reject requests</li>
+                                                    <li>Once approved, changes are automatically applied to the database</li>
+                                                    <li>If rejected, the request is marked as rejected with a reason</li>
+                                                </ul>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="alert alert-warning">
+                                                <h6 class="alert-heading">
+                                                    <i class="bi bi-exclamation-triangle me-2"></i>
+                                                    No Approval Required
+                                                </h6>
+                                                <p class="mb-0 small">Form submissions will be automatically applied to the database without approval.</p>
+                                            </div>
+                                        }
+                                    </div>
                                 </div>
+                            </div>
+                        </div>
 
-                                @if (_formDefinition.RequiresApproval)
+                        <!-- Role-Based Permissions Card -->
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">
+                                    <i class="bi bi-people me-2"></i>
+                                    Role-Based Permissions
+                                </h5>
+                                <div>
+                                    <button type="button" class="btn btn-outline-primary btn-sm me-2" @onclick="LoadFormPermissions">
+                                        <i class="bi bi-arrow-clockwise me-1"></i>
+                                        Refresh
+                                    </button>
+                                    <button type="button" class="btn btn-primary btn-sm" @onclick="SavePermissions" disabled="@_isLoadingPermissions">
+                                        @if (_isLoadingPermissions)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-save me-1"></i>
+                                        }
+                                        Save Permissions
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                @if (_isLoadingPermissions)
                                 {
-                                    <div class="mb-3">
-                                        <label class="form-label">Approver Roles *</label>
-                                        <input type="text" class="form-control" @bind="_approverRolesText" placeholder="Admin, FormAdmin, DataAdmin" />
-                                        <small class="form-text text-muted">Enter role names separated by commas. Users with these roles can approve requests for this form.</small>
-                                    </div>
-
-                                    <div class="alert alert-info">
-                                        <h6 class="alert-heading">
-                                            <i class="bi bi-info-circle me-2"></i>
-                                            How Approval Works
-                                        </h6>
-                                        <ul class="mb-0">
-                                            <li>Users submit form requests that go into a "Pending" state</li>
-                                            <li>Users with the specified roles can view and approve/reject requests</li>
-                                            <li>Once approved, changes are automatically applied to the database</li>
-                                            <li>If rejected, the request is marked as rejected with a reason</li>
-                                        </ul>
-                                    </div>
-
-                                    <hr class="my-4">
-
-                                    <h6 class="mb-3">
-                                        <i class="bi bi-people me-2"></i>
-                                        Available Roles
-                                    </h6>
-                                    <div class="row">
-                                        <div class="col-md-6">
-                                            <div class="card bg-light">
-                                                <div class="card-body">
-                                                    <h6 class="card-title">Standard Roles</h6>
-                                                    <ul class="list-unstyled mb-0">
-                                                        <li><code>Admin</code> - Full system access</li>
-                                                        <li><code>FormAdmin</code> - Form management</li>
-                                                        <li><code>DataAdmin</code> - Data approval</li>
-                                                        <li><code>ReferenceDataApprover</code> - Reference data</li>
-                                                    </ul>
-                                                </div>
-                                            </div>
+                                    <div class="text-center p-4">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading permissions...</span>
                                         </div>
-                                        <div class="col-md-6">
-                                            <div class="card bg-light">
-                                                <div class="card-body">
-                                                    <h6 class="card-title">Custom Roles</h6>
-                                                    <p class="card-text small text-muted">You can also use custom roles defined in your Entra ID application. Make sure the role names match exactly.</p>
-                                                </div>
-                                            </div>
-                                        </div>
+                                        <p class="mt-2">Loading permissions...</p>
                                     </div>
                                 }
                                 else
                                 {
-                                    <div class="alert alert-warning">
-                                        <h6 class="alert-heading">
-                                            <i class="bi bi-exclamation-triangle me-2"></i>
-                                            No Approval Required
-                                        </h6>
-                                        <p class="mb-0">Form submissions will be automatically applied to the database without approval. This is suitable for trusted users or non-critical data.</p>
-                                    </div>
+                                    <p class="text-muted mb-4">Configure which Entra ID app roles can perform specific operations on this form. Permissions are organized by category for easier management.</p>
+                                    
+                                    @if (_permissionsByCategory.Any())
+                                    {
+                                        <div class="row">
+                                            <div class="col-lg-3">
+                                                <!-- Role Selection -->
+                                                <div class="card bg-light">
+                                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                                        <h6 class="mb-0">Roles</h6>
+                                                        <button type="button" class="btn btn-outline-primary btn-sm" @onclick="ShowAddRoleModal">
+                                                            <i class="bi bi-plus"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div class="card-body p-2">
+                                                        @if (_isAddingRole)
+                                                        {
+                                                            <div class="card mb-2 border-primary">
+                                                                <div class="card-body p-2">
+                                                                    <div class="mb-2">
+                                                                        <input type="text" 
+                                                                               class="form-control form-control-sm" 
+                                                                               placeholder="Enter role name..."
+                                                                               @bind="_newRoleName"
+                                                                               @onkeypress="@(async (e) => { if (e.Key == "Enter") await AddNewRole(); })" />
+                                                                    </div>
+                                                                    <div class="d-flex gap-1">
+                                                                        <button type="button" class="btn btn-primary btn-sm flex-fill" @onclick="AddNewRole" disabled="@(string.IsNullOrWhiteSpace(_newRoleName))">
+                                                                            <i class="bi bi-check me-1"></i>Add
+                                                                        </button>
+                                                                        <button type="button" class="btn btn-secondary btn-sm flex-fill" @onclick="CancelAddRole">
+                                                                            <i class="bi bi-x me-1"></i>Cancel
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                        
+                                                        <div class="list-group list-group-flush">
+                                                            @foreach (var role in _availableRoles)
+                                                            {
+                                                                <div class="list-group-item list-group-item-action @(_selectedRole == role ? "active" : "") p-0">
+                                                                    <div class="d-flex align-items-center">
+                                                                        <button type="button" 
+                                                                                class="btn btn-link flex-fill text-start border-0 @(_selectedRole == role ? "text-white" : "")"
+                                                                                @onclick="() => SelectRole(role)">
+                                                                            <div class="d-flex justify-content-between align-items-center w-100">
+                                                                                <div>
+                                                                                    <strong>@role</strong>
+                                                                                    <br />
+                                                                                    <small class="@(_selectedRole == role ? "text-white-50" : "text-muted")">
+                                                                                        @GetRolePermissionSummary(role)
+                                                                                    </small>
+                                                                                </div>
+                                                                                @if (_selectedRole == role)
+                                                                                {
+                                                                                    <i class="bi bi-check-circle text-white"></i>
+                                                                                }
+                                                                            </div>
+                                                                        </button>
+                                                                        @if (CanDeleteRole(role))
+                                                                        {
+                                                                            <button type="button" 
+                                                                                    class="btn btn-sm btn-outline-danger me-2" 
+                                                                                    title="Remove role"
+                                                                                    @onclick="() => ConfirmDeleteRole(role)">
+                                                                                <i class="bi bi-trash"></i>
+                                                                            </button>
+                                                                        }
+                                                                    </div>
+                                                                </div>
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="col-lg-9">
+                                                @if (!string.IsNullOrEmpty(_selectedRole))
+                                                {
+                                                    <!-- Permission Categories -->
+                                                    <div class="row">
+                                                        @foreach (var category in _permissionsByCategory)
+                                                        {
+                                                            <div class="col-md-6 mb-4">
+                                                                <div class="card h-100">
+                                                                    <div class="card-header bg-white">
+                                                                        <h6 class="mb-0 @FormPermissionHelper.GetCategoryColorClass(category.Key)">
+                                                                            <i class="bi @FormPermissionHelper.GetCategoryIcon(category.Key) me-2"></i>
+                                                                            @category.Key
+                                                                        </h6>
+                                                                    </div>
+                                                                    <div class="card-body">
+                                                                        @foreach (var permission in category.Value)
+                                                                        {
+                                                                            var isGranted = GetPermissionState(_selectedRole, permission);
+                                                                            var isDangerous = FormPermissionHelper.IsDangerousPermission(permission);
+                                                                            var prerequisites = FormPermissionHelper.GetPrerequisitePermissions(permission);
+                                                                            var hasUnmetPrerequisites = prerequisites.Any(p => !GetPermissionState(_selectedRole, p));
+                                                                            
+                                                                            <div class="form-check mb-2">
+                                                                                <input class="form-check-input @(isDangerous ? "border-danger" : "")" 
+                                                                                       type="checkbox" 
+                                                                                       checked="@isGranted"
+                                                                                       disabled="@hasUnmetPrerequisites"
+                                                                                       @onchange="@((ChangeEventArgs e) => SetPermission(_selectedRole, permission, (bool)e.Value!))"
+                                                                                       id="perm_@(_selectedRole)_@((int)permission)" />
+                                                                                <label class="form-check-label @(hasUnmetPrerequisites ? "text-muted" : "")" 
+                                                                                       for="perm_@(_selectedRole)_@((int)permission)">
+                                                                                    <span class="@(isDangerous ? "text-danger fw-bold" : "")">
+                                                                                        @FormPermissionHelper.GetPermissionDescription(permission)
+                                                                                    </span>
+                                                                                    @if (isDangerous)
+                                                                                    {
+                                                                                        <i class="bi bi-exclamation-triangle text-danger ms-1" title="Dangerous permission - requires extra care"></i>
+                                                                                    }
+                                                                                    @if (hasUnmetPrerequisites)
+                                                                                    {
+                                                                                        <br />
+                                                                                        <small class="text-muted">
+                                                                                            Requires: @string.Join(", ", prerequisites.Select(p => FormPermissionHelper.GetPermissionDescription(p).Split(' ').Take(2).Aggregate((a, b) => a + " " + b)))
+                                                                                        </small>
+                                                                                    }
+                                                                                </label>
+                                                                            </div>
+                                                                        }
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <div class="text-center p-5 text-muted">
+                                                        <i class="bi bi-arrow-left" style="font-size: 3rem;"></i>
+                                                        <p class="mt-3">Select a role from the left to configure its permissions</p>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="text-center p-5">
+                                            <i class="bi bi-info-circle text-info" style="font-size: 3rem;"></i>
+                                            <p class="mt-3">No permissions have been configured yet. Save the form first to set up permissions.</p>
+                                        </div>
+                                    }
                                 }
                             </div>
                         </div>
@@ -615,9 +784,27 @@
     private bool _isDragOver = false;
     private string ActiveTab = "details"; // Default to Form Details tab
 
+    // Permission-related fields
+    private bool _isLoadingPermissions = false;
+    private List<string> _availableRoles = new();
+    private string _selectedRole = "";
+    private Dictionary<string, List<FormPermissionType>> _permissionsByCategory = new();
+    private Dictionary<string, Dictionary<FormPermissionType, bool>> _currentPermissions = new();
+    
+    // Role management fields
+    private bool _isAddingRole = false;
+    private string _newRoleName = "";
+
     private void SetActiveTab(string tab)
     {
         ActiveTab = tab;
+        
+        // Load permissions when switching to permissions tab
+        if (tab == "permissions" && FormId.HasValue)
+        {
+            _ = LoadFormPermissions();
+        }
+        
         StateHasChanged();
     }
 
@@ -625,6 +812,15 @@
     {
         try
         {
+            // Check for tab parameter in URL
+            var uri = new Uri(Navigation.Uri);
+            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+            var tabParam = query["tab"];
+            if (!string.IsNullOrEmpty(tabParam))
+            {
+                ActiveTab = tabParam;
+            }
+            
             // Load connection strings from configuration
             _connectionStrings = await DatabaseService.GetConnectionStringsAsync();
             
@@ -636,6 +832,9 @@
                 .Distinct()
                 .OrderBy(c => c)
                 .ToList();
+            
+            // Initialize permission-related data
+            _permissionsByCategory = FormPermissionHelper.GetPermissionsByCategory();
             
             if (FormId.HasValue)
             {
@@ -665,6 +864,20 @@
                         _tableColumns = await DatabaseService.GetTableColumnsAsync(_selectedConnectionString, _formDefinition.TableName);
                     }
                 }
+                
+                // Load permissions if we're on the permissions tab
+                if (ActiveTab == "permissions")
+                {
+                    await LoadFormPermissions();
+                }
+            }
+            else
+            {
+                // For new forms, initialize with default role
+                if (_availableRoles.Any())
+                {
+                    _selectedRole = _availableRoles.First();
+                }
             }
         }
         catch (Exception ex)
@@ -676,6 +889,284 @@
             _isLoading = false;
         }
     }
+
+    #region Permission Management Methods
+    
+    private async Task LoadFormPermissions()
+    {
+        if (!FormId.HasValue) return;
+        
+        try
+        {
+            _isLoadingPermissions = true;
+            StateHasChanged();
+            
+            // Load roles for this specific form
+            _availableRoles = await FormPermissionService.GetFormRolesAsync(FormId.Value);
+            
+            // If no roles exist yet, add default ones
+            if (!_availableRoles.Any())
+            {
+                var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+                var currentUser = authState.User?.Identity?.Name ?? "System";
+                
+                // Initialize default permissions which will create the default roles
+                await FormPermissionService.InitializeDefaultPermissionsAsync(FormId.Value, currentUser);
+                
+                // Reload roles after initialization
+                _availableRoles = await FormPermissionService.GetFormRolesAsync(FormId.Value);
+            }
+            
+            var permissions = await FormPermissionService.GetFormPermissionsAsync(FormId.Value);
+            
+            // Initialize permissions dictionary
+            _currentPermissions.Clear();
+            foreach (var role in _availableRoles)
+            {
+                _currentPermissions[role] = new Dictionary<FormPermissionType, bool>();
+                foreach (var permissionType in Enum.GetValues<FormPermissionType>())
+                {
+                    var permission = permissions.FirstOrDefault(p => p.RoleName == role && p.PermissionType == permissionType);
+                    _currentPermissions[role][permissionType] = permission?.IsGranted ?? false;
+                }
+            }
+            
+            // Select first role if none selected
+            if (string.IsNullOrEmpty(_selectedRole) && _availableRoles.Any())
+            {
+                _selectedRole = _availableRoles.First();
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error loading permissions: {ex.Message}");
+        }
+        finally
+        {
+            _isLoadingPermissions = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task SavePermissions()
+    {
+        if (!FormId.HasValue)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Please save the form first before configuring permissions.");
+            return;
+        }
+        
+        try
+        {
+            _isLoadingPermissions = true;
+            StateHasChanged();
+            
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var currentUser = authState.User?.Identity?.Name ?? "System";
+            
+            var result = await FormPermissionService.SetMultiplePermissionsAsync(FormId.Value, _currentPermissions, currentUser);
+            
+            if (result.IsSuccess)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Permissions saved successfully!");
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error saving permissions: {result.ErrorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error saving permissions: {ex.Message}");
+        }
+        finally
+        {
+            _isLoadingPermissions = false;
+            StateHasChanged();
+        }
+    }
+    
+    private void SelectRole(string roleName)
+    {
+        _selectedRole = roleName;
+        StateHasChanged();
+    }
+    
+    private bool GetPermissionState(string roleName, FormPermissionType permissionType)
+    {
+        if (_currentPermissions.TryGetValue(roleName, out var rolePermissions))
+        {
+            return rolePermissions.TryGetValue(permissionType, out var isGranted) && isGranted;
+        }
+        return false;
+    }
+    
+    private void SetPermission(string roleName, FormPermissionType permissionType, bool isGranted)
+    {
+        if (!_currentPermissions.ContainsKey(roleName))
+        {
+            _currentPermissions[roleName] = new Dictionary<FormPermissionType, bool>();
+        }
+        
+        _currentPermissions[roleName][permissionType] = isGranted;
+        
+        // Handle dependent permissions
+        if (!isGranted)
+        {
+            // If disabling a permission, also disable any dependent permissions
+            var dependentPermissions = FormPermissionHelper.GetDependentPermissions(permissionType);
+            foreach (var dependent in dependentPermissions)
+            {
+                _currentPermissions[roleName][dependent] = false;
+            }
+        }
+        else
+        {
+            // If enabling a permission, also enable any prerequisite permissions
+            var prerequisites = FormPermissionHelper.GetPrerequisitePermissions(permissionType);
+            foreach (var prerequisite in prerequisites)
+            {
+                _currentPermissions[roleName][prerequisite] = true;
+            }
+        }
+        
+        StateHasChanged();
+    }
+    
+    private string GetRolePermissionSummary(string roleName)
+    {
+        if (_currentPermissions.TryGetValue(roleName, out var permissions))
+        {
+            var grantedCount = permissions.Values.Count(v => v);
+            var totalCount = permissions.Count;
+            return $"{grantedCount}/{totalCount} permissions";
+        }
+        return "0 permissions";
+    }
+    
+    #endregion
+
+    #region Role Management Methods
+    
+    private void ShowAddRoleModal()
+    {
+        _isAddingRole = true;
+        _newRoleName = "";
+        StateHasChanged();
+    }
+    
+    private async Task AddNewRole()
+    {
+        if (string.IsNullOrWhiteSpace(_newRoleName) || !FormId.HasValue)
+            return;
+            
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var currentUser = authState.User?.Identity?.Name ?? "System";
+            
+            var result = await FormPermissionService.AddRoleToFormAsync(FormId.Value, _newRoleName.Trim(), currentUser);
+            
+            if (result.IsSuccess)
+            {
+                // Refresh the roles list
+                _availableRoles = await FormPermissionService.GetFormRolesAsync(FormId.Value);
+                
+                // Initialize permissions for the new role in the UI
+                if (!_currentPermissions.ContainsKey(_newRoleName.Trim()))
+                {
+                    _currentPermissions[_newRoleName.Trim()] = new Dictionary<FormPermissionType, bool>();
+                    foreach (var permissionType in Enum.GetValues<FormPermissionType>())
+                    {
+                        _currentPermissions[_newRoleName.Trim()][permissionType] = false;
+                    }
+                }
+                
+                // Select the new role
+                _selectedRole = _newRoleName.Trim();
+                
+                // Clear add role UI
+                _isAddingRole = false;
+                _newRoleName = "";
+                
+                StateHasChanged();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error adding role: {result.ErrorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error adding role: {ex.Message}");
+        }
+    }
+    
+    private void CancelAddRole()
+    {
+        _isAddingRole = false;
+        _newRoleName = "";
+        StateHasChanged();
+    }
+    
+    private bool CanDeleteRole(string roleName)
+    {
+        // Prevent deletion of core system roles
+        var protectedRoles = new[] { "Admin", "FormAdmin", "DataAdmin" };
+        return !protectedRoles.Contains(roleName);
+    }
+    
+    private async Task ConfirmDeleteRole(string roleName)
+    {
+        if (!CanDeleteRole(roleName))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Cannot delete system roles (Admin, FormAdmin, DataAdmin).");
+            return;
+        }
+        
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+            $"Are you sure you want to remove the '{roleName}' role from this form? This will delete all permissions for this role.");
+            
+        if (confirmed)
+        {
+            await DeleteRole(roleName);
+        }
+    }
+    
+    private async Task DeleteRole(string roleName)
+    {
+        if (!FormId.HasValue) return;
+        
+        try
+        {
+            var result = await FormPermissionService.RemoveRoleFromFormAsync(FormId.Value, roleName);
+            
+            if (result.IsSuccess)
+            {
+                // Remove from UI collections
+                _availableRoles.Remove(roleName);
+                _currentPermissions.Remove(roleName);
+                
+                // Select a different role if the deleted one was selected
+                if (_selectedRole == roleName)
+                {
+                    _selectedRole = _availableRoles.FirstOrDefault() ?? "";
+                }
+                
+                StateHasChanged();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error removing role: {result.ErrorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error removing role: {ex.Message}");
+        }
+    }
+    
+    #endregion
 
     private async Task OnTableChangedAsync()
     {
@@ -827,29 +1318,44 @@
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             var currentUser = authState.User?.Identity?.Name ?? "System";
             
-            if (!FormId.HasValue) // Creating new form
+            bool isNewForm = !FormId.HasValue;
+            
+            if (isNewForm) // Creating new form
             {
                 _formDefinition.CreatedAt = DateTime.Now;
                 _formDefinition.CreatedBy = currentUser;
+                var savedForm = await FormDefinitionService.CreateAsync(_formDefinition);
+                
+                // Initialize default permissions for the new form
+                if (savedForm?.Id > 0)
+                {
+                    FormId = savedForm.Id;
+                    _formDefinition = savedForm;
+                    await FormPermissionService.InitializeDefaultPermissionsAsync(savedForm.Id, currentUser);
+                    
+                    // Load the permissions for the UI
+                    await LoadFormPermissions();
+                }
             }
             else // Updating existing form
             {
                 _formDefinition.UpdatedAt = DateTime.Now;
                 _formDefinition.UpdatedBy = currentUser;
-            }
-            
-            if (FormId.HasValue)
-            {
                 await FormDefinitionService.UpdateAsync(_formDefinition);
-            }
-            else
-            {
-                await FormDefinitionService.CreateAsync(_formDefinition);
             }
             
             // Use a small delay to ensure the save operation completes before navigation
             await Task.Delay(100);
-            Navigation.NavigateTo("/admin/forms", forceLoad: true);
+            
+            if (isNewForm)
+            {
+                // For new forms, navigate to edit mode so user can configure permissions
+                Navigation.NavigateTo($"/admin/forms/builder/{FormId}?tab=permissions", forceLoad: true);
+            }
+            else
+            {
+                Navigation.NavigateTo("/admin/forms", forceLoad: true);
+            }
         }
         catch (Exception ex)
         {

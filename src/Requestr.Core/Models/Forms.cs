@@ -16,6 +16,9 @@ public class FormDefinition : AuditableEntity
     // Workflow system integration
     public int? WorkflowDefinitionId { get; set; }
     public WorkflowDefinition? WorkflowDefinition { get; set; }
+    
+    // Form-specific permissions
+    public List<FormPermission> FormPermissions { get; set; } = new();
 }
 
 public class FormField : BaseEntity
@@ -36,4 +39,45 @@ public class FormField : BaseEntity
     public string? VisibilityCondition { get; set; }
     public string? DropdownOptions { get; set; } // JSON array of options for select controls
     public int DisplayOrder { get; set; }
+}
+
+/// <summary>
+/// Represents granular permissions for a specific form
+/// </summary>
+public class FormPermission : AuditableEntity
+{
+    public int FormDefinitionId { get; set; }
+    public string RoleName { get; set; } = string.Empty;
+    public FormPermissionType PermissionType { get; set; }
+    public bool IsGranted { get; set; } = true;
+    public string? Conditions { get; set; } // JSON for advanced conditions (future use)
+    
+    // Navigation property
+    public FormDefinition? FormDefinition { get; set; }
+}
+
+/// <summary>
+/// Types of permissions that can be granted for a form
+/// </summary>
+public enum FormPermissionType
+{
+    // Request creation permissions
+    CreateRequest = 1,      // Can create new requests using the form
+    UpdateRequest = 2,      // Can update existing records via requests
+    DeleteRequest = 3,      // Can delete records via requests
+    
+    // Data view permissions
+    ViewData = 10,          // Can see the data view page
+    ViewDataDetails = 11,   // Can view detailed data records
+    
+    // Bulk operation permissions
+    BulkActions = 20,       // Can perform bulk actions from data view
+    BulkUploadCsv = 21,     // Can upload CSV files for bulk operations
+    BulkEditRecords = 22,   // Can edit multiple records at once
+    BulkDeleteRecords = 23, // Can delete multiple records at once
+    
+    // Administrative permissions
+    ViewAuditLog = 30,      // Can view audit logs for this form
+    ExportData = 31,        // Can export data from this form
+    ManageFormSettings = 32 // Can modify form settings (super admin only)
 }
