@@ -50,7 +50,7 @@ else
                             <ol class="breadcrumb">
                                 @if (_isFromApprovals)
                                 {
-                                    <li class="breadcrumb-item"><a href="/pending-approvals">Pending Approvals</a></li>
+                                    <li class="breadcrumb-item"><a href="/workflow-approvals">Workflow Approvals</a></li>
                                 }
                                 else
                                 {
@@ -63,7 +63,7 @@ else
                     <div>
                         @if (_isFromApprovals)
                         {
-                            <a href="/pending-approvals" class="btn btn-outline-secondary">
+                            <a href="/workflow-approvals" class="btn btn-outline-secondary">
                                 <i class="bi bi-arrow-left me-2"></i>
                                 Back to Approvals
                             </a>
@@ -209,6 +209,28 @@ else
                     </div>
                 </div>
 
+                <!-- Workflow Progress Section -->
+                @if (_bulkRequest.WorkflowInstanceId.HasValue)
+                {
+                    <div class="mb-4">
+                        <WorkflowProgressDisplay FormRequestId="@(_bulkRequest.FormRequests.FirstOrDefault()?.Id ?? 0)" 
+                                               ShowCompact="false" 
+                                               AutoLoad="true" />
+                    </div>
+                }
+                else
+                {
+                    <!-- Debug info -->
+                    <div class="alert alert-info mb-4">
+                        <h6>Debug Information:</h6>
+                        <p><strong>WorkflowInstanceId:</strong> @(_bulkRequest.WorkflowInstanceId?.ToString() ?? "NULL")</p>
+                        <p><strong>Form Definition ID:</strong> @_bulkRequest.FormDefinitionId</p>
+                        <p><strong>Form has WorkflowDefinitionId:</strong> @(_bulkRequest.FormDefinition?.WorkflowDefinitionId?.ToString() ?? "NULL")</p>
+                        <p><strong>First FormRequest ID:</strong> @(_bulkRequest.FormRequests.FirstOrDefault()?.Id.ToString() ?? "No FormRequests")</p>
+                        <p><strong>First FormRequest WorkflowInstanceId:</strong> @(_bulkRequest.FormRequests.FirstOrDefault()?.WorkflowInstanceId?.ToString() ?? "NULL")</p>
+                    </div>
+                }
+
                 <!-- Individual Requests -->
                 <div class="card">
                     <div class="card-header">
@@ -300,7 +322,7 @@ else
             }
             else
             {
-                Console.WriteLine($"Bulk request loaded successfully. Form Definition ID: {_bulkRequest.FormDefinitionId}, Status: {_bulkRequest.Status}");
+                Console.WriteLine($"Bulk request loaded successfully. Form Definition ID: {_bulkRequest.FormDefinitionId}, Status: {_bulkRequest.Status}, WorkflowInstanceId: {_bulkRequest.WorkflowInstanceId}");
             }
             
             // Check user permissions

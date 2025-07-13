@@ -4,9 +4,24 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
+using System.Linq;
 using System.Text.Json;
 
 namespace Requestr.Core.Services;
+
+// Helper class for workflow data application
+internal class FormRequestDataApplicationInfo
+{
+    public int Id { get; set; }
+    public int FormDefinitionId { get; set; }
+    public int RequestType { get; set; }
+    public int Status { get; set; }
+    public string? FieldValues { get; set; }
+    public string? OriginalValues { get; set; }
+    public string DatabaseConnectionName { get; set; } = string.Empty;
+    public string TableName { get; set; } = string.Empty;
+    public string Schema { get; set; } = string.Empty;
+}
 
 // Helper classes for database mapping
 internal class WorkflowStepDb : BaseEntity
@@ -773,27 +788,6 @@ public class WorkflowService : IWorkflowService
             _logger.LogInformation("Completed step {StepId} for workflow instance {InstanceId} by user {UserId} with action {Action}", 
                 stepId, workflowInstanceId, userId, action);
 
-            // Handle data application asynchronously after transaction commit to avoid blocking
-            if (action == WorkflowStepAction.Approved || action == WorkflowStepAction.Completed)
-            {
-                var nextStepId = await GetNextStepIdAsync(workflowInstanceId, stepId, fieldValues ?? new Dictionary<string, object?>());
-                if (string.IsNullOrEmpty(nextStepId)) // Workflow is complete
-                {
-                    // Start data application in background (fire and forget with proper error handling)
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            await ApplyWorkflowDataChangesAsync(workflowInstanceId, userId);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Background data application failed for workflow {WorkflowInstanceId}", workflowInstanceId);
-                        }
-                    });
-                }
-            }
-            
             return true;
         }
         catch (Exception ex)
@@ -1357,12 +1351,25 @@ public class WorkflowService : IWorkflowService
             _logger.LogInformation("Updating FormRequest status to Approved for workflow {WorkflowInstanceId}", workflowInstanceId);
             // Update request status to approved within the transaction
             await UpdateFormRequestToApprovedAsync(connection, transaction, workflowInstanceId, completedBy);
+            
+            // Start data application in background after transaction commit
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // Small delay to ensure transaction is committed
+                    await Task.Delay(100);
+                    await ApplyWorkflowDataChangesAsync(workflowInstanceId, completedBy);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Background data application failed for workflow {WorkflowInstanceId}", workflowInstanceId);
+                }
+            });
         }
 
         _logger.LogInformation("Completed workflow instance {WorkflowInstanceId} by user {UserId}. Approved: {WasApproved}", 
             workflowInstanceId, completedBy, wasApproved);
-        
-        // NOTE: Data application is now handled separately after transaction commit to avoid blocking
     }
 
     private async Task UpdateFormRequestToApprovedAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId, string approvedBy)
@@ -1536,11 +1543,11 @@ public class WorkflowService : IWorkflowService
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id 
                 WHERE fr.Id = @FormRequestId AND fr.Status = @Status";
 
-            var requestData = await connection.QuerySingleOrDefaultAsync(getRequestSql, new 
+            var requestData = await connection.QuerySingleOrDefaultAsync<FormRequestDataApplicationInfo>(getRequestSql, new 
             { 
                 FormRequestId = formRequestId,
                 Status = (int)RequestStatus.Approved 
-            }, commandTimeout: 30); // Reduce timeout to 30 seconds
+            }, commandTimeout: 30);
 
             if (requestData == null)
             {
@@ -1551,8 +1558,8 @@ public class WorkflowService : IWorkflowService
             _logger.LogInformation("Found form request {FormRequestId} for data application", formRequestId);
 
             // Parse field values and original values from JSON
-            var fieldValuesJson = requestData.FieldValues?.ToString() ?? "{}";
-            var originalValuesJson = requestData.OriginalValues?.ToString() ?? "{}";
+            var fieldValuesJson = requestData.FieldValues ?? "{}";
+            var originalValuesJson = requestData.OriginalValues ?? "{}";
             
             var fieldValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(fieldValuesJson) ?? new Dictionary<string, object?>();
             var originalValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(originalValuesJson) ?? new Dictionary<string, object?>();

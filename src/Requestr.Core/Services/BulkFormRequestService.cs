@@ -19,18 +19,21 @@ public class BulkFormRequestService : IBulkFormRequestService
     private readonly ILogger<BulkFormRequestService> _logger;
     private readonly IFormDefinitionService _formDefinitionService;
     private readonly IFormRequestService _formRequestService;
+    private readonly IWorkflowService _workflowService;
     private readonly string _connectionString;
 
     public BulkFormRequestService(
         IConfiguration configuration,
         ILogger<BulkFormRequestService> logger,
         IFormDefinitionService formDefinitionService,
-        IFormRequestService formRequestService)
+        IFormRequestService formRequestService,
+        IWorkflowService workflowService)
     {
         _configuration = configuration;
         _logger = logger;
         _formDefinitionService = formDefinitionService;
         _formRequestService = formRequestService;
+        _workflowService = workflowService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
     }
@@ -211,6 +214,13 @@ public class BulkFormRequestService : IBulkFormRequestService
         using var transaction = await connection.BeginTransactionAsync();
         try
         {
+            // Get form definition to check for workflow
+            var formDefinition = await _formDefinitionService.GetFormDefinitionAsync(createDto.FormDefinitionId);
+            if (formDefinition == null)
+            {
+                throw new InvalidOperationException("Form definition not found");
+            }
+
             var bulkRequest = new BulkFormRequest
             {
                 FormDefinitionId = createDto.FormDefinitionId,
@@ -228,7 +238,7 @@ public class BulkFormRequestService : IBulkFormRequestService
                 CreatedAt = DateTime.UtcNow
             };
 
-            // Create the bulk request
+            // Create the bulk request first (without workflow)
             var sql = @"
                 INSERT INTO BulkFormRequests (FormDefinitionId, RequestType, FileName, TotalRows, ValidRows, InvalidRows, SelectedRows, 
                                             RequestedBy, RequestedByName, RequestedAt, Comments, CreatedBy, CreatedAt)
@@ -255,7 +265,7 @@ public class BulkFormRequestService : IBulkFormRequestService
 
             bulkRequest.Id = bulkRequestId;
 
-            // Create individual form requests using the existing service
+            // Create individual form requests first
             foreach (var formRequestDto in createDto.FormRequests)
             {
                 var formRequest = new FormRequest
@@ -271,7 +281,7 @@ public class BulkFormRequestService : IBulkFormRequestService
                     BulkFormRequestId = bulkRequestId
                 };
 
-                // We need to create the form request with the bulk ID
+                // Create the form request with the bulk ID
                 var createFormRequestSql = @"
                     INSERT INTO FormRequests (FormDefinitionId, RequestType, FieldValues, OriginalValues, Status, 
                                             RequestedBy, RequestedByName, RequestedAt, Comments, BulkFormRequestId)
@@ -295,6 +305,59 @@ public class BulkFormRequestService : IBulkFormRequestService
 
                 formRequest.Id = formRequestId;
                 bulkRequest.FormRequests.Add(formRequest);
+            }
+
+            // Start workflow for bulk request if form has one
+            if (formDefinition.WorkflowDefinitionId.HasValue && bulkRequest.FormRequests.Any())
+            {
+                try
+                {
+                    // Use the first form request to start the workflow
+                    var firstFormRequest = bulkRequest.FormRequests.First();
+                    var workflowInstance = await _workflowService.StartWorkflowAsync(
+                        firstFormRequest.Id, 
+                        formDefinition.WorkflowDefinitionId.Value, 
+                        connection, 
+                        (SqlTransaction)transaction);
+
+                    // Update bulk request with workflow instance ID
+                    var updateBulkSql = @"
+                        UPDATE BulkFormRequests 
+                        SET WorkflowInstanceId = @WorkflowInstanceId 
+                        WHERE Id = @BulkRequestId";
+
+                    await connection.ExecuteAsync(updateBulkSql, new
+                    {
+                        WorkflowInstanceId = workflowInstance.Id,
+                        BulkRequestId = bulkRequestId
+                    }, transaction);
+
+                    // Update all form requests with workflow instance ID
+                    var updateFormRequestsSql = @"
+                        UPDATE FormRequests 
+                        SET WorkflowInstanceId = @WorkflowInstanceId 
+                        WHERE BulkFormRequestId = @BulkRequestId";
+
+                    await connection.ExecuteAsync(updateFormRequestsSql, new
+                    {
+                        WorkflowInstanceId = workflowInstance.Id,
+                        BulkRequestId = bulkRequestId
+                    }, transaction);
+
+                    bulkRequest.WorkflowInstanceId = workflowInstance.Id;
+                    foreach (var formRequest in bulkRequest.FormRequests)
+                    {
+                        formRequest.WorkflowInstanceId = workflowInstance.Id;
+                    }
+
+                    _logger.LogInformation("Started workflow instance {WorkflowInstanceId} for bulk request {BulkRequestId}", 
+                        workflowInstance.Id, bulkRequestId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to start workflow for bulk request {BulkRequestId}", bulkRequestId);
+                    // Continue without workflow - fallback to role-based approval
+                }
             }
 
             await transaction.CommitAsync();
@@ -478,14 +541,35 @@ public class BulkFormRequestService : IBulkFormRequestService
         using var connection = new SqlConnection(_connectionString);
         
         var rolesList = string.Join(",", userRoles.Select(r => $"'{r}'"));
+        
+        // Get both role-based and workflow-based bulk requests that need approval
         var sql = @"
-            SELECT bfr.*
+            SELECT DISTINCT bfr.*
             FROM BulkFormRequests bfr
             INNER JOIN FormDefinitions fd ON bfr.FormDefinitionId = fd.Id
+            LEFT JOIN WorkflowInstances wi ON bfr.WorkflowInstanceId = wi.Id
+            LEFT JOIN WorkflowStepInstances wsi ON wi.Id = wsi.WorkflowInstanceId 
+                AND wsi.Status = 0 -- Pending status
+            LEFT JOIN WorkflowSteps ws ON wsi.StepId = ws.Id
             WHERE bfr.Status = 0 AND bfr.RequestedBy != @UserId
-            AND EXISTS (
-                SELECT 1 FROM STRING_SPLIT(fd.ApproverRoles, ',') ar
-                WHERE ar.value IN (" + rolesList + @")
+            AND (
+                -- Role-based approval (legacy)
+                (bfr.WorkflowInstanceId IS NULL AND EXISTS (
+                    SELECT 1 FROM STRING_SPLIT(fd.ApproverRoles, ',') ar
+                    WHERE ar.value IN (" + rolesList + @")
+                ))
+                OR
+                -- Workflow-based approval (new)
+                (bfr.WorkflowInstanceId IS NOT NULL AND (
+                    -- User assigned to current step
+                    ws.AssignedUserId = @UserId
+                    OR
+                    -- User's role matches step role requirements
+                    EXISTS (
+                        SELECT 1 FROM STRING_SPLIT(ws.RequiredRoles, ',') sr
+                        WHERE sr.value IN (" + rolesList + @")
+                    )
+                ))
             )
             ORDER BY bfr.RequestedAt";
 

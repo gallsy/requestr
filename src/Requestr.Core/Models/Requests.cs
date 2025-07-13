@@ -71,6 +71,7 @@ public class BulkFormRequest : AuditableEntity
     public string? RejectionReason { get; set; }
     public string? Comments { get; set; }
     public string? ProcessingSummary { get; set; } // Summary of processing results
+    public int? WorkflowInstanceId { get; set; } // Link to workflow system
     public List<FormRequest> FormRequests { get; set; } = new();
     public List<BulkFormRequestHistory> History { get; set; } = new();
 }

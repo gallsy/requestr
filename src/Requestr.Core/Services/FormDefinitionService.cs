@@ -192,7 +192,7 @@ public class FormDefinitionService : IFormDefinitionService
 
             var sql = @"
                 SELECT fd.Id, fd.Name, fd.Description, fd.Category, fd.DatabaseConnectionName, fd.TableName, fd.[Schema], 
-                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
+                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, fd.WorkflowDefinitionId, fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.MaxLength, 
                        ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder
@@ -221,6 +221,7 @@ public class FormDefinitionService : IFormDefinitionService
                         Schema = (string)row.Schema,
                         RequiresApproval = (bool)row.RequiresApproval,
                         IsActive = (bool)row.IsActive,
+                        WorkflowDefinitionId = (int?)row.WorkflowDefinitionId,
                         CreatedAt = (DateTime)row.CreatedAt,
                         CreatedBy = (string)row.CreatedBy,
                         UpdatedAt = (DateTime?)row.UpdatedAt,
