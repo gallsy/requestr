@@ -381,7 +381,6 @@ else
         {
             WorkflowInstanceStatus.Completed => "success",
             WorkflowInstanceStatus.InProgress => "primary",
-            WorkflowInstanceStatus.Rejected => "danger",
             WorkflowInstanceStatus.Cancelled => "danger",
             WorkflowInstanceStatus.Failed => "danger",
             _ => "secondary"
@@ -394,7 +393,6 @@ else
         {
             WorkflowInstanceStatus.Completed => "success",
             WorkflowInstanceStatus.InProgress => "primary",
-            WorkflowInstanceStatus.Rejected => "danger",
             WorkflowInstanceStatus.Cancelled => "secondary",
             WorkflowInstanceStatus.Failed => "danger",
             _ => "secondary"
@@ -421,7 +419,7 @@ else
             WorkflowStepAction.Approved => "success",
             WorkflowStepAction.Rejected => "danger",
             WorkflowStepAction.Completed => "info",
-            WorkflowStepAction.Skipped => "warning",
+            WorkflowStepAction.None => "warning",
             _ => "secondary"
         };
     }

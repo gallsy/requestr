@@ -149,7 +149,7 @@ public class WorkflowDesignerService : IWorkflowDesignerService
         {
             step.WorkflowDefinitionId,
             step.StepId,
-            StepType = step.StepType.ToString(),
+            StepType = (int)step.StepType,
             step.Name,
             step.Description,
             AssignedRoles = JsonSerializer.Serialize(step.AssignedRoles),

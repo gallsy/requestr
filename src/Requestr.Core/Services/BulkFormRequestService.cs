@@ -239,7 +239,7 @@ public class BulkFormRequestService : IBulkFormRequestService
             var bulkRequestId = await connection.QuerySingleAsync<int>(sql, new
             {
                 FormDefinitionId = bulkRequest.FormDefinitionId,
-                RequestType = RequestTypeToString(bulkRequest.RequestType),
+                RequestType = (int)bulkRequest.RequestType,
                 FileName = bulkRequest.FileName,
                 TotalRows = bulkRequest.TotalRows,
                 ValidRows = bulkRequest.ValidRows,
@@ -282,7 +282,7 @@ public class BulkFormRequestService : IBulkFormRequestService
                 var formRequestId = await connection.QuerySingleAsync<int>(createFormRequestSql, new
                 {
                     FormDefinitionId = formRequest.FormDefinitionId,
-                    RequestType = RequestTypeToString(formRequest.RequestType),
+                    RequestType = (int)formRequest.RequestType,
                     FieldValues = JsonSerializer.Serialize(formRequest.FieldValues),
                     OriginalValues = JsonSerializer.Serialize(formRequest.OriginalValues),
                     Status = (int)formRequest.Status,
@@ -415,7 +415,7 @@ public class BulkFormRequestService : IBulkFormRequestService
                     // Parse RequestType from string
                     if (row.RequestType != null)
                     {
-                        formRequest.RequestType = ParseRequestType(row.RequestType.ToString());
+                        formRequest.RequestType = ParseRequestType(row.RequestType);
                     }
                     
                     formRequests.Add(formRequest);
@@ -666,24 +666,23 @@ public class BulkFormRequestService : IBulkFormRequestService
     }
 
     // Helper methods for enum conversion
-    private static string RequestTypeToString(RequestType requestType)
+    private static RequestType ParseRequestType(object requestType)
     {
-        return requestType switch
+        // Handle both string and integer inputs for backwards compatibility during migration
+        if (requestType is int intValue)
         {
-            RequestType.Insert => "INSERT",
-            RequestType.Update => "UPDATE",
-            RequestType.Delete => "DELETE",
-            _ => throw new ArgumentException($"Invalid RequestType: {requestType}")
-        };
-    }
-
-    private static RequestType ParseRequestType(string requestType)
-    {
-        return requestType?.ToUpper() switch
+            return (RequestType)intValue;
+        }
+        
+        var stringValue = requestType?.ToString();
+        return stringValue?.ToUpper() switch
         {
             "INSERT" => RequestType.Insert,
             "UPDATE" => RequestType.Update,
             "DELETE" => RequestType.Delete,
+            "0" => RequestType.Insert,
+            "1" => RequestType.Update,
+            "2" => RequestType.Delete,
             _ => throw new ArgumentException($"Invalid RequestType: {requestType}")
         };
     }

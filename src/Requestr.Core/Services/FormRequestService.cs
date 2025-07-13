@@ -45,54 +45,13 @@ public class FormRequestService : IFormRequestService
         };
     }
 
-    private static string RequestTypeToString(RequestType requestType)
-    {
-        return requestType switch
-        {
-            RequestType.Insert => "INSERT",
-            RequestType.Update => "UPDATE",
-            RequestType.Delete => "DELETE",
-            _ => throw new ArgumentException($"Invalid RequestType: {requestType}")
-        };
-    }
-
-    private static FormRequestChangeType ParseChangeType(string changeType)
-    {
-        return changeType?.ToUpper() switch
-        {
-            "CREATED" => FormRequestChangeType.Created,
-            "UPDATED" => FormRequestChangeType.Updated,
-            "STATUSCHANGED" => FormRequestChangeType.StatusChanged,
-            "APPROVED" => FormRequestChangeType.Approved,
-            "REJECTED" => FormRequestChangeType.Rejected,
-            "APPLIED" => FormRequestChangeType.Applied,
-            "FAILED" => FormRequestChangeType.Failed,
-            _ => throw new ArgumentException($"Invalid ChangeType: {changeType}")
-        };
-    }
-
-    private static string ChangeTypeToString(FormRequestChangeType changeType)
-    {
-        return changeType switch
-        {
-            FormRequestChangeType.Created => "Created",
-            FormRequestChangeType.Updated => "Updated",
-            FormRequestChangeType.StatusChanged => "StatusChanged",
-            FormRequestChangeType.Approved => "Approved",
-            FormRequestChangeType.Rejected => "Rejected",
-            FormRequestChangeType.Applied => "Applied",
-            FormRequestChangeType.Failed => "Failed",
-            _ => throw new ArgumentException($"Invalid ChangeType: {changeType}")
-        };
-    }
-
     private FormRequest CreateFormRequestFromRow(dynamic row)
     {
         return new FormRequest
         {
             Id = (int)row.Id,
             FormDefinitionId = (int)row.FormDefinitionId,
-            RequestType = ParseRequestType((string)row.RequestType),
+            RequestType = (RequestType)(int)row.RequestType,
             Status = (RequestStatus)(int)row.Status,
             RequestedBy = (string)row.RequestedBy,
             RequestedByName = (string)row.RequestedByName,
@@ -287,7 +246,7 @@ public class FormRequestService : IFormRequestService
             var id = await connection.QuerySingleAsync<int>(sql, new
             {
                 formRequest.FormDefinitionId,
-                RequestType = RequestTypeToString(formRequest.RequestType),
+                RequestType = (int)formRequest.RequestType,
                 FieldValues = JsonSerializer.Serialize(formRequest.FieldValues),
                 OriginalValues = JsonSerializer.Serialize(formRequest.OriginalValues),
                 Status = (int)formRequest.Status,
@@ -340,7 +299,7 @@ public class FormRequestService : IFormRequestService
                     { "RequestType", formRequest.RequestType },
                     { "FieldValues", formRequest.FieldValues },
                     { "OriginalValues", formRequest.OriginalValues },
-                    { "Status", formRequest.Status.ToString() },
+                    { "Status", (int)formRequest.Status },
                     { "Comments", formRequest.Comments },
                     { "WorkflowInstanceId", formRequest.WorkflowInstanceId }
                 },
@@ -383,7 +342,7 @@ public class FormRequestService : IFormRequestService
             await connection.ExecuteAsync(sql, new
             {
                 formRequest.Id,
-                RequestType = RequestTypeToString(formRequest.RequestType),
+                RequestType = (int)formRequest.RequestType,
                 FieldValues = JsonSerializer.Serialize(formRequest.FieldValues),
                 OriginalValues = JsonSerializer.Serialize(formRequest.OriginalValues),
                 Status = (int)formRequest.Status,
@@ -399,14 +358,14 @@ public class FormRequestService : IFormRequestService
             var previousValues = new Dictionary<string, object?>
             {
                 { "RequestType", currentRequest.RequestType },
-                { "Status", currentRequest.Status.ToString() },
+                { "Status", (int)currentRequest.Status },
                 { "Comments", currentRequest.Comments }
             };
 
             var newValues = new Dictionary<string, object?>
             {
                 { "RequestType", formRequest.RequestType },
-                { "Status", formRequest.Status.ToString() },
+                { "Status", (int)formRequest.Status },
                 { "Comments", formRequest.Comments }
             };
 
@@ -1132,7 +1091,7 @@ public class FormRequestService : IFormRequestService
                 {
                     Id = (int)row.Id,
                     FormRequestId = (int)row.FormRequestId,
-                    ChangeType = ParseChangeType((string)row.ChangeType),
+                    ChangeType = (FormRequestChangeType)(int)row.ChangeType,
                     PreviousValues = JsonSerializer.Deserialize<Dictionary<string, object?>>((string)(row.PreviousValuesJson ?? "{}")) ?? new Dictionary<string, object?>(),
                     NewValues = JsonSerializer.Deserialize<Dictionary<string, object?>>((string)(row.NewValuesJson ?? "{}")) ?? new Dictionary<string, object?>(),
                     ChangedBy = (string)row.ChangedBy,
@@ -1167,7 +1126,7 @@ public class FormRequestService : IFormRequestService
             var id = await connection.QuerySingleAsync<int>(sql, new
             {
                 history.FormRequestId,
-                ChangeType = ChangeTypeToString(history.ChangeType),
+                ChangeType = (int)history.ChangeType,
                 PreviousValues = JsonSerializer.Serialize(history.PreviousValues),
                 NewValues = JsonSerializer.Serialize(history.NewValues),
                 history.ChangedBy,
@@ -1215,7 +1174,7 @@ public class FormRequestService : IFormRequestService
         await connection.ExecuteAsync(sql, new
         {
             FormRequestId = formRequestId,
-            ChangeType = changeType.ToString(),
+            ChangeType = (int)changeType,
             PreviousValues = JsonSerializer.Serialize(previousValues ?? new Dictionary<string, object?>()),
             NewValues = JsonSerializer.Serialize(newValues ?? new Dictionary<string, object?>()),
             ChangedBy = changedBy,
@@ -1625,7 +1584,7 @@ public class FormRequestService : IFormRequestService
                 ORDER BY fr.RequestedAt DESC";
 
             var parameters = new DynamicParameters();
-            parameters.Add("ApprovalStepType", WorkflowStepType.Approval.ToString());
+            parameters.Add("ApprovalStepType", (int)WorkflowStepType.Approval);
             parameters.Add("PendingStatus", (int)WorkflowStepInstanceStatus.Pending);
             parameters.Add("InProgressStatus", (int)WorkflowStepInstanceStatus.InProgress);
             parameters.Add("CompletedStatus", (int)WorkflowStepInstanceStatus.Completed);
@@ -1793,6 +1752,228 @@ public class FormRequestService : IFormRequestService
         {
             _logger.LogError(ex, "Error getting completed workflow steps for form request {FormRequestId}", formRequestId);
             throw;
+        }
+    }
+
+    // Workflow diagnostics methods
+    public async Task<List<FormRequest>> GetRequestsWithCompletedWorkflowsButNotAppliedAsync()
+    {
+        try
+        {
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            // Find requests that have completed workflows but are still in Approved status (not Applied)
+            var sql = @"
+                SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
+                       fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
+                       fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
+                       fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
+                       fd.Name as FormName, fd.Description as FormDescription,
+                       wi.Status as WorkflowStatus, wi.CompletedAt as WorkflowCompletedAt
+                FROM FormRequests fr
+                INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+                INNER JOIN WorkflowInstances wi ON fr.WorkflowInstanceId = wi.Id
+                WHERE wi.Status = @WorkflowCompletedStatus
+                  AND fr.Status = @ApprovedStatus
+                ORDER BY fr.RequestedAt DESC";
+
+            var requests = await connection.QueryAsync(sql, new 
+            { 
+                WorkflowCompletedStatus = (int)WorkflowInstanceStatus.Completed,
+                ApprovedStatus = (int)RequestStatus.Approved
+            });
+
+            var result = new List<FormRequest>();
+
+            foreach (var row in requests)
+            {
+                var request = CreateFormRequestFromRow(row);
+                result.Add(request);
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting requests with completed workflows but not applied");
+            throw;
+        }
+    }
+
+    public async Task<int> ProcessStuckWorkflowRequestsAsync(string processedBy)
+    {
+        try
+        {
+            var stuckRequests = await GetRequestsWithCompletedWorkflowsButNotAppliedAsync();
+            int processedCount = 0;
+
+            _logger.LogInformation("Found {Count} requests with completed workflows that need to be applied", stuckRequests.Count);
+
+            foreach (var request in stuckRequests)
+            {
+                try
+                {
+                    _logger.LogInformation("Processing stuck workflow request {RequestId}", request.Id);
+                    
+                    // Try to apply the request
+                    var success = await ManuallyApplyApprovedRequestAsync(request.Id);
+                    
+                    if (success)
+                    {
+                        processedCount++;
+                        _logger.LogInformation("Successfully processed stuck workflow request {RequestId}", request.Id);
+                        
+                        // Record the manual processing in history
+                        await RecordChangeAsync(
+                            request.Id,
+                            FormRequestChangeType.Applied,
+                            new Dictionary<string, object?> { { "Status", "Approved" }, { "ProcessedManually", true } },
+                            new Dictionary<string, object?> { { "Status", "Applied" }, { "ProcessedBy", processedBy } },
+                            processedBy,
+                            processedBy,
+                            "Request manually processed after workflow completion"
+                        );
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Failed to process stuck workflow request {RequestId}", request.Id);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error processing stuck workflow request {RequestId}", request.Id);
+                }
+            }
+
+            _logger.LogInformation("Processed {ProcessedCount} out of {TotalCount} stuck workflow requests", processedCount, stuckRequests.Count);
+            return processedCount;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing stuck workflow requests");
+            throw;
+        }
+    }
+
+    public async Task<string> GetWorkflowDiagnosticsAsync(int formRequestId)
+    {
+        try
+        {
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var diagnostics = new List<string>();
+
+            // Get form request details
+            var formRequest = await GetFormRequestAsync(formRequestId);
+            if (formRequest == null)
+            {
+                return "Form request not found.";
+            }
+
+            diagnostics.Add($"Form Request {formRequestId} Diagnostics:");
+            diagnostics.Add($"  Status: {formRequest.Status}");
+            diagnostics.Add($"  Requested At: {formRequest.RequestedAt}");
+            diagnostics.Add($"  Workflow Instance ID: {formRequest.WorkflowInstanceId}");
+
+            if (formRequest.WorkflowInstanceId.HasValue)
+            {
+                // Get workflow instance details
+                var workflowSql = @"
+                    SELECT wi.*, wd.Name as WorkflowName
+                    FROM WorkflowInstances wi
+                    INNER JOIN WorkflowDefinitions wd ON wi.WorkflowDefinitionId = wd.Id
+                    WHERE wi.Id = @WorkflowInstanceId";
+
+                var workflowData = await connection.QueryFirstOrDefaultAsync(workflowSql, new { WorkflowInstanceId = formRequest.WorkflowInstanceId });
+                
+                if (workflowData != null)
+                {
+                    diagnostics.Add($"  Workflow: {workflowData.WorkflowName}");
+                    
+                    // Safely convert the status
+                    var statusValue = workflowData.Status;
+                    string statusName;
+                    if (int.TryParse(statusValue?.ToString(), out int statusInt))
+                    {
+                        statusName = Enum.GetName(typeof(WorkflowInstanceStatus), statusInt) ?? statusValue?.ToString() ?? "Unknown";
+                    }
+                    else
+                    {
+                        statusName = statusValue?.ToString() ?? "Unknown";
+                    }
+                    
+                    diagnostics.Add($"  Workflow Status: {statusName}");
+                    diagnostics.Add($"  Current Step: {workflowData.CurrentStepId}");
+                    diagnostics.Add($"  Started At: {workflowData.StartedAt}");
+                    diagnostics.Add($"  Completed At: {workflowData.CompletedAt}");
+
+                    // Get workflow step instances
+                    var stepsSql = @"
+                        SELECT wsi.*, ws.Name as StepName, ws.StepType
+                        FROM WorkflowStepInstances wsi
+                        INNER JOIN WorkflowSteps ws ON wsi.StepId = ws.StepId AND ws.WorkflowDefinitionId = @WorkflowDefinitionId
+                        WHERE wsi.WorkflowInstanceId = @WorkflowInstanceId
+                        ORDER BY wsi.StartedAt";
+
+                    var steps = await connection.QueryAsync(stepsSql, new 
+                    { 
+                        WorkflowInstanceId = formRequest.WorkflowInstanceId,
+                        WorkflowDefinitionId = workflowData.WorkflowDefinitionId
+                    });
+
+                    diagnostics.Add("  Workflow Steps:");
+                    foreach (var step in steps)
+                    {
+                        // Safely convert the step status
+                        var stepStatusValue = step.Status;
+                        string stepStatusName;
+                        if (int.TryParse(stepStatusValue?.ToString(), out int stepStatusInt))
+                        {
+                            stepStatusName = Enum.GetName(typeof(WorkflowStepInstanceStatus), stepStatusInt) ?? stepStatusValue?.ToString() ?? "Unknown";
+                        }
+                        else
+                        {
+                            stepStatusName = stepStatusValue?.ToString() ?? "Unknown";
+                        }
+                        
+                        diagnostics.Add($"    - {step.StepName} ({step.StepType}): {stepStatusName}");
+                        if (step.CompletedAt != null)
+                        {
+                            diagnostics.Add($"      Completed: {step.CompletedAt} by {step.CompletedByName}");
+                        }
+                        if (!string.IsNullOrEmpty(step.Comments))
+                        {
+                            diagnostics.Add($"      Comments: {step.Comments}");
+                        }
+                    }
+                }
+            }
+
+            // Check for any issues
+            diagnostics.Add("  Potential Issues:");
+            if (formRequest.WorkflowInstanceId.HasValue && formRequest.Status == RequestStatus.Approved)
+            {
+                var workflowProgress = await _workflowService.GetWorkflowProgressAsync(formRequestId);
+                if (workflowProgress?.Status == WorkflowInstanceStatus.Completed)
+                {
+                    diagnostics.Add("    - Workflow is complete but request is not applied to database");
+                    diagnostics.Add("    - This request should be processed manually");
+                }
+            }
+
+            if (!string.IsNullOrEmpty(formRequest.FailureMessage))
+            {
+                diagnostics.Add($"    - Failure Message: {formRequest.FailureMessage}");
+            }
+
+            return string.Join(Environment.NewLine, diagnostics);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting workflow diagnostics for form request {FormRequestId}", formRequestId);
+            return $"Error getting diagnostics: {ex.Message}";
         }
     }
 }

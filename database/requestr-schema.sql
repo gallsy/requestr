@@ -117,7 +117,7 @@ BEGIN
     CREATE TABLE FormRequests (
         Id int IDENTITY(1,1) PRIMARY KEY,
         FormDefinitionId int NOT NULL,
-        RequestType nvarchar(50) NOT NULL, -- INSERT, UPDATE, DELETE
+        RequestType int NOT NULL, -- 0=Insert, 1=Update, 2=Delete
         FieldValues nvarchar(max) NOT NULL, -- JSON
         OriginalValues nvarchar(max) NULL, -- JSON for UPDATE/DELETE operations
         Status int NOT NULL DEFAULT 0, -- 0=Pending, 1=Approved, 2=Rejected, 3=Applied, 4=Failed
@@ -133,6 +133,7 @@ BEGIN
         FailureMessage nvarchar(max) NULL,   -- Added from add-applied-record-key.sql
         FOREIGN KEY (FormDefinitionId) REFERENCES FormDefinitions(Id),
         INDEX IX_FormRequests_Status (Status),
+        INDEX IX_FormRequests_RequestType (RequestType),
         INDEX IX_FormRequests_RequestedBy (RequestedBy),
         INDEX IX_FormRequests_FormDefinitionId (FormDefinitionId),
         INDEX IX_FormRequests_RequestedAt (RequestedAt),
@@ -181,7 +182,7 @@ BEGIN
     CREATE TABLE FormRequestHistory (
         Id int IDENTITY(1,1) PRIMARY KEY,
         FormRequestId int NOT NULL,
-        ChangeType nvarchar(50) NOT NULL, -- Created, Updated, StatusChanged, Approved, Rejected, Applied
+        ChangeType int NOT NULL, -- 0=Created, 1=Updated, 2=StatusChanged, 3=Approved, 4=Rejected, 5=Applied, 6=Failed
         PreviousValues nvarchar(max) NULL, -- JSON of previous values
         NewValues nvarchar(max) NULL, -- JSON of new values
         ChangedBy nvarchar(255) NOT NULL,

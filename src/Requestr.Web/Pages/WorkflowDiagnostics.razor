@@ -1,0 +1,420 @@
+@page "/workflow-diagnostics"
+@using Microsoft.AspNetCore.Components.Authorization
+@using Requestr.Core.Models
+@using Requestr.Core.Interfaces
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@inject IFormRequestService FormRequestService
+@inject IWorkflowService WorkflowService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<WorkflowDiagnostics> Logger
+@attribute [Authorize]
+
+<PageTitle>Workflow Diagnostics - Requestr</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="display-5">
+                        <i class="bi bi-tools me-3 text-warning"></i>
+                        Workflow Diagnostics
+                    </h1>
+                    <p class="lead">Identify and fix workflow completion issues</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary" @onclick="RefreshData">
+                        <i class="bi bi-arrow-clockwise me-1"></i>
+                        Refresh
+                    </button>
+                    <button class="btn btn-success" @onclick="ProcessAllStuckRequests" disabled="@IsProcessing">
+                        <i class="bi bi-gear-fill me-1"></i>
+                        @if (IsProcessing)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                            <text>Processing...</text>
+                        }
+                        else
+                        {
+                            <text>Fix All Issues</text>
+                        }
+                    </button>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(StatusMessage))
+            {
+                <div class="alert @GetAlertClass() alert-dismissible fade show" role="alert">
+                    <i class="bi @GetAlertIcon() me-2"></i>
+                    @StatusMessage
+                    <button type="button" class="btn-close" @onclick="ClearStatusMessage"></button>
+                </div>
+            }
+
+            <!-- Summary Cards -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card text-white bg-warning">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h5 class="card-title">Stuck Requests</h5>
+                                    <h2 class="mb-0">@(StuckRequests?.Count ?? 0)</h2>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="bi bi-exclamation-triangle-fill fs-1"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card text-white bg-info">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h5 class="card-title">Approved Requests</h5>
+                                    <h2 class="mb-0">@ApprovedCount</h2>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="bi bi-check-circle-fill fs-1"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card text-white bg-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h5 class="card-title">Applied Requests</h5>
+                                    <h2 class="mb-0">@AppliedCount</h2>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="bi bi-database-fill fs-1"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stuck Requests Table -->
+            @if (StuckRequests?.Any() == true)
+            {
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="bi bi-exclamation-triangle text-warning me-2"></i>
+                            Requests with Completed Workflows (Not Applied)
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Form</th>
+                                        <th>Type</th>
+                                        <th>Requested By</th>
+                                        <th>Requested At</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var request in StuckRequests)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <strong>#@request.Id</strong>
+                                            </td>
+                                            <td>
+                                                <div class="d-flex align-items-center">
+                                                    <i class="bi bi-file-earmark-text text-primary me-2"></i>
+                                                    @request.FormDefinition?.Name
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span class="badge @GetRequestTypeBadgeClass(request.RequestType)">
+                                                    @request.RequestType
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div>
+                                                    <strong>@request.RequestedByName</strong>
+                                                    <br />
+                                                    <small class="text-muted">@request.RequestedBy</small>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div>
+                                                    @request.RequestedAt.ToString("MMM dd, yyyy")
+                                                    <br />
+                                                    <small class="text-muted">@request.RequestedAt.ToString("HH:mm")</small>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span class="badge @GetStatusBadgeClass(request.Status)">
+                                                    @request.Status
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div class="btn-group" role="group">
+                                                    <button class="btn btn-sm btn-outline-primary" @onclick="() => ShowDiagnostics(request.Id)">
+                                                        <i class="bi bi-info-circle me-1"></i>
+                                                        Diagnose
+                                                    </button>
+                                                    <button class="btn btn-sm btn-success" @onclick="() => ProcessSingleRequest(request.Id)" disabled="@IsProcessing">
+                                                        <i class="bi bi-gear me-1"></i>
+                                                        Fix
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+            else if (HasLoaded)
+            {
+                <div class="card">
+                    <div class="card-body text-center py-5">
+                        <i class="bi bi-check-circle-fill text-success display-1 mb-3"></i>
+                        <h4>No Workflow Issues Found</h4>
+                        <p class="text-muted">All workflows are completing successfully and applying data changes.</p>
+                    </div>
+                </div>
+            }
+
+            <!-- Diagnostics Modal -->
+            @if (ShowDiagnosticsModal && !string.IsNullOrEmpty(DiagnosticsText))
+            {
+                <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    Request Diagnostics - #@SelectedRequestId
+                                </h5>
+                                <button type="button" class="btn-close" @onclick="CloseDiagnosticsModal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <pre class="bg-light p-3 rounded" style="white-space: pre-wrap; font-family: 'Courier New', monospace;">@DiagnosticsText</pre>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" @onclick="CloseDiagnosticsModal">Close</button>
+                                <button type="button" class="btn btn-success" @onclick="() => ProcessSingleRequest(SelectedRequestId)" disabled="@IsProcessing">
+                                    <i class="bi bi-gear me-1"></i>
+                                    Fix This Request
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<FormRequest>? StuckRequests;
+    private int ApprovedCount = 0;
+    private int AppliedCount = 0;
+    private bool HasLoaded = false;
+    private bool IsProcessing = false;
+    private string? StatusMessage;
+    private bool IsSuccess = false;
+    private bool ShowDiagnosticsModal = false;
+    private string? DiagnosticsText;
+    private int SelectedRequestId = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshData();
+    }
+
+    private async Task RefreshData()
+    {
+        try
+        {
+            HasLoaded = false;
+            StateHasChanged();
+
+            // Get stuck requests (completed workflows but not applied)
+            StuckRequests = await FormRequestService.GetRequestsWithCompletedWorkflowsButNotAppliedAsync();
+
+            // Get approved but not applied count for context
+            var approvedIds = await FormRequestService.GetApprovedButNotAppliedRequestIdsAsync();
+            ApprovedCount = approvedIds.Count;
+
+            // For applied count, we need to get all requests and filter
+            var allRequests = await FormRequestService.GetFormRequestsAsync();
+            AppliedCount = allRequests.Count(r => r.Status == RequestStatus.Applied);
+
+            HasLoaded = true;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing workflow diagnostics data");
+            StatusMessage = $"Error loading data: {ex.Message}";
+            IsSuccess = false;
+            HasLoaded = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ProcessAllStuckRequests()
+    {
+        if (IsProcessing) return;
+
+        try
+        {
+            IsProcessing = true;
+            StatusMessage = null;
+            StateHasChanged();
+
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            var userId = user?.Identity?.Name ?? "System";
+
+            var processedCount = await FormRequestService.ProcessStuckWorkflowRequestsAsync(userId);
+
+            StatusMessage = $"Successfully processed {processedCount} stuck workflow request(s).";
+            IsSuccess = true;
+
+            // Refresh data to show updated status
+            await RefreshData();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error processing stuck workflow requests");
+            StatusMessage = $"Error processing requests: {ex.Message}";
+            IsSuccess = false;
+        }
+        finally
+        {
+            IsProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ProcessSingleRequest(int requestId)
+    {
+        if (IsProcessing) return;
+
+        try
+        {
+            IsProcessing = true;
+            StatusMessage = null;
+            StateHasChanged();
+
+            var success = await FormRequestService.ManuallyApplyApprovedRequestAsync(requestId);
+
+            if (success)
+            {
+                StatusMessage = $"Successfully processed request #{requestId}.";
+                IsSuccess = true;
+
+                // Close diagnostics modal if open
+                if (ShowDiagnosticsModal && SelectedRequestId == requestId)
+                {
+                    CloseDiagnosticsModal();
+                }
+
+                // Refresh data to show updated status
+                await RefreshData();
+            }
+            else
+            {
+                StatusMessage = $"Failed to process request #{requestId}. Check the logs for details.";
+                IsSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error processing single request {RequestId}", requestId);
+            StatusMessage = $"Error processing request #{requestId}: {ex.Message}";
+            IsSuccess = false;
+        }
+        finally
+        {
+            IsProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ShowDiagnostics(int requestId)
+    {
+        try
+        {
+            SelectedRequestId = requestId;
+            DiagnosticsText = await FormRequestService.GetWorkflowDiagnosticsAsync(requestId);
+            ShowDiagnosticsModal = true;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error getting diagnostics for request {RequestId}", requestId);
+            StatusMessage = $"Error getting diagnostics: {ex.Message}";
+            IsSuccess = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseDiagnosticsModal()
+    {
+        ShowDiagnosticsModal = false;
+        DiagnosticsText = null;
+        SelectedRequestId = 0;
+        StateHasChanged();
+    }
+
+    private void ClearStatusMessage()
+    {
+        StatusMessage = null;
+        StateHasChanged();
+    }
+
+    private string GetAlertClass()
+    {
+        return IsSuccess ? "alert-success" : "alert-danger";
+    }
+
+    private string GetAlertIcon()
+    {
+        return IsSuccess ? "bi-check-circle-fill" : "bi-exclamation-triangle-fill";
+    }
+
+    private string GetStatusBadgeClass(RequestStatus status)
+    {
+        return status switch
+        {
+            RequestStatus.Pending => "bg-warning text-dark",
+            RequestStatus.Approved => "bg-info text-white",
+            RequestStatus.Applied => "bg-success text-white",
+            RequestStatus.Rejected => "bg-danger text-white",
+            RequestStatus.Failed => "bg-dark text-white",
+            _ => "bg-secondary text-white"
+        };
+    }
+
+    private string GetRequestTypeBadgeClass(RequestType requestType)
+    {
+        return requestType switch
+        {
+            RequestType.Insert => "bg-success text-white",
+            RequestType.Update => "bg-primary text-white",
+            RequestType.Delete => "bg-danger text-white",
+            _ => "bg-secondary text-white"
+        };
+    }
+}

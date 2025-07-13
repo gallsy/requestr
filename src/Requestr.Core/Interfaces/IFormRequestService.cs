@@ -35,4 +35,9 @@ public interface IFormRequestService
     Task<List<WorkflowStepInstance>> GetCompletedWorkflowStepsAsync(int formRequestId);
     Task<List<int>> GetApprovedButNotAppliedRequestIdsAsync();
     Task<bool> ManuallyApplyApprovedRequestAsync(int id);
+    
+    // Workflow diagnostics - new methods
+    Task<List<FormRequest>> GetRequestsWithCompletedWorkflowsButNotAppliedAsync();
+    Task<int> ProcessStuckWorkflowRequestsAsync(string processedBy);
+    Task<string> GetWorkflowDiagnosticsAsync(int formRequestId);
 }

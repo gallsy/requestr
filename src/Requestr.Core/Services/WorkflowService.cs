@@ -613,13 +613,13 @@ public class WorkflowService : IWorkflowService
                 Id = stepData.Id,
                 WorkflowInstanceId = stepData.WorkflowInstanceId,
                 StepId = stepData.StepId,
-                Status = ParseWorkflowStepInstanceStatus(stepData.Status),
+                Status = (WorkflowStepInstanceStatus)(int)stepData.Status,
                 AssignedTo = stepData.AssignedTo,
                 StartedAt = stepData.StartedAt,
                 CompletedAt = stepData.CompletedAt,
                 CompletedBy = stepData.CompletedBy,
                 CompletedByName = stepData.CompletedByName,
-                Action = ParseWorkflowStepAction(stepData.Action),
+                Action = stepData.Action != null ? (WorkflowStepAction)(int)stepData.Action : null,
                 Comments = stepData.Comments,
                 FieldValues = !string.IsNullOrEmpty(stepData.FieldValues) 
                     ? JsonSerializer.Deserialize<Dictionary<string, object?>>(stepData.FieldValues) ?? new Dictionary<string, object?>() 
@@ -772,6 +772,27 @@ public class WorkflowService : IWorkflowService
             
             _logger.LogInformation("Completed step {StepId} for workflow instance {InstanceId} by user {UserId} with action {Action}", 
                 stepId, workflowInstanceId, userId, action);
+
+            // Handle data application asynchronously after transaction commit to avoid blocking
+            if (action == WorkflowStepAction.Approved || action == WorkflowStepAction.Completed)
+            {
+                var nextStepId = await GetNextStepIdAsync(workflowInstanceId, stepId, fieldValues ?? new Dictionary<string, object?>());
+                if (string.IsNullOrEmpty(nextStepId)) // Workflow is complete
+                {
+                    // Start data application in background (fire and forget with proper error handling)
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await ApplyWorkflowDataChangesAsync(workflowInstanceId, userId);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Background data application failed for workflow {WorkflowInstanceId}", workflowInstanceId);
+                        }
+                    });
+                }
+            }
             
             return true;
         }
@@ -878,13 +899,13 @@ public class WorkflowService : IWorkflowService
                 Id = currentStepData.Id,
                 WorkflowInstanceId = currentStepData.WorkflowInstanceId,
                 StepId = currentStepData.StepId,
-                Status = ParseWorkflowStepInstanceStatus(currentStepData.Status),
+                Status = ParseWorkflowStepInstanceStatusFromObject(currentStepData.Status),
                 AssignedTo = currentStepData.AssignedTo,
                 StartedAt = currentStepData.StartedAt,
                 CompletedAt = currentStepData.CompletedAt,
                 CompletedBy = currentStepData.CompletedBy,
                 CompletedByName = currentStepData.CompletedByName,
-                Action = ParseWorkflowStepAction(currentStepData.Action),
+                Action = ParseWorkflowStepActionFromObject(currentStepData.Action),
                 Comments = currentStepData.Comments,
                 FieldValues = !string.IsNullOrEmpty(currentStepData.FieldValues) 
                     ? JsonSerializer.Deserialize<Dictionary<string, object?>>(currentStepData.FieldValues) ?? new Dictionary<string, object?>() 
@@ -916,13 +937,13 @@ public class WorkflowService : IWorkflowService
                 Id = inProgressStepData.Id,
                 WorkflowInstanceId = inProgressStepData.WorkflowInstanceId,
                 StepId = inProgressStepData.StepId,
-                Status = ParseWorkflowStepInstanceStatus(inProgressStepData.Status),
+                Status = (WorkflowStepInstanceStatus)(int)inProgressStepData.Status,
                 AssignedTo = inProgressStepData.AssignedTo,
                 StartedAt = inProgressStepData.StartedAt,
                 CompletedAt = inProgressStepData.CompletedAt,
                 CompletedBy = inProgressStepData.CompletedBy,
                 CompletedByName = inProgressStepData.CompletedByName,
-                Action = ParseWorkflowStepAction(inProgressStepData.Action),
+                Action = inProgressStepData.Action != null ? (WorkflowStepAction)(int)inProgressStepData.Action : null,
                 Comments = inProgressStepData.Comments,
                 FieldValues = !string.IsNullOrEmpty(inProgressStepData.FieldValues) 
                     ? JsonSerializer.Deserialize<Dictionary<string, object?>>(inProgressStepData.FieldValues) ?? new Dictionary<string, object?>() 
@@ -952,13 +973,13 @@ public class WorkflowService : IWorkflowService
             Id = data.Id,
             WorkflowInstanceId = data.WorkflowInstanceId,
             StepId = data.StepId,
-            Status = ParseWorkflowStepInstanceStatus(data.Status),
+            Status = (WorkflowStepInstanceStatus)(int)data.Status,
             AssignedTo = data.AssignedTo,
             StartedAt = data.StartedAt,
             CompletedAt = data.CompletedAt,
             CompletedBy = data.CompletedBy,
             CompletedByName = data.CompletedByName,
-            Action = ParseWorkflowStepAction(data.Action),
+            Action = data.Action != null ? (WorkflowStepAction)(int)data.Action : null,
             Comments = data.Comments,
             FieldValues = !string.IsNullOrEmpty(data.FieldValues) 
                 ? JsonSerializer.Deserialize<Dictionary<string, object?>>(data.FieldValues) ?? new Dictionary<string, object?>() 
@@ -1140,7 +1161,7 @@ public class WorkflowService : IWorkflowService
         {
             step.WorkflowDefinitionId,
             step.StepId,
-            StepType = step.StepType.ToString(),
+            StepType = (int)step.StepType,
             step.Name,
             step.Description,
             AssignedRoles = JsonSerializer.Serialize(step.AssignedRoles),
@@ -1333,13 +1354,49 @@ public class WorkflowService : IWorkflowService
         
         if (wasApproved)
         {
-            _logger.LogInformation("Calling ApproveAndApplyFormRequestAsync for workflow {WorkflowInstanceId}", workflowInstanceId);
-            // Update request status to approved and apply the form request
-            await ApproveAndApplyFormRequestAsync(connection, transaction, workflowInstanceId, completedBy);
+            _logger.LogInformation("Updating FormRequest status to Approved for workflow {WorkflowInstanceId}", workflowInstanceId);
+            // Update request status to approved within the transaction
+            await UpdateFormRequestToApprovedAsync(connection, transaction, workflowInstanceId, completedBy);
         }
 
         _logger.LogInformation("Completed workflow instance {WorkflowInstanceId} by user {UserId}. Approved: {WasApproved}", 
             workflowInstanceId, completedBy, wasApproved);
+        
+        // NOTE: Data application is now handled separately after transaction commit to avoid blocking
+    }
+
+    private async Task UpdateFormRequestToApprovedAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId, string approvedBy)
+    {
+        int formRequestId = 0;
+        
+        try
+        {
+            // Get the form request ID
+            const string getRequestSql = "SELECT FormRequestId FROM WorkflowInstances WHERE Id = @WorkflowInstanceId";
+            formRequestId = await connection.QuerySingleAsync<int>(getRequestSql, new { WorkflowInstanceId = workflowInstanceId }, transaction);
+
+            // Update request status to approved and set approval details
+            const string updateRequestSql = @"
+                UPDATE FormRequests 
+                SET Status = @Status, ApprovedAt = @ApprovedAt, ApprovedBy = @ApprovedBy, ApprovedByName = @ApprovedByName
+                WHERE Id = @FormRequestId";
+
+            await connection.ExecuteAsync(updateRequestSql, new
+            {
+                Status = (int)RequestStatus.Approved,
+                ApprovedAt = DateTime.UtcNow,
+                ApprovedBy = approvedBy,
+                ApprovedByName = approvedBy == "System" ? "Workflow System" : approvedBy,
+                FormRequestId = formRequestId
+            }, transaction);
+
+            _logger.LogInformation("Updated form request {FormRequestId} status to Approved after successful workflow completion by {ApprovedBy}", formRequestId, approvedBy);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating form request to approved for workflow instance {WorkflowInstanceId}", workflowInstanceId);
+            throw;
+        }
     }
 
     private async Task<bool> CheckIfWorkflowWasApprovedAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId)
@@ -1350,13 +1407,14 @@ public class WorkflowService : IWorkflowService
             INNER JOIN WorkflowInstances wi ON wsi.WorkflowInstanceId = wi.Id
             INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId AND ws.StepId = wsi.StepId
             WHERE wi.Id = @WorkflowInstanceId 
-            AND ws.StepType = 'Approval'
+            AND ws.StepType = @ApprovalStepType
             AND wsi.Action = @RejectedAction";
 
         var rejectedCount = await connection.QuerySingleAsync<int>(sql, new 
         { 
             WorkflowInstanceId = workflowInstanceId,
-            RejectedAction = WorkflowStepAction.Rejected.ToString()
+            ApprovalStepType = (int)WorkflowStepType.Approval,
+            RejectedAction = (int)WorkflowStepAction.Rejected
         }, transaction);
 
         return rejectedCount == 0;
@@ -1406,15 +1464,55 @@ public class WorkflowService : IWorkflowService
             }
             else
             {
-                _logger.LogError("Failed to apply data changes for form request {FormRequestId}", formRequestId);
-                // Note: We don't throw here as the workflow has already been marked complete
-                // The FormRequest status will be "Approved" but not "Applied"
+                _logger.LogError("Failed to apply data changes for form request {FormRequestId}. Updating status to Failed.", formRequestId);
+                
+                // Update the FormRequest status to Failed since the data application failed
+                using var failConnection = new SqlConnection(_connectionString);
+                await failConnection.OpenAsync();
+                
+                const string failSql = @"
+                    UPDATE FormRequests 
+                    SET Status = @Status, FailureMessage = @FailureMessage
+                    WHERE Id = @FormRequestId";
+
+                await failConnection.ExecuteAsync(failSql, new
+                {
+                    Status = (int)RequestStatus.Failed,
+                    FailureMessage = "Failed to apply data changes to target database after workflow approval",
+                    FormRequestId = formRequestId
+                });
+                
+                _logger.LogWarning("Updated FormRequest {FormRequestId} status to Failed due to data application failure", formRequestId);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error applying data changes for form request {FormRequestId}", formRequestId);
-            // Note: We don't throw here as the workflow has already been marked complete
+            _logger.LogError(ex, "Error applying data changes for form request {FormRequestId}. Updating status to Failed.", formRequestId);
+            
+            // Update the FormRequest status to Failed since the data application failed
+            try
+            {
+                using var failConnection = new SqlConnection(_connectionString);
+                await failConnection.OpenAsync();
+                
+                const string failSql = @"
+                    UPDATE FormRequests 
+                    SET Status = @Status, FailureMessage = @FailureMessage
+                    WHERE Id = @FormRequestId";
+
+                await failConnection.ExecuteAsync(failSql, new
+                {
+                    Status = (int)RequestStatus.Failed,
+                    FailureMessage = $"Error applying data changes to target database: {ex.Message}",
+                    FormRequestId = formRequestId
+                });
+                
+                _logger.LogWarning("Updated FormRequest {FormRequestId} status to Failed due to data application error: {Error}", formRequestId, ex.Message);
+            }
+            catch (Exception updateEx)
+            {
+                _logger.LogError(updateEx, "Failed to update FormRequest {FormRequestId} status to Failed after data application error", formRequestId);
+            }
         }
     }
 
@@ -1442,7 +1540,7 @@ public class WorkflowService : IWorkflowService
             { 
                 FormRequestId = formRequestId,
                 Status = (int)RequestStatus.Approved 
-            }, commandTimeout: 120); // Increase timeout to 2 minutes
+            }, commandTimeout: 30); // Reduce timeout to 30 seconds
 
             if (requestData == null)
             {
@@ -1571,16 +1669,84 @@ public class WorkflowService : IWorkflowService
             {
                 // Update the request status to Applied
                 const string updateStatusSql = "UPDATE FormRequests SET Status = @Status WHERE Id = @Id";
-                await connection.ExecuteAsync(updateStatusSql, new { Id = formRequestId, Status = (int)RequestStatus.Applied }, commandTimeout: 120);
+                await connection.ExecuteAsync(updateStatusSql, new { Id = formRequestId, Status = (int)RequestStatus.Applied }, commandTimeout: 30);
                 
                 _logger.LogInformation("Applied form request {FormRequestId} and updated status to Applied", formRequestId);
+            }
+            else
+            {
+                // Update the request status to Failed if the data operation failed
+                const string updateFailedSql = @"
+                    UPDATE FormRequests 
+                    SET Status = @Status, FailureMessage = @FailureMessage 
+                    WHERE Id = @Id";
+                    
+                await connection.ExecuteAsync(updateFailedSql, new 
+                { 
+                    Id = formRequestId, 
+                    Status = (int)RequestStatus.Failed,
+                    FailureMessage = "Data operation returned false - check target database constraints and permissions"
+                }, commandTimeout: 30);
+                
+                _logger.LogWarning("Data operation failed for form request {FormRequestId}, updated status to Failed", formRequestId);
             }
 
             return success;
         }
+        catch (SqlException ex) when (ex.Number == -2) // Timeout
+        {
+            _logger.LogError(ex, "Timeout applying form request data changes for {FormRequestId} - operation took longer than expected", formRequestId);
+            
+            // Update status to Failed due to timeout
+            try
+            {
+                using var failConnection = new SqlConnection(_connectionString);
+                await failConnection.OpenAsync();
+                const string updateTimeoutSql = @"
+                    UPDATE FormRequests 
+                    SET Status = @Status, FailureMessage = @FailureMessage 
+                    WHERE Id = @Id";
+                    
+                await failConnection.ExecuteAsync(updateTimeoutSql, new 
+                { 
+                    Id = formRequestId, 
+                    Status = (int)RequestStatus.Failed,
+                    FailureMessage = $"Data application timed out: {ex.Message}"
+                }, commandTimeout: 30);
+            }
+            catch (Exception updateEx)
+            {
+                _logger.LogError(updateEx, "Failed to update status after timeout for form request {FormRequestId}", formRequestId);
+            }
+            
+            return false;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error applying form request data changes for {FormRequestId}", formRequestId);
+            
+            // Update status to Failed
+            try
+            {
+                using var failConnection = new SqlConnection(_connectionString);
+                await failConnection.OpenAsync();
+                const string updateErrorSql = @"
+                    UPDATE FormRequests 
+                    SET Status = @Status, FailureMessage = @FailureMessage 
+                    WHERE Id = @Id";
+                    
+                await failConnection.ExecuteAsync(updateErrorSql, new 
+                { 
+                    Id = formRequestId, 
+                    Status = (int)RequestStatus.Failed,
+                    FailureMessage = $"Error applying data changes: {ex.Message}"
+                }, commandTimeout: 30);
+            }
+            catch (Exception updateEx)
+            {
+                _logger.LogError(updateEx, "Failed to update status after error for form request {FormRequestId}", formRequestId);
+            }
+            
             return false;
         }
     }
@@ -1680,9 +1846,9 @@ public class WorkflowService : IWorkflowService
             {
                 // Check if workflow is now complete
                 var workflowInstance = await GetWorkflowInstanceAsync(workflowInstanceId);
-                var workflowCompleted = workflowInstance?.Status == WorkflowInstanceStatus.Completed || workflowInstance?.Status == WorkflowInstanceStatus.Rejected;
+                var workflowCompleted = workflowInstance?.Status == WorkflowInstanceStatus.Completed || workflowInstance?.Status == WorkflowInstanceStatus.Failed;
                 var workflowApproved = workflowInstance?.Status == WorkflowInstanceStatus.Completed && action == WorkflowStepAction.Approved;
-                var workflowRejected = workflowInstance?.Status == WorkflowInstanceStatus.Rejected;
+                var workflowRejected = workflowInstance?.Status == WorkflowInstanceStatus.Failed;
 
                 return new WorkflowActionResult
                 {
@@ -1783,8 +1949,8 @@ public class WorkflowService : IWorkflowService
         { 
             FormRequestId = formRequestId,
             CompletedStatus = (int)WorkflowStepInstanceStatus.Completed,
-            StartStepType = WorkflowStepType.Start.ToString(),
-            EndStepType = WorkflowStepType.End.ToString()
+            StartStepType = (int)WorkflowStepType.Start,
+            EndStepType = (int)WorkflowStepType.End
         });
 
         _logger.LogInformation("Step counts for FormRequestId {FormRequestId}: Total={TotalSteps}, Completed={CompletedSteps}", 
@@ -1812,9 +1978,9 @@ public class WorkflowService : IWorkflowService
             WHERE wi.FormRequestId = @FormRequestId
             ORDER BY 
                 CASE ws.StepType 
-                    WHEN 'Start' THEN 1 
-                    WHEN 'Approval' THEN 2 
-                    WHEN 'End' THEN 3 
+                    WHEN 0 THEN 1  -- Start
+                    WHEN 2 THEN 2  -- Approval
+                    WHEN 1 THEN 3  -- End
                     ELSE 2 
                 END,
                 wsi.StartedAt";
@@ -1828,14 +1994,14 @@ public class WorkflowService : IWorkflowService
             StepId = step.StepId,
             StepName = step.StepName ?? step.StepId,
             StepDescription = step.StepDescription ?? "",
-            StepType = ParseWorkflowStepType(step.StepType),
-            Status = ParseWorkflowStepInstanceStatus(step.Status),
+            StepType = (WorkflowStepType)(int)step.StepType,
+            Status = (WorkflowStepInstanceStatus)(int)step.Status,
             AssignedTo = step.AssignedTo,
             StartedAt = step.StartedAt,
             CompletedAt = step.CompletedAt,
             CompletedBy = step.CompletedBy,
             CompletedByName = step.CompletedByName,
-            Action = ParseWorkflowStepAction(step.Action),
+            Action = step.Action != null ? (WorkflowStepAction)(int)step.Action : null,
             Comments = step.Comments,
             IsCurrent = step.StepId == (string)result.CurrentStepId,
             DaysInStep = step.StartedAt != null ? 
@@ -1930,7 +2096,7 @@ public class WorkflowService : IWorkflowService
             Id = stepData.Id,
             WorkflowDefinitionId = stepData.WorkflowDefinitionId,
             StepId = stepData.StepId,
-            StepType = ParseWorkflowStepType(stepData.StepType),
+            StepType = (WorkflowStepType)(int)stepData.StepType,
             Name = stepData.Name,
             Description = stepData.Description ?? string.Empty,
             PositionX = stepData.PositionX,
@@ -2028,7 +2194,7 @@ public class WorkflowService : IWorkflowService
 
         await connection.ExecuteAsync(updateWorkflowSql, new 
         { 
-            Status = (int)WorkflowInstanceStatus.Rejected,
+            Status = (int)WorkflowInstanceStatus.Failed,
             CompletedAt = DateTime.UtcNow,
             CompletedBy = rejectedBy,
             Id = workflowInstanceId
@@ -2092,7 +2258,7 @@ public class WorkflowService : IWorkflowService
         {
             "inprogress" or "in-progress" or "in_progress" => WorkflowInstanceStatus.InProgress,
             "completed" => WorkflowInstanceStatus.Completed,
-            "rejected" => WorkflowInstanceStatus.Rejected,
+            "rejected" => WorkflowInstanceStatus.Failed,
             "cancelled" or "canceled" => WorkflowInstanceStatus.Cancelled,
             "failed" => WorkflowInstanceStatus.Failed,
             _ => WorkflowInstanceStatus.InProgress // Default fallback
@@ -2156,7 +2322,7 @@ public class WorkflowService : IWorkflowService
             "approved" => WorkflowStepAction.Approved,
             "rejected" => WorkflowStepAction.Rejected,
             "completed" => WorkflowStepAction.Completed,
-            "skipped" => WorkflowStepAction.Skipped,
+            "skipped" => WorkflowStepAction.None,
             _ => null
         };
     }
@@ -2220,6 +2386,100 @@ public class WorkflowService : IWorkflowService
         catch
         {
             return ParseWorkflowStepInstanceStatus(statusValue.ToString() ?? "");
+        }
+    }
+
+    /// <summary>
+    /// Safely parses WorkflowStepAction from an object that could be either an integer or string
+    /// </summary>
+    private static WorkflowStepAction? ParseWorkflowStepActionFromObject(object? actionValue)
+    {
+        if (actionValue == null)
+            return null;
+
+        // If it's already an integer, cast it directly
+        if (actionValue is int intValue)
+        {
+            if (Enum.IsDefined(typeof(WorkflowStepAction), intValue))
+                return (WorkflowStepAction)intValue;
+            return null;
+        }
+
+        // If it's a string, use the existing string parser
+        if (actionValue is string stringValue)
+        {
+            return ParseWorkflowStepAction(stringValue);
+        }
+
+        // If it's neither, try to convert to int first, then to string as fallback
+        try
+        {
+            var convertedInt = Convert.ToInt32(actionValue);
+            if (Enum.IsDefined(typeof(WorkflowStepAction), convertedInt))
+                return (WorkflowStepAction)convertedInt;
+            return null;
+        }
+        catch
+        {
+            return ParseWorkflowStepAction(actionValue.ToString());
+        }
+    }
+
+    private async Task ApplyWorkflowDataChangesAsync(int workflowInstanceId, string completedBy)
+    {
+        try
+        {
+            _logger.LogInformation("Starting background data application for workflow instance {WorkflowInstanceId}", workflowInstanceId);
+            
+            // Get the form request ID for this workflow
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            
+            const string getFormRequestSql = @"
+                SELECT wi.FormRequestId, fr.Status
+                FROM WorkflowInstances wi
+                INNER JOIN FormRequests fr ON wi.FormRequestId = fr.Id
+                WHERE wi.Id = @WorkflowInstanceId";
+                
+            var workflowData = await connection.QueryFirstOrDefaultAsync(getFormRequestSql, new { WorkflowInstanceId = workflowInstanceId });
+            
+            if (workflowData == null)
+            {
+                _logger.LogWarning("No form request found for workflow instance {WorkflowInstanceId}", workflowInstanceId);
+                return;
+            }
+            
+            int formRequestId = workflowData.FormRequestId;
+            int currentStatus = workflowData.Status;
+            
+            // Only apply if the request is in Approved status
+            if (currentStatus != (int)RequestStatus.Approved)
+            {
+                _logger.LogInformation("Form request {FormRequestId} is not in Approved status (current: {Status}), skipping data application", 
+                    formRequestId, Enum.GetName(typeof(RequestStatus), currentStatus));
+                return;
+            }
+            
+            _logger.LogInformation("Applying data changes for form request {FormRequestId} from workflow {WorkflowInstanceId}", 
+                formRequestId, workflowInstanceId);
+            
+            // Apply the data changes
+            var applicationSuccess = await ApplyFormRequestDataChangesAsync(formRequestId);
+            
+            if (applicationSuccess)
+            {
+                _logger.LogInformation("Successfully applied background data changes for workflow {WorkflowInstanceId}, form request {FormRequestId}", 
+                    workflowInstanceId, formRequestId);
+            }
+            else
+            {
+                _logger.LogError("Failed to apply background data changes for workflow {WorkflowInstanceId}, form request {FormRequestId}", 
+                    workflowInstanceId, formRequestId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in background data application for workflow instance {WorkflowInstanceId}", workflowInstanceId);
         }
     }
 }

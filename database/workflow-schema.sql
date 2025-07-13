@@ -34,7 +34,7 @@ BEGIN
         Id int IDENTITY(1,1) PRIMARY KEY,
         WorkflowDefinitionId int NOT NULL,
         StepId nvarchar(50) NOT NULL, -- Unique identifier within the workflow (e.g., "step1", "approval1")
-        StepType nvarchar(50) NOT NULL, -- 'Approval', 'Parallel', 'Branch', 'Start', 'End'
+        StepType int NOT NULL, -- 0=Start, 1=End, 2=Approval, 3=Parallel, 4=Branch
         Name nvarchar(255) NOT NULL,
         Description nvarchar(max) NULL,
         AssignedRoles nvarchar(max) NULL, -- JSON array of Entra roles for approval steps
@@ -101,7 +101,7 @@ BEGIN
         FormRequestId int NOT NULL,
         WorkflowDefinitionId int NOT NULL,
         CurrentStepId nvarchar(50) NOT NULL,
-        Status nvarchar(50) NOT NULL DEFAULT 'InProgress', -- 'InProgress', 'Completed', 'Cancelled', 'Failed'
+        Status int NOT NULL DEFAULT 0, -- 0=InProgress, 1=Completed, 2=Cancelled, 3=Failed
         StartedAt datetime2 NOT NULL DEFAULT GETUTCDATE(),
         CompletedAt datetime2 NULL,
         CompletedBy nvarchar(255) NULL,
@@ -124,13 +124,13 @@ BEGIN
         Id int IDENTITY(1,1) PRIMARY KEY,
         WorkflowInstanceId int NOT NULL,
         StepId nvarchar(50) NOT NULL,
-        Status nvarchar(50) NOT NULL DEFAULT 'Pending', -- 'Pending', 'InProgress', 'Completed', 'Skipped', 'Failed'
+        Status int NOT NULL DEFAULT 0, -- 0=Pending, 1=InProgress, 2=Completed, 3=Skipped, 4=Failed
         AssignedTo nvarchar(255) NULL, -- User assigned to this step instance
         StartedAt datetime2 NULL,
         CompletedAt datetime2 NULL,
         CompletedBy nvarchar(255) NULL,
         CompletedByName nvarchar(255) NULL,
-        Action nvarchar(50) NULL, -- 'Approved', 'Rejected', 'Completed'
+        Action int NULL, -- 0=None, 1=Approved, 2=Rejected, 3=Completed
         Comments nvarchar(max) NULL,
         FieldValues nvarchar(max) NULL, -- JSON of field values modified in this step
         FOREIGN KEY (WorkflowInstanceId) REFERENCES WorkflowInstances(Id) ON DELETE CASCADE,

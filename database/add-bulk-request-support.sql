@@ -10,7 +10,7 @@ BEGIN
     CREATE TABLE BulkFormRequests (
         Id int IDENTITY(1,1) PRIMARY KEY,
         FormDefinitionId int NOT NULL,
-        RequestType nvarchar(50) NOT NULL, -- INSERT, UPDATE, DELETE
+        RequestType int NOT NULL, -- 0=Insert, 1=Update, 2=Delete
         FileName nvarchar(255) NOT NULL,
         TotalRows int NOT NULL,
         ValidRows int NOT NULL,
@@ -32,6 +32,7 @@ BEGIN
         UpdatedBy nvarchar(255) NULL,
         FOREIGN KEY (FormDefinitionId) REFERENCES FormDefinitions(Id) ON DELETE CASCADE,
         INDEX IX_BulkFormRequests_FormDefinitionId (FormDefinitionId),
+        INDEX IX_BulkFormRequests_RequestType (RequestType),
         INDEX IX_BulkFormRequests_Status (Status),
         INDEX IX_BulkFormRequests_RequestedBy (RequestedBy),
         INDEX IX_BulkFormRequests_RequestedAt (RequestedAt)
