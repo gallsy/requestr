@@ -1,10 +1,13 @@
 @page "/"
 @using Microsoft.AspNetCore.Authorization
 @using System.Linq
+@using Requestr.Core.Models
+@using Requestr.Web.Authorization
 @attribute [Authorize]
 @inject IFormDefinitionService FormDefinitionService
 @inject IFormRequestService FormRequestService
 @inject IWorkflowService WorkflowService
+@inject IFormAuthorizationService FormAuthorizationService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Home - Requestr</PageTitle>
@@ -61,14 +64,21 @@
                                         </small>
                                     </div>
                                     <div class="btn-group">
-                                        <a href="/forms/@form.Id" class="btn btn-sm btn-outline-primary">
-                                            <i class="bi bi-plus-circle me-1"></i>
-                                            New Request
-                                        </a>
-                                        <a href="/data-view/@form.Id" class="btn btn-sm btn-outline-secondary">
-                                            <i class="bi bi-table me-1"></i>
-                                            View Data
-                                        </a>
+                                        <!-- New Request - Requires CreateRequest permission -->
+                                        <DynamicAuthorizeView FormDefinitionId="@form.Id" Permission="FormPermissionType.CreateRequest">
+                                            <a href="/forms/@form.Id" class="btn btn-sm btn-outline-primary">
+                                                <i class="bi bi-plus-circle me-1"></i>
+                                                New Request
+                                            </a>
+                                        </DynamicAuthorizeView>
+                                        
+                                        <!-- View Data - Requires ViewData permission -->
+                                        <DynamicAuthorizeView FormDefinitionId="@form.Id" Permission="FormPermissionType.ViewData">
+                                            <a href="/data-view/@form.Id" class="btn btn-sm btn-outline-secondary">
+                                                <i class="bi bi-table me-1"></i>
+                                                View Data
+                                            </a>
+                                        </DynamicAuthorizeView>
                                     </div>
                                 </div>
                             </div>
@@ -283,8 +293,33 @@
 
         try
         {
-            // Load available forms
-            AvailableForms = await FormDefinitionService.GetFormDefinitionsForUserAsync(CurrentUserId, UserRoles);
+            // Get current user
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            // Load all active forms and filter by permissions
+            var allForms = await FormDefinitionService.GetActiveAsync();
+            AvailableForms = new List<FormDefinition>();
+            
+            if (allForms != null)
+            {
+                foreach (var form in allForms)
+                {
+                    // Check if user has any permission for this form
+                    var hasAnyPermission = await FormAuthorizationService.UserHasAnyPermissionAsync(user, form.Id,
+                        FormPermissionType.CreateRequest,
+                        FormPermissionType.UpdateRequest,
+                        FormPermissionType.ViewData,
+                        FormPermissionType.BulkUploadCsv,
+                        FormPermissionType.BulkActions,
+                        FormPermissionType.ExportData);
+                    
+                    if (hasAnyPermission)
+                    {
+                        AvailableForms.Add(form);
+                    }
+                }
+            }
 
             // Load user's pending requests
             var allUserRequests = await FormRequestService.GetFormRequestsByUserAsync(CurrentUserId);

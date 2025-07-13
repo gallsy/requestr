@@ -1,6 +1,9 @@
 @page "/forms"
+@using Requestr.Core.Models
+@using Requestr.Web.Authorization
 @attribute [Authorize]
 @inject IFormDefinitionService FormDefinitionService
+@inject IFormAuthorizationService FormAuthorizationService
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
@@ -122,21 +125,45 @@ else
                             </div>
                             <div class="card-footer">
                                 <div class="btn-group-vertical w-100" role="group">
-                                    <a href="/forms/@form.Id" class="btn btn-primary mb-2">
-                                        <i class="bi bi-pencil-square me-2"></i>
-                                        Fill Out Form
-                                    </a>
+                                    <!-- Fill Out Form - Requires CreateRequest permission -->
+                                    <DynamicAuthorizeView FormDefinitionId="@form.Id" Permission="FormPermissionType.CreateRequest">
+                                        <a href="/forms/@form.Id" class="btn btn-primary mb-2">
+                                            <i class="bi bi-pencil-square me-2"></i>
+                                            Fill Out Form
+                                        </a>
+                                    </DynamicAuthorizeView>
+                                    
                                     <div class="btn-group w-100" role="group">
-                                        <a href="/forms/@form.Id/bulk-upload" class="btn btn-outline-primary">
-                                            <i class="bi bi-upload me-2"></i>
-                                            Bulk Upload
-                                        </a>
-                                        <a href="/data-view/@form.Id" class="btn btn-outline-secondary">
-                                            <i class="bi bi-table me-2"></i>
-                                            View Data
-                                        </a>
+                                        <!-- Bulk Upload - Requires BulkUploadCsv permission -->
+                                        <DynamicAuthorizeView FormDefinitionId="@form.Id" Permission="FormPermissionType.BulkUploadCsv">
+                                            <a href="/forms/@form.Id/bulk-upload" class="btn btn-outline-primary">
+                                                <i class="bi bi-upload me-2"></i>
+                                                Bulk Upload
+                                            </a>
+                                        </DynamicAuthorizeView>
+                                        
+                                        <!-- View Data - Requires ViewData permission -->
+                                        <DynamicAuthorizeView FormDefinitionId="@form.Id" Permission="FormPermissionType.ViewData">
+                                            <a href="/data-view/@form.Id" class="btn btn-outline-secondary">
+                                                <i class="bi bi-table me-2"></i>
+                                                View Data
+                                            </a>
+                                        </DynamicAuthorizeView>
                                     </div>
                                 </div>
+                                
+                                <!-- Show message if user has no permissions -->
+                                <DynamicAuthorizeView FormDefinitionId="@form.Id" 
+                                                      AnyPermissions="new[] { FormPermissionType.CreateRequest, FormPermissionType.BulkUploadCsv, FormPermissionType.ViewData }">
+                                    <NotAuthorized>
+                                        <div class="alert alert-warning mt-2 mb-0">
+                                            <small class="text-muted">
+                                                <i class="bi bi-lock me-1"></i>
+                                                You don't have permissions to access this form. Contact your administrator.
+                                            </small>
+                                        </div>
+                                    </NotAuthorized>
+                                </DynamicAuthorizeView>
                             </div>
                         </div>
                     </div>
@@ -161,8 +188,31 @@ else
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
 
-            // Get available forms (active ones)
-            _forms = await FormDefinitionService.GetActiveAsync();
+            // Get all active forms
+            var allForms = await FormDefinitionService.GetActiveAsync();
+
+            // Filter forms based on user permissions - user must have at least one permission to see the form
+            _forms = new List<FormDefinition>();
+            
+            if (allForms != null)
+            {
+                foreach (var form in allForms)
+                {
+                    // Check if user has any permission for this form
+                    var hasAnyPermission = await FormAuthorizationService.UserHasAnyPermissionAsync(user, form.Id,
+                        FormPermissionType.CreateRequest,
+                        FormPermissionType.UpdateRequest,
+                        FormPermissionType.ViewData,
+                        FormPermissionType.BulkUploadCsv,
+                        FormPermissionType.BulkActions,
+                        FormPermissionType.ExportData);
+                    
+                    if (hasAnyPermission)
+                    {
+                        _forms.Add(form);
+                    }
+                }
+            }
 
             // Extract categories and group forms
             if (_forms != null)
@@ -183,8 +233,6 @@ else
                     _groupedForms[category].Add(form);
                 }
             }
-
-            // TODO: Filter forms based on user permissions if needed
         }
         catch (Exception ex)
         {

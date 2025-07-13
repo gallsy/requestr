@@ -1,0 +1,78 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Requestr.Core.Models
+@using Requestr.Web.Authorization
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IFormAuthorizationService FormAuthorizationService
+
+@* 
+    Custom authorization component for form-specific permissions.
+    Use this to conditionally show/hide content based on user permissions for a specific form.
+*@
+
+@if (_isAuthorized)
+{
+    @ChildContent
+}
+else if (NotAuthorized != null)
+{
+    @NotAuthorized
+}
+
+@code {
+    [Parameter] public int FormDefinitionId { get; set; }
+    [Parameter] public FormPermissionType Permission { get; set; }
+    [Parameter] public FormPermissionType[]? AnyPermissions { get; set; }
+    [Parameter] public FormPermissionType[]? AllPermissions { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? NotAuthorized { get; set; }
+
+    private bool _isAuthorized = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await CheckAuthorizationAsync();
+    }
+
+    private async Task CheckAuthorizationAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (!user.Identity?.IsAuthenticated ?? true)
+            {
+                _isAuthorized = false;
+                return;
+            }
+
+            // Check specific permission
+            if (Permission != default(FormPermissionType))
+            {
+                _isAuthorized = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, Permission);
+                return;
+            }
+
+            // Check any of the specified permissions
+            if (AnyPermissions?.Length > 0)
+            {
+                _isAuthorized = await FormAuthorizationService.UserHasAnyPermissionAsync(user, FormDefinitionId, AnyPermissions);
+                return;
+            }
+
+            // Check all of the specified permissions
+            if (AllPermissions?.Length > 0)
+            {
+                _isAuthorized = await FormAuthorizationService.UserHasAllPermissionsAsync(user, FormDefinitionId, AllPermissions);
+                return;
+            }
+
+            // No permissions specified, default to false
+            _isAuthorized = false;
+        }
+        catch
+        {
+            _isAuthorized = false;
+        }
+    }
+}
