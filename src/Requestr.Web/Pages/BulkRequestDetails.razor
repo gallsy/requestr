@@ -2,10 +2,11 @@
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
 @using System.Linq
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @inject IBulkFormRequestService BulkFormRequestService
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
-@inject IJSRuntime JSRuntime
 @attribute [Authorize]
 
 <h1 class="visually-hidden">Bulk Request Details - Requestr</h1>
@@ -87,15 +88,6 @@ else
                     </div>
                 }
 
-                @if (!string.IsNullOrEmpty(_successMessage))
-                {
-                    <div class="alert alert-success alert-dismissible fade show" role="alert">
-                        <i class="bi bi-check-circle-fill me-2"></i>
-                        @_successMessage
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" @onclick="() => _successMessage = string.Empty"></button>
-                    </div>
-                }
-
                 <!-- Summary Card -->
                 <div class="card mb-4">
                     <div class="card-header">
@@ -149,8 +141,8 @@ else
                                         <td class="text-success">@_bulkRequest.ValidRows</td>
                                     </tr>
                                     <tr>
-                                        <td><strong>Selected Rows:</strong></td>
-                                        <td class="text-info">@_bulkRequest.SelectedRows</td>
+                                        <td><strong>Items Count:</strong></td>
+                                        <td class="text-info">@_bulkRequest.Items.Count</td>
                                     </tr>
                                     @if (_bulkRequest.ApprovedAt.HasValue)
                                     {
@@ -178,99 +170,107 @@ else
                                 <p class="mt-1">@_bulkRequest.RejectionReason</p>
                             </div>
                         }
-
-                        @if (_isApprover && _bulkRequest.Status == RequestStatus.Pending)
-                        {
-                            <div class="mt-4">
-                                <div class="mb-3">
-                                    <label class="form-label">Approval Comments (Optional)</label>
-                                    <textarea class="form-control" rows="3" @bind="_approvalComments" placeholder="Add any comments about this approval/rejection..."></textarea>
-                                </div>
-                                <div class="d-flex justify-content-end gap-2">
-                                    <button class="btn btn-danger" @onclick="ShowRejectConfirmation" disabled="@_isProcessing">
-                                        @if (_isProcessing && _actionType == "reject")
-                                        {
-                                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                                        }
-                                        <i class="bi bi-x-circle me-1"></i>
-                                        Reject
-                                    </button>
-                                    <button class="btn btn-success" @onclick="ApproveRequest" disabled="@_isProcessing">
-                                        @if (_isProcessing && _actionType == "approve")
-                                        {
-                                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                                        }
-                                        <i class="bi bi-check-circle me-1"></i>
-                                        Approve
-                                    </button>
-                                </div>
-                            </div>
-                        }
                     </div>
                 </div>
 
                 <!-- Workflow Progress Section -->
-                @if (_bulkRequest.WorkflowInstanceId.HasValue)
+                @if (_bulkRequest.WorkflowInstanceId.HasValue && _bulkRequest.WorkflowFormRequestId.HasValue)
                 {
                     <div class="mb-4">
-                        <WorkflowProgressDisplay FormRequestId="@(_bulkRequest.FormRequests.FirstOrDefault()?.Id ?? 0)" 
+                        <WorkflowProgressDisplay FormRequestId="@_bulkRequest.WorkflowFormRequestId.Value" 
                                                ShowCompact="false" 
                                                AutoLoad="true" />
                     </div>
                 }
-                else
+                else if (_bulkRequest.WorkflowInstanceId.HasValue)
                 {
-                    <!-- Debug info -->
-                    <div class="alert alert-info mb-4">
-                        <h6>Debug Information:</h6>
-                        <p><strong>WorkflowInstanceId:</strong> @(_bulkRequest.WorkflowInstanceId?.ToString() ?? "NULL")</p>
-                        <p><strong>Form Definition ID:</strong> @_bulkRequest.FormDefinitionId</p>
-                        <p><strong>Form has WorkflowDefinitionId:</strong> @(_bulkRequest.FormDefinition?.WorkflowDefinitionId?.ToString() ?? "NULL")</p>
-                        <p><strong>First FormRequest ID:</strong> @(_bulkRequest.FormRequests.FirstOrDefault()?.Id.ToString() ?? "No FormRequests")</p>
-                        <p><strong>First FormRequest WorkflowInstanceId:</strong> @(_bulkRequest.FormRequests.FirstOrDefault()?.WorkflowInstanceId?.ToString() ?? "NULL")</p>
+                    <div class="mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="bi bi-diagram-3 me-2"></i>
+                                    Workflow Progress
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-warning d-flex align-items-center">
+                                    <i class="bi bi-exclamation-triangle me-2"></i>
+                                    <div>
+                                        This bulk request has a workflow (Instance #@_bulkRequest.WorkflowInstanceId) but the workflow FormRequest could not be found.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 }
 
-                <!-- Individual Requests -->
+                <!-- Individual Items -->
                 <div class="card">
                     <div class="card-header">
                         <h5 class="mb-0">
                             <i class="bi bi-list-ul me-2"></i>
-                            Individual Requests (@_bulkRequest.FormRequests.Count)
+                            Individual Items (@_bulkRequest.Items.Count)
                         </h5>
                     </div>
                     <div class="card-body">
-                        @if (_bulkRequest.FormRequests.Any())
+                        @if (_bulkRequest.Items.Any())
                         {
                             <div class="table-responsive">
                                 <table class="table table-hover">
                                     <thead>
                                         <tr>
-                                            <th>Request ID</th>
+                                            <th>Row #</th>
                                             <th>Status</th>
-                                            <th>Submitted</th>
-                                            <th>Actions</th>
+                                            <th>Field Values</th>
+                                            @if (_bulkRequest.RequestType == RequestType.Update || _bulkRequest.RequestType == RequestType.Delete)
+                                            {
+                                                <th>Original Values</th>
+                                            }
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach (var request in _bulkRequest.FormRequests)
+                                        @foreach (var item in _bulkRequest.Items.OrderBy(i => i.RowNumber))
                                         {
                                             <tr>
-                                                <td>#@request.Id</td>
+                                                <td>@item.RowNumber</td>
                                                 <td>
-                                                    <span class="badge @GetStatusBadgeClass(request.Status)">
-                                                        @request.Status
+                                                    <span class="badge @GetStatusBadgeClass(item.Status)">
+                                                        @item.Status
                                                     </span>
                                                 </td>
                                                 <td>
-                                                    @request.RequestedAt.ToString("MMM dd, yyyy HH:mm")
+                                                    @if (item.FieldValues.Any())
+                                                    {
+                                                        <div class="small">
+                                                            @foreach (var field in item.FieldValues)
+                                                            {
+                                                                <div><strong>@field.Key:</strong> @field.Value</div>
+                                                            }
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-muted">No field values</span>
+                                                    }
                                                 </td>
-                                                <td>
-                                                    <a href="/requests/@request.Id" class="btn btn-sm btn-outline-primary">
-                                                        <i class="bi bi-eye me-1"></i>
-                                                        View Details
-                                                    </a>
-                                                </td>
+                                                @if (_bulkRequest.RequestType == RequestType.Update || _bulkRequest.RequestType == RequestType.Delete)
+                                                {
+                                                    <td>
+                                                        @if (item.OriginalValues.Any())
+                                                        {
+                                                            <div class="small">
+                                                                @foreach (var field in item.OriginalValues)
+                                                                {
+                                                                    <div><strong>@field.Key:</strong> @field.Value</div>
+                                                                }
+                                                            </div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="text-muted">No original values</span>
+                                                        }
+                                                    </td>
+                                                }
                                             </tr>
                                         }
                                     </tbody>
@@ -281,7 +281,7 @@ else
                         {
                             <div class="text-center p-4">
                                 <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
-                                <p class="text-muted mt-2">No individual requests found.</p>
+                                <p class="text-muted mt-2">No individual items found.</p>
                             </div>
                         }
                     </div>
@@ -299,183 +299,33 @@ else
 
     private BulkFormRequest? _bulkRequest;
     private bool _isLoading = true;
-    private bool _isApprover = false;
-    private bool _isProcessing = false;
-    private string _actionType = "";
-    private string _approvalComments = "";
+    private bool _isFromApprovals;
     private string _errorMessage = "";
     private string _successMessage = "";
-    private bool _isFromApprovals;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            Console.WriteLine($"Loading bulk request with ID: {BulkRequestId}");
+            _isLoading = true;
+            _isFromApprovals = IsFromApprovals;
             
             // Load the bulk request
             _bulkRequest = await BulkFormRequestService.GetBulkFormRequestByIdAsync(BulkRequestId);
             
             if (_bulkRequest == null)
             {
-                Console.WriteLine($"Bulk request with ID {BulkRequestId} was not found");
-            }
-            else
-            {
-                Console.WriteLine($"Bulk request loaded successfully. Form Definition ID: {_bulkRequest.FormDefinitionId}, Status: {_bulkRequest.Status}, WorkflowInstanceId: {_bulkRequest.WorkflowInstanceId}");
-            }
-            
-            // Check user permissions
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var user = authState.User;
-            var userId = GetUserIdentifier(user);
-            
-            if (_bulkRequest != null)
-            {
-                // Determine if this is my request or an approval request
-                if (_bulkRequest.RequestedBy == userId)
-                {
-                    _isFromApprovals = false;
-                    Console.WriteLine("This is the user's own request");
-                }
-                else
-                {
-                    _isFromApprovals = true;
-                    Console.WriteLine("This is a request for approval by the current user");
-                }
-                
-                // Check if user has permission to approve this request
-                var userRoles = user.Claims
-                    .Where(c => c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role" || 
-                              c.Type == "roles" ||
-                              c.Type == System.Security.Claims.ClaimTypes.Role)
-                    .Select(c => c.Value)
-                    .ToList();
-
-                Console.WriteLine($"User roles: {string.Join(", ", userRoles)}");
-
-                // Check if user has any of the approver roles
-                if (_bulkRequest.FormDefinition?.ApproverRoles != null && _bulkRequest.FormDefinition.ApproverRoles.Any())
-                {
-                    Console.WriteLine($"Form definition ApproverRoles: {string.Join(", ", _bulkRequest.FormDefinition.ApproverRoles)}");
-                    _isApprover = _bulkRequest.FormDefinition.ApproverRoles.Any(role => userRoles.Contains(role.Trim())) || user.IsInRole("Admin");
-                    Console.WriteLine($"User is approver: {_isApprover}");
-                }
-                else
-                {
-                    Console.WriteLine("Form definition does not have ApproverRoles defined or is empty");
-                    _isApprover = user.IsInRole("Admin"); // Default to Admin only if no approver roles defined
-                }
+                _errorMessage = "Bulk request not found.";
+                return;
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading bulk request: {ex.Message}");
-            Console.WriteLine($"Stack trace: {ex.StackTrace}");
             _errorMessage = $"Error loading bulk request: {ex.Message}";
         }
         finally
         {
             _isLoading = false;
-        }
-    }
-
-    private async Task ApproveRequest()
-    {
-        await ProcessRequest("approve", true);
-    }
-
-    private async Task RejectRequest(string rejectionReason)
-    {
-        if (string.IsNullOrWhiteSpace(rejectionReason))
-        {
-            _errorMessage = "Rejection reason is required";
-            return;
-        }
-
-        _approvalComments = rejectionReason;
-        await ProcessRequest("reject", false);
-    }
-
-    private async Task ProcessRequest(string actionType, bool isApproval)
-    {
-        try
-        {
-            if (_bulkRequest == null) return;
-
-            _isProcessing = true;
-            _actionType = actionType;
-            _errorMessage = "";
-            _successMessage = "";
-
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var currentUser = GetUserIdentifier(authState.User);
-            var currentUserName = GetUserDisplayName(authState.User);
-
-            bool success;
-            if (isApproval)
-            {
-                success = await BulkFormRequestService.ApproveBulkFormRequestAsync(
-                    BulkRequestId, currentUser, currentUserName, _approvalComments);
-                
-                if (success)
-                {
-                    _successMessage = "Bulk request approved successfully!";
-                }
-                else
-                {
-                    _errorMessage = "Failed to approve bulk request.";
-                }
-            }
-            else
-            {
-                success = await BulkFormRequestService.RejectBulkFormRequestAsync(
-                    BulkRequestId, currentUser, currentUserName, _approvalComments);
-                
-                if (success)
-                {
-                    _successMessage = "Bulk request rejected successfully!";
-                }
-                else
-                {
-                    _errorMessage = "Failed to reject bulk request.";
-                }
-            }
-
-            if (success)
-            {
-                // Reload the request to show updated status
-                _bulkRequest = await BulkFormRequestService.GetBulkFormRequestByIdAsync(BulkRequestId);
-                
-                // Redirect after a brief delay
-                await Task.Delay(2000);
-                if (_isFromApprovals)
-                {
-                    Navigation.NavigateTo("/pending-approvals");
-                }
-                else
-                {
-                    Navigation.NavigateTo("/my-requests");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = $"Error processing request: {ex.Message}";
-        }
-        finally
-        {
-            _isProcessing = false;
-            _actionType = "";
-        }
-    }
-
-    private async Task ShowRejectConfirmation()
-    {
-        var rejectionReason = await JSRuntime.InvokeAsync<string>("prompt", "Please enter a reason for rejecting this request:", "");
-        if (!string.IsNullOrWhiteSpace(rejectionReason))
-        {
-            await RejectRequest(rejectionReason);
         }
     }
 
@@ -499,25 +349,4 @@ else
         RequestType.Delete => "bg-danger",
         _ => "bg-secondary"
     };
-    
-    private string GetUserIdentifier(System.Security.Claims.ClaimsPrincipal user)
-    {
-        // Try to get the user ID from various Entra ID claims
-        return user.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value ??
-               user.FindFirst("oid")?.Value ??
-               user.FindFirst("sub")?.Value ??
-               user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ??
-               user.Identity?.Name ?? "Unknown";
-    }
-
-    private string GetUserDisplayName(System.Security.Claims.ClaimsPrincipal user)
-    {
-        // Try to get the display name from various Entra ID claims
-        return user.FindFirst("name")?.Value ??
-               user.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name")?.Value ??
-               user.FindFirst("preferred_username")?.Value ??
-               user.FindFirst("upn")?.Value ??
-               user.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")?.Value ??
-               user.Identity?.Name ?? "Unknown User";
-    }
 }

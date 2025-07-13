@@ -117,7 +117,7 @@
                 else
                 {
                     <div class="list-group list-group-flush">
-                        @foreach (var request in PendingRequests?.Take(5) ?? Enumerable.Empty<FormRequest>())
+                        @foreach (var request in PendingRequests?.Take(3) ?? Enumerable.Empty<FormRequest>())
                         {
                             <a href="/requests/@request.Id" class="list-group-item list-group-item-action">
                                 <div class="d-flex w-100 justify-content-between align-items-start">
@@ -145,7 +145,7 @@
                             </a>
                         }
                     </div>
-                    @if (PendingRequests?.Count > 5)
+                    @if (PendingRequests?.Count > 3)
                     {
                         <div class="mt-3 pt-3 border-top">
                             <a href="/my-requests" class="btn btn-outline-info btn-sm">
@@ -159,85 +159,6 @@
         </div>
     </div>
 </div>
-
-<!-- Pending Approvals (Only for authorized users) -->
-            <div class="row mt-4">
-                <div class="col-12">
-                    <div class="card slide-up">
-                        <div class="card-header bg-warning text-dark">
-                            <h5 class="card-title mb-0">
-                                <i class="bi bi-exclamation-triangle me-2"></i>
-                                Requests Awaiting My Approval
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            @if (RequestsForApproval == null)
-                            {
-                                <div class="d-flex justify-content-center py-5">
-                                    <div class="spinner-border text-primary" role="status">
-                                        <span class="visually-hidden">Loading...</span>
-                                    </div>
-                                </div>
-                            }
-                            else if (!RequestsForApproval.Any())
-                            {
-                                <div class="text-center py-5">
-                                    <i class="bi bi-check-circle display-1 text-success mb-3"></i>
-                                    <h6 class="text-muted">No approvals pending</h6>
-                                    <p class="text-muted small">You have no requests requiring your approval at this time.</p>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="table-responsive">
-                                    <table class="table table-hover">
-                                        <thead>
-                                            <tr>
-                                                <th>Form</th>
-                                                <th>Request Type</th>
-                                                <th>Requested By</th>
-                                                <th>Requested Date</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var request in RequestsForApproval?.Take(10) ?? Enumerable.Empty<FormRequest>())
-                                            {
-                                                <tr>
-                                                    <td class="fw-bold">@request.FormDefinition?.Name</td>
-                                                    <td>
-                                                        <span class="badge bg-primary">
-                                                            @request.RequestType
-                                                        </span>
-                                                    </td>
-                                                    <td>@request.RequestedByName</td>
-                                                    <td>@request.RequestedAt.ToString("MMM dd, yyyy HH:mm")</td>
-                                                    <td>
-                                                        <a href="/approve/@request.Id" class="btn btn-sm btn-outline-primary">
-                                                            <i class="bi bi-eye me-1"></i>
-                                                            Review
-                                                        </a>
-                                                    </td>
-                                                </tr>
-                                            }
-                                        </tbody>
-                                    </table>
-                                </div>
-                                @if (RequestsForApproval?.Count > 10)
-                                {
-                                    <div class="mt-3 pt-3 border-top">
-                                        <a href="/pending-approvals" class="btn btn-warning">
-                                            <i class="bi bi-arrow-right me-2"></i>
-                                            View All (@RequestsForApproval.Count) Pending Approvals
-                                        </a>
-                                    </div>
-                                }
-                            }
-                        </div>
-                    </div>
-                </div>
-            </div>
-
 
 <!-- Workflow Steps Awaiting Approval -->
 
@@ -323,7 +244,6 @@
 @code {
     private List<FormDefinition>? AvailableForms;
     private List<FormRequest>? PendingRequests;
-    private List<FormRequest>? RequestsForApproval;
     private List<WorkflowStepInstance>? PendingWorkflowSteps;
     private Dictionary<int, WorkflowInstance> _workflowInstanceCache = new();
     private Dictionary<int, WorkflowDefinition> _workflowDefinitionCache = new();
@@ -373,20 +293,6 @@
             // Always load pending workflow steps for the current user
             PendingWorkflowSteps = await WorkflowService.GetPendingStepsForUserAsync(CurrentUserId, UserRoles);
             
-            // Check if user has admin roles
-            var hasAdminRoles = UserRoles.Any(role => new[] { "Admin", "FormAdmin", "DataAdmin", "ReferenceDataApprover" }.Contains(role));
-            
-            // Load requests for approval if user has appropriate roles OR has pending workflow steps
-            if (hasAdminRoles || PendingWorkflowSteps?.Any() == true)
-            {
-                RequestsForApproval = await FormRequestService.GetFormRequestsForApprovalAsync(UserRoles);
-            }
-            else
-            {
-                // Initialize as empty list to prevent infinite loading spinner
-                RequestsForApproval = new List<FormRequest>();
-            }
-            
             // Pre-cache workflow and form data for display if there are pending steps
             if (PendingWorkflowSteps?.Any() == true)
             {
@@ -399,7 +305,6 @@
             Console.WriteLine($"Error loading data: {ex.Message}");
             
             // Initialize properties to prevent infinite loading spinners
-            RequestsForApproval ??= new List<FormRequest>();
             PendingWorkflowSteps ??= new List<WorkflowStepInstance>();
         }
     }

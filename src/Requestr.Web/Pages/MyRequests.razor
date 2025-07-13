@@ -136,7 +136,14 @@
                                                 </span>
                                             </td>
                                             <td>
-                                                <small class="text-muted">Bulk requests don't use workflows</small>
+                                                @if (bulkRequest.WorkflowFormRequestId.HasValue)
+                                                {
+                                                    <WorkflowProgressDisplay FormRequestId="bulkRequest.WorkflowFormRequestId.Value" ShowCompact="true" AutoLoad="true" />
+                                                }
+                                                else
+                                                {
+                                                    <small class="text-muted">No workflow</small>
+                                                }
                                             </td>
                                             <td>
                                                 <div>

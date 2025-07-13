@@ -265,57 +265,85 @@ public class BulkFormRequestService : IBulkFormRequestService
 
             bulkRequest.Id = bulkRequestId;
 
-            // Create individual form requests first
+            // Create individual bulk request items (not FormRequests)
             foreach (var formRequestDto in createDto.FormRequests)
             {
-                var formRequest = new FormRequest
+                var bulkItem = new BulkFormRequestItem
                 {
-                    FormDefinitionId = formRequestDto.FormDefinitionId,
-                    RequestType = formRequestDto.RequestType,
+                    BulkFormRequestId = bulkRequestId,
                     FieldValues = formRequestDto.FieldValues,
                     OriginalValues = formRequestDto.OriginalValues,
-                    RequestedBy = userId,
-                    RequestedByName = userName,
-                    RequestedAt = DateTime.UtcNow,
-                    Comments = formRequestDto.Comments,
-                    BulkFormRequestId = bulkRequestId
+                    RowNumber = bulkRequest.Items.Count + 1, // Sequential row numbering
+                    Status = RequestStatus.Pending
                 };
 
-                // Create the form request with the bulk ID
-                var createFormRequestSql = @"
-                    INSERT INTO FormRequests (FormDefinitionId, RequestType, FieldValues, OriginalValues, Status, 
-                                            RequestedBy, RequestedByName, RequestedAt, Comments, BulkFormRequestId)
+                // Create the bulk request item
+                var createItemSql = @"
+                    INSERT INTO BulkFormRequestItems (BulkFormRequestId, FieldValues, OriginalValues, RowNumber, Status, CreatedBy)
                     OUTPUT INSERTED.Id
-                    VALUES (@FormDefinitionId, @RequestType, @FieldValues, @OriginalValues, @Status,
-                            @RequestedBy, @RequestedByName, @RequestedAt, @Comments, @BulkFormRequestId)";
+                    VALUES (@BulkFormRequestId, @FieldValues, @OriginalValues, @RowNumber, @Status, @CreatedBy)";
 
-                var formRequestId = await connection.QuerySingleAsync<int>(createFormRequestSql, new
+                var itemId = await connection.QuerySingleAsync<int>(createItemSql, new
                 {
-                    FormDefinitionId = formRequest.FormDefinitionId,
-                    RequestType = (int)formRequest.RequestType,
-                    FieldValues = JsonSerializer.Serialize(formRequest.FieldValues),
-                    OriginalValues = JsonSerializer.Serialize(formRequest.OriginalValues),
-                    Status = (int)formRequest.Status,
-                    RequestedBy = formRequest.RequestedBy,
-                    RequestedByName = formRequest.RequestedByName,
-                    RequestedAt = formRequest.RequestedAt,
-                    Comments = formRequest.Comments,
-                    BulkFormRequestId = formRequest.BulkFormRequestId
+                    BulkFormRequestId = bulkRequestId,
+                    FieldValues = JsonSerializer.Serialize(bulkItem.FieldValues),
+                    OriginalValues = JsonSerializer.Serialize(bulkItem.OriginalValues),
+                    RowNumber = bulkItem.RowNumber,
+                    Status = (int)bulkItem.Status,
+                    CreatedBy = userId
                 }, transaction);
 
-                formRequest.Id = formRequestId;
-                bulkRequest.FormRequests.Add(formRequest);
+                bulkItem.Id = itemId;
+                bulkRequest.Items.Add(bulkItem);
             }
 
             // Start workflow for bulk request if form has one
-            if (formDefinition.WorkflowDefinitionId.HasValue && bulkRequest.FormRequests.Any())
+            if (formDefinition.WorkflowDefinitionId.HasValue && bulkRequest.Items.Any())
             {
                 try
                 {
-                    // Use the first form request to start the workflow
-                    var firstFormRequest = bulkRequest.FormRequests.First();
+                    // Create a temporary FormRequest for workflow initiation
+                    // This is needed because the workflow system expects a FormRequest ID
+                    var tempFormRequest = new FormRequest
+                    {
+                        FormDefinitionId = formDefinition.Id,
+                        RequestType = createDto.RequestType,
+                        FieldValues = new Dictionary<string, object> 
+                        { 
+                            ["IsBulkRequest"] = true,
+                            ["BulkRequestId"] = bulkRequestId,
+                            ["ItemCount"] = bulkRequest.Items.Count
+                        },
+                        RequestedBy = userId,
+                        RequestedByName = userName,
+                        RequestedAt = DateTime.UtcNow,
+                        Comments = $"Workflow for bulk request #{bulkRequestId}",
+                        BulkFormRequestId = bulkRequestId
+                    };
+
+                    var tempFormRequestSql = @"
+                        INSERT INTO FormRequests (FormDefinitionId, RequestType, FieldValues, OriginalValues, Status, 
+                                                RequestedBy, RequestedByName, RequestedAt, Comments, BulkFormRequestId)
+                        OUTPUT INSERTED.Id
+                        VALUES (@FormDefinitionId, @RequestType, @FieldValues, @OriginalValues, @Status,
+                                @RequestedBy, @RequestedByName, @RequestedAt, @Comments, @BulkFormRequestId)";
+
+                    var tempFormRequestId = await connection.QuerySingleAsync<int>(tempFormRequestSql, new
+                    {
+                        FormDefinitionId = tempFormRequest.FormDefinitionId,
+                        RequestType = (int)tempFormRequest.RequestType,
+                        FieldValues = JsonSerializer.Serialize(tempFormRequest.FieldValues),
+                        OriginalValues = JsonSerializer.Serialize(tempFormRequest.OriginalValues ?? new Dictionary<string, object>()),
+                        Status = (int)tempFormRequest.Status,
+                        RequestedBy = tempFormRequest.RequestedBy,
+                        RequestedByName = tempFormRequest.RequestedByName,
+                        RequestedAt = tempFormRequest.RequestedAt,
+                        Comments = tempFormRequest.Comments,
+                        BulkFormRequestId = tempFormRequest.BulkFormRequestId
+                    }, transaction);
+
                     var workflowInstance = await _workflowService.StartWorkflowAsync(
-                        firstFormRequest.Id, 
+                        tempFormRequestId, 
                         formDefinition.WorkflowDefinitionId.Value, 
                         connection, 
                         (SqlTransaction)transaction);
@@ -332,26 +360,22 @@ public class BulkFormRequestService : IBulkFormRequestService
                         BulkRequestId = bulkRequestId
                     }, transaction);
 
-                    // Update all form requests with workflow instance ID
-                    var updateFormRequestsSql = @"
+                    // Update the temp FormRequest with workflow instance ID
+                    var updateTempFormRequestSql = @"
                         UPDATE FormRequests 
                         SET WorkflowInstanceId = @WorkflowInstanceId 
-                        WHERE BulkFormRequestId = @BulkRequestId";
+                        WHERE Id = @FormRequestId";
 
-                    await connection.ExecuteAsync(updateFormRequestsSql, new
+                    await connection.ExecuteAsync(updateTempFormRequestSql, new
                     {
                         WorkflowInstanceId = workflowInstance.Id,
-                        BulkRequestId = bulkRequestId
+                        FormRequestId = tempFormRequestId
                     }, transaction);
 
                     bulkRequest.WorkflowInstanceId = workflowInstance.Id;
-                    foreach (var formRequest in bulkRequest.FormRequests)
-                    {
-                        formRequest.WorkflowInstanceId = workflowInstance.Id;
-                    }
 
-                    _logger.LogInformation("Started workflow instance {WorkflowInstanceId} for bulk request {BulkRequestId}", 
-                        workflowInstance.Id, bulkRequestId);
+                    _logger.LogInformation("Started workflow instance {WorkflowInstanceId} for bulk request {BulkRequestId} with temp FormRequest {TempFormRequestId}", 
+                        workflowInstance.Id, bulkRequestId, tempFormRequestId);
                 }
                 catch (Exception ex)
                 {
@@ -409,82 +433,81 @@ public class BulkFormRequestService : IBulkFormRequestService
                     bulkRequest.RequestType = ParseRequestType(requestTypeResult);
                 }
 
-                // Load associated form requests
-                var formRequestsSql = @"
+                // Load associated bulk request items (new approach)
+                var itemsSql = @"
                     SELECT 
-                        fr.Id,
-                        fr.FormDefinitionId,
-                        fr.Status,
-                        fr.RequestedBy,
-                        fr.RequestedByName,
-                        fr.RequestedAt,
-                        fr.ApprovedBy,
-                        fr.ApprovedByName,
-                        fr.ApprovedAt,
-                        fr.Comments,
-                        fr.RejectionReason,
-                        fr.BulkFormRequestId,
-                        fr.FieldValues,
-                        fr.OriginalValues,
-                        fr.RequestType
-                    FROM FormRequests fr
-                    WHERE fr.BulkFormRequestId = @BulkFormRequestId
-                    ORDER BY fr.Id";
+                        bfri.Id,
+                        bfri.BulkFormRequestId,
+                        bfri.FieldValues,
+                        bfri.OriginalValues,
+                        bfri.RowNumber,
+                        bfri.Status,
+                        bfri.ValidationErrors,
+                        bfri.ProcessingResult
+                    FROM BulkFormRequestItems bfri
+                    WHERE bfri.BulkFormRequestId = @BulkFormRequestId
+                    ORDER BY bfri.RowNumber";
 
-                var formRequestResults = await connection.QueryAsync(formRequestsSql, new { BulkFormRequestId = id });
+                var itemResults = await connection.QueryAsync(itemsSql, new { BulkFormRequestId = id });
                 
-                var formRequests = new List<FormRequest>();
+                var items = new List<BulkFormRequestItem>();
                 
-                // Map and deserialize each form request
-                foreach (var row in formRequestResults)
+                // Map and deserialize each item
+                foreach (var row in itemResults)
                 {
-                    var formRequest = new FormRequest
+                    var item = new BulkFormRequestItem
                     {
                         Id = row.Id,
-                        FormDefinitionId = row.FormDefinitionId,
+                        BulkFormRequestId = row.BulkFormRequestId,
+                        RowNumber = row.RowNumber,
                         Status = (RequestStatus)row.Status,
-                        RequestedBy = row.RequestedBy,
-                        RequestedByName = row.RequestedByName,
-                        RequestedAt = row.RequestedAt,
-                        ApprovedBy = row.ApprovedBy,
-                        ApprovedByName = row.ApprovedByName,
-                        ApprovedAt = row.ApprovedAt,
-                        Comments = row.Comments,
-                        RejectionReason = row.RejectionReason,
-                        BulkFormRequestId = row.BulkFormRequestId
+                        ValidationErrors = row.ValidationErrors,
+                        ProcessingResult = row.ProcessingResult
                     };
                     
                     // Deserialize JSON strings to dictionaries
                     if (row.FieldValues != null)
                     {
                         _logger.LogInformation($"Deserializing FieldValues: {row.FieldValues}");
-                        formRequest.FieldValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(row.FieldValues.ToString()) ?? new Dictionary<string, object?>();
+                        item.FieldValues = JsonSerializer.Deserialize<Dictionary<string, object>>(row.FieldValues.ToString()) ?? new Dictionary<string, object>();
                     }
                     else
                     {
-                        formRequest.FieldValues = new Dictionary<string, object?>();
+                        item.FieldValues = new Dictionary<string, object>();
                     }
                     
                     if (row.OriginalValues != null)
                     {
                         _logger.LogInformation($"Deserializing OriginalValues: {row.OriginalValues}");
-                        formRequest.OriginalValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(row.OriginalValues.ToString()) ?? new Dictionary<string, object?>();
+                        item.OriginalValues = JsonSerializer.Deserialize<Dictionary<string, object>>(row.OriginalValues.ToString()) ?? new Dictionary<string, object>();
                     }
                     else
                     {
-                        formRequest.OriginalValues = new Dictionary<string, object?>();
+                        item.OriginalValues = new Dictionary<string, object>();
                     }
                     
-                    // Parse RequestType from string
-                    if (row.RequestType != null)
-                    {
-                        formRequest.RequestType = ParseRequestType(row.RequestType);
-                    }
-                    
-                    formRequests.Add(formRequest);
+                    items.Add(item);
                 }
                 
-                bulkRequest.FormRequests = formRequests.ToList();
+                bulkRequest.Items = items.ToList();
+
+                // If this bulk request has a workflow, find the associated FormRequest for workflow progress
+                if (bulkRequest.WorkflowInstanceId.HasValue)
+                {
+                    var workflowFormRequestSql = @"
+                        SELECT Id FROM FormRequests 
+                        WHERE BulkFormRequestId = @BulkFormRequestId 
+                        AND WorkflowInstanceId = @WorkflowInstanceId";
+                    
+                    var workflowFormRequestId = await connection.QueryFirstOrDefaultAsync<int?>(
+                        workflowFormRequestSql, 
+                        new { 
+                            BulkFormRequestId = id, 
+                            WorkflowInstanceId = bulkRequest.WorkflowInstanceId 
+                        });
+                    
+                    bulkRequest.WorkflowFormRequestId = workflowFormRequestId;
+                }
             }
 
             return bulkRequest;
@@ -523,14 +546,32 @@ public class BulkFormRequestService : IBulkFormRequestService
                 result.RequestType = ParseRequestType(requestType);
             }
             
-            // Load FormRequests count for display
-            var formRequestsCount = await connection.QuerySingleOrDefaultAsync<int>(
-                "SELECT COUNT(*) FROM FormRequests WHERE BulkFormRequestId = @Id", new { Id = result.Id });
+            // Load Items count for display
+            var itemsCount = await connection.QuerySingleOrDefaultAsync<int>(
+                "SELECT COUNT(*) FROM BulkFormRequestItems WHERE BulkFormRequestId = @Id", new { Id = result.Id });
             
-            // Note: We're not fully loading FormRequests here for performance, just getting the count
-            // The FormRequests will be empty, but we know the count for display purposes
-            result.FormRequests = new List<FormRequest>();
-            result.SelectedRows = formRequestsCount; // Use SelectedRows to track actual count for display
+            // Note: We're not fully loading Items here for performance, just getting the count
+            // The Items will be empty, but we know the count for display purposes
+            result.Items = new List<BulkFormRequestItem>();
+            result.SelectedRows = itemsCount; // Use SelectedRows to track actual count for display
+            
+            // If this bulk request has a workflow, find the associated FormRequest for workflow progress
+            if (result.WorkflowInstanceId.HasValue)
+            {
+                var workflowFormRequestSql = @"
+                    SELECT Id FROM FormRequests 
+                    WHERE BulkFormRequestId = @BulkFormRequestId 
+                    AND WorkflowInstanceId = @WorkflowInstanceId";
+                
+                var workflowFormRequestId = await connection.QueryFirstOrDefaultAsync<int?>(
+                    workflowFormRequestSql, 
+                    new { 
+                        BulkFormRequestId = result.Id, 
+                        WorkflowInstanceId = result.WorkflowInstanceId 
+                    });
+                
+                result.WorkflowFormRequestId = workflowFormRequestId;
+            }
         }
         
         return results.ToList();
@@ -590,12 +631,30 @@ public class BulkFormRequestService : IBulkFormRequestService
                 result.RequestType = ParseRequestType(requestType);
             }
             
-            // Load FormRequests count for display
-            var formRequestsCount = await connection.QuerySingleOrDefaultAsync<int>(
-                "SELECT COUNT(*) FROM FormRequests WHERE BulkFormRequestId = @Id", new { Id = result.Id });
+            // Load Items count for display
+            var itemsCount = await connection.QuerySingleOrDefaultAsync<int>(
+                "SELECT COUNT(*) FROM BulkFormRequestItems WHERE BulkFormRequestId = @Id", new { Id = result.Id });
             
-            result.FormRequests = new List<FormRequest>();
-            result.SelectedRows = formRequestsCount; // Use SelectedRows to track actual count for display
+            result.Items = new List<BulkFormRequestItem>();
+            result.SelectedRows = itemsCount; // Use SelectedRows to track actual count for display
+            
+            // If this bulk request has a workflow, find the associated FormRequest for workflow progress
+            if (result.WorkflowInstanceId.HasValue)
+            {
+                var workflowFormRequestSql = @"
+                    SELECT Id FROM FormRequests 
+                    WHERE BulkFormRequestId = @BulkFormRequestId 
+                    AND WorkflowInstanceId = @WorkflowInstanceId";
+                
+                var workflowFormRequestId = await connection.QueryFirstOrDefaultAsync<int?>(
+                    workflowFormRequestSql, 
+                    new { 
+                        BulkFormRequestId = result.Id, 
+                        WorkflowInstanceId = result.WorkflowInstanceId 
+                    });
+                
+                result.WorkflowFormRequestId = workflowFormRequestId;
+            }
         }
         
         return results.ToList();
@@ -603,10 +662,6 @@ public class BulkFormRequestService : IBulkFormRequestService
 
     public async Task<bool> ApproveBulkFormRequestAsync(int id, string userId, string userName, string? comments = null)
     {
-        // Step 1: Update status of bulk request and all sub-requests in one transaction
-        List<int> formRequestIds;
-        bool statusUpdateSuccess = false;
-        
         using (var connection = new SqlConnection(_connectionString))
         {
             await connection.OpenAsync();
@@ -616,7 +671,35 @@ public class BulkFormRequestService : IBulkFormRequestService
             {
                 _logger.LogInformation("Approving bulk form request ID: {Id}", id);
                 
-                // Update the bulk request status to approved
+                // Get the bulk request to check if it has a workflow
+                var bulkRequest = await connection.QueryFirstOrDefaultAsync(
+                    "SELECT WorkflowInstanceId, Status FROM BulkFormRequests WHERE Id = @Id", 
+                    new { Id = id }, transaction);
+                
+                if (bulkRequest == null)
+                {
+                    _logger.LogWarning("Bulk request with ID {Id} not found", id);
+                    await transaction.RollbackAsync();
+                    return false;
+                }
+                
+                if ((int)bulkRequest.Status != (int)RequestStatus.Pending)
+                {
+                    _logger.LogWarning("Bulk request with ID {Id} is not in pending state (Status: {Status})", id, (int)bulkRequest.Status);
+                    await transaction.RollbackAsync();
+                    return false;
+                }
+                
+                // If this has a workflow, we should not directly approve it - the workflow should handle this
+                if (bulkRequest.WorkflowInstanceId != null)
+                {
+                    _logger.LogWarning("Bulk request with ID {Id} has a workflow instance {WorkflowInstanceId}. Use workflow approval instead.", 
+                        id, (int)bulkRequest.WorkflowInstanceId);
+                    await transaction.RollbackAsync();
+                    return false;
+                }
+                
+                // Update the bulk request status to approved (legacy path)
                 var sql = @"
                     UPDATE BulkFormRequests 
                     SET Status = 1, ApprovedBy = @UserId, ApprovedByName = @UserName, ApprovedAt = @ApprovedAt,
@@ -629,112 +712,99 @@ public class BulkFormRequestService : IBulkFormRequestService
 
                 if (result <= 0)
                 {
-                    _logger.LogWarning("No bulk request with ID {Id} was updated. It may not exist or is not in a pending state.", id);
+                    _logger.LogWarning("No bulk request with ID {Id} was updated", id);
                     await transaction.RollbackAsync();
                     return false;
                 }
                 
-                // Get all associated form requests
-                var getFormRequestsSql = @"
-                    SELECT Id FROM FormRequests 
-                    WHERE BulkFormRequestId = @BulkFormRequestId AND Status = 0";
-                    
-                formRequestIds = (await connection.QueryAsync<int>(getFormRequestsSql, new { BulkFormRequestId = id }, transaction)).AsList();
-                
-                if (!formRequestIds.Any())
-                {
-                    _logger.LogInformation("No pending individual requests found for bulk request {Id}", id);
-                }
-                
-                // Also approve all associated form requests
-                var formRequestsSql = @"
-                    UPDATE FormRequests 
-                    SET Status = 1, ApprovedBy = @UserId, ApprovedByName = @UserName, ApprovedAt = @ApprovedAt
+                // Update all bulk request items to approved status
+                var updateItemsSql = @"
+                    UPDATE BulkFormRequestItems 
+                    SET Status = 1 
                     WHERE BulkFormRequestId = @BulkFormRequestId AND Status = 0";
 
-                await connection.ExecuteAsync(formRequestsSql, new { BulkFormRequestId = id, UserId = userId, UserName = userName, ApprovedAt = approvedAt }, transaction);
+                await connection.ExecuteAsync(updateItemsSql, new { BulkFormRequestId = id }, transaction);
                 
                 // Commit the transaction for status updates
                 await transaction.CommitAsync();
-                statusUpdateSuccess = true;
-                _logger.LogInformation("Successfully updated statuses for bulk request {Id} and {Count} sub-requests", id, formRequestIds.Count);
+                _logger.LogInformation("Successfully approved bulk request {Id}", id);
+                
+                return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating status for bulk request {Id}", id);
+                _logger.LogError(ex, "Error approving bulk request {Id}", id);
                 await transaction.RollbackAsync();
                 return false;
             }
         }
-        
-        // Step 2: If status updates succeeded, now apply each form request (each with its own transaction)
-        if (statusUpdateSuccess && formRequestIds != null && formRequestIds.Any())
-        {
-            _logger.LogInformation("Now applying {Count} individual requests for bulk request {Id}", formRequestIds.Count, id);
-            int successCount = 0;
-            int failureCount = 0;
-            
-            foreach (var requestId in formRequestIds)
-            {
-                try
-                {
-                    // Call the FormRequestService to apply each form request
-                    var success = await _formRequestService.ApplyFormRequestAsync(requestId);
-                    if (success)
-                    {
-                        successCount++;
-                        _logger.LogInformation("Successfully applied form request {RequestId} within bulk request {BulkId}", requestId, id);
-                    }
-                    else
-                    {
-                        failureCount++;
-                        _logger.LogWarning("Failed to apply form request {RequestId} within bulk request {BulkId}", requestId, id);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    failureCount++;
-                    _logger.LogError(ex, "Error applying form request {RequestId} within bulk request {BulkId}", requestId, id);
-                    // We continue processing other requests even if one fails
-                }
-            }
-            
-            _logger.LogInformation("Bulk request {Id} application completed: {SuccessCount} succeeded, {FailureCount} failed", 
-                id, successCount, failureCount);
-                
-            // Consider the overall operation successful if at least one request was applied successfully
-            return successCount > 0;
-        }
-        
-        return statusUpdateSuccess;
     }
 
     public async Task<bool> RejectBulkFormRequestAsync(int id, string userId, string userName, string rejectionReason)
     {
         using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        using var transaction = await connection.BeginTransactionAsync();
         
-        var sql = @"
-            UPDATE BulkFormRequests 
-            SET Status = 2, ApprovedBy = @UserId, ApprovedByName = @UserName, ApprovedAt = @ApprovedAt,
-                RejectionReason = @RejectionReason, UpdatedBy = @UserId, UpdatedAt = @ApprovedAt
-            WHERE Id = @Id AND Status = 0";
-
-        var approvedAt = DateTime.UtcNow;
-        var result = await connection.ExecuteAsync(sql, new { Id = id, UserId = userId, UserName = userName, ApprovedAt = approvedAt, RejectionReason = rejectionReason });
-
-        if (result > 0)
+        try
         {
-            // Also reject all associated form requests
-            var formRequestsSql = @"
-                UPDATE FormRequests 
+            // Get the bulk request to check if it has a workflow
+            var bulkRequest = await connection.QueryFirstOrDefaultAsync(
+                "SELECT WorkflowInstanceId, Status FROM BulkFormRequests WHERE Id = @Id", 
+                new { Id = id }, transaction);
+            
+            if (bulkRequest == null)
+            {
+                _logger.LogWarning("Bulk request with ID {Id} not found", id);
+                await transaction.RollbackAsync();
+                return false;
+            }
+            
+            if ((int)bulkRequest.Status != (int)RequestStatus.Pending)
+            {
+                _logger.LogWarning("Bulk request with ID {Id} is not in pending state (Status: {Status})", id, (int)bulkRequest.Status);
+                await transaction.RollbackAsync();
+                return false;
+            }
+            
+            // If this has a workflow, we should not directly reject it - the workflow should handle this
+            if (bulkRequest.WorkflowInstanceId != null)
+            {
+                _logger.LogWarning("Bulk request with ID {Id} has a workflow instance {WorkflowInstanceId}. Use workflow rejection instead.", 
+                    id, (int)bulkRequest.WorkflowInstanceId);
+                await transaction.RollbackAsync();
+                return false;
+            }
+            
+            var sql = @"
+                UPDATE BulkFormRequests 
                 SET Status = 2, ApprovedBy = @UserId, ApprovedByName = @UserName, ApprovedAt = @ApprovedAt,
-                    RejectionReason = @RejectionReason
-                WHERE BulkFormRequestId = @BulkFormRequestId AND Status = 0";
+                    RejectionReason = @RejectionReason, UpdatedBy = @UserId, UpdatedAt = @ApprovedAt
+                WHERE Id = @Id AND Status = 0";
 
-            await connection.ExecuteAsync(formRequestsSql, new { BulkFormRequestId = id, UserId = userId, UserName = userName, ApprovedAt = approvedAt, RejectionReason = rejectionReason });
+            var approvedAt = DateTime.UtcNow;
+            var result = await connection.ExecuteAsync(sql, new { Id = id, UserId = userId, UserName = userName, ApprovedAt = approvedAt, RejectionReason = rejectionReason }, transaction);
+
+            if (result > 0)
+            {
+                // Also reject all bulk request items
+                var itemsSql = @"
+                    UPDATE BulkFormRequestItems 
+                    SET Status = 2
+                    WHERE BulkFormRequestId = @BulkFormRequestId AND Status = 0";
+
+                await connection.ExecuteAsync(itemsSql, new { BulkFormRequestId = id }, transaction);
+            }
+
+            await transaction.CommitAsync();
+            return result > 0;
         }
-
-        return result > 0;
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error rejecting bulk request {Id}", id);
+            await transaction.RollbackAsync();
+            return false;
+        }
     }
 
     public async Task<bool> DeleteBulkFormRequestAsync(int id, string userId)
@@ -802,13 +872,31 @@ public class BulkFormRequestService : IBulkFormRequestService
                     result.RequestType = ParseRequestType(requestType);
                 }
                 
-                // Load FormRequests count for display
-                var formRequestsCount = await connection.QuerySingleOrDefaultAsync<int>(
-                    "SELECT COUNT(*) FROM FormRequests WHERE BulkFormRequestId = @Id", new { Id = result.Id });
+                // Load Items count for display
+                var itemsCount = await connection.QuerySingleOrDefaultAsync<int>(
+                    "SELECT COUNT(*) FROM BulkFormRequestItems WHERE BulkFormRequestId = @Id", new { Id = result.Id });
                 
-                // Note: We're not fully loading FormRequests here for performance, just getting the count
-                result.FormRequests = new List<FormRequest>();
-                result.SelectedRows = formRequestsCount; // Use SelectedRows to track actual count for display
+                // Note: We're not fully loading Items here for performance, just getting the count
+                result.Items = new List<BulkFormRequestItem>();
+                result.SelectedRows = itemsCount; // Use SelectedRows to track actual count for display
+                
+                // If this bulk request has a workflow, find the associated FormRequest for workflow progress
+                if (result.WorkflowInstanceId.HasValue)
+                {
+                    var workflowFormRequestSql = @"
+                        SELECT Id FROM FormRequests 
+                        WHERE BulkFormRequestId = @BulkFormRequestId 
+                        AND WorkflowInstanceId = @WorkflowInstanceId";
+                    
+                    var workflowFormRequestId = await connection.QueryFirstOrDefaultAsync<int?>(
+                        workflowFormRequestSql, 
+                        new { 
+                            BulkFormRequestId = result.Id, 
+                            WorkflowInstanceId = result.WorkflowInstanceId 
+                        });
+                    
+                    result.WorkflowFormRequestId = workflowFormRequestId;
+                }
             }
             
             _logger.LogInformation($"Retrieved {results.Count()} bulk requests for form definition ID {formDefinitionId}");

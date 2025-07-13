@@ -72,8 +72,20 @@ public class BulkFormRequest : AuditableEntity
     public string? Comments { get; set; }
     public string? ProcessingSummary { get; set; } // Summary of processing results
     public int? WorkflowInstanceId { get; set; } // Link to workflow system
-    public List<FormRequest> FormRequests { get; set; } = new();
+    public int? WorkflowFormRequestId { get; set; } // ID of the temp FormRequest created for workflow
+    public List<BulkFormRequestItem> Items { get; set; } = new(); // Changed from FormRequests to Items
     public List<BulkFormRequestHistory> History { get; set; } = new();
+}
+
+public class BulkFormRequestItem : BaseEntity
+{
+    public int BulkFormRequestId { get; set; }
+    public Dictionary<string, object> FieldValues { get; set; } = new();
+    public Dictionary<string, object> OriginalValues { get; set; } = new(); // For updates
+    public int RowNumber { get; set; } // Original row number from CSV
+    public RequestStatus Status { get; set; } = RequestStatus.Pending;
+    public string? ValidationErrors { get; set; } // JSON array of validation errors
+    public string? ProcessingResult { get; set; } // Result after applying to database
 }
 
 public class BulkFormRequestHistory : BaseEntity

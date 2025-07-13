@@ -3,6 +3,7 @@
 @using Microsoft.Extensions.Logging
 @inject IWorkflowService WorkflowService
 @inject ILogger<WorkflowProgressDisplay> Logger
+@inject NavigationManager Navigation
 
 @if (ShowCompact)
 {
@@ -23,19 +24,31 @@
             </div>
             <div class="d-flex justify-content-between align-items-center">
                 <div>
-                    <small class="fw-medium">@Progress.CurrentStepName</small>
-                    @if (Progress.IsStalled)
+                    @{
+                        var currentStep = Progress?.Steps?.FirstOrDefault(s => s.IsCurrent);
+                    }
+                    @if (currentStep?.StepType == WorkflowStepType.Approval && Progress?.WorkflowInstanceId > 0)
+                    {
+                        <a href="/workflow/@Progress.WorkflowInstanceId/step/@currentStep.StepId" class="fw-bold">
+                            <small class="fw-bold">@(Progress?.CurrentStepName ?? "")</small>
+                        </a>
+                    }
+                    else
+                    {
+                        <small class="fw-medium">@(Progress?.CurrentStepName ?? "")</small>
+                    }
+                    @if (Progress?.IsStalled == true)
                     {
                         <span class="badge badge-warning ms-1" title="Step has been pending for @Progress.DaysInCurrentStep days">
                             <i class="bi bi-exclamation-triangle"></i>
                         </span>
                     }
                 </div>
-                <span class="badge bg-@GetStatusBadgeColor(Progress.Status)">
-                    @Progress.Status
+                <span class="badge bg-@GetStatusBadgeColor(Progress?.Status ?? WorkflowInstanceStatus.InProgress)">
+                    @(Progress?.Status ?? WorkflowInstanceStatus.InProgress)
                 </span>
             </div>
-            @if (!string.IsNullOrEmpty(Progress.CurrentStepAssignedTo))
+            @if (!string.IsNullOrEmpty(Progress?.CurrentStepAssignedTo))
             {
                 <div class="mt-1">
                     <small class="text-muted">
@@ -193,7 +206,16 @@ else
                                         <div class="d-flex justify-content-between align-items-start">
                                             <div>
                                                 <h6 class="mb-1 @(step.IsCurrent ? "text-primary" : "")">
-                                                    @step.StepName
+                                                    @if (step.StepType == WorkflowStepType.Approval && Progress?.WorkflowInstanceId > 0)
+                                                    {
+                                                        <a href="/workflow/@Progress.WorkflowInstanceId/step/@step.StepId" class="fw-bold @(step.IsCurrent ? "text-primary" : "")">
+                                                            @step.StepName
+                                                        </a>
+                                                    }
+                                                    else
+                                                    {
+                                                        @step.StepName
+                                                    }
                                                     @if (step.StepType == WorkflowStepType.Approval)
                                                     {
                                                         <span class="badge bg-info ms-1">Approval</span>
@@ -218,7 +240,7 @@ else
                                                         <small class="text-muted">Assigned to roles: </small>
                                                         @foreach (var role in step.AssignedRoles)
                                                         {
-                                                            <span class="badge bg-light text-dark me-1">@role</span>
+                                                            <span class="badge bg-secondary bg-opacity-25 text-body border me-1">@role</span>
                                                         }
                                                     </div>
                                                 }
@@ -254,7 +276,7 @@ else
                                                             by @(step.CompletedByName ?? step.CompletedBy)
                                                         </small>
                                                     </div>
-                                                    @if (step.Action.HasValue)
+                                                    @if (step.Action.HasValue && !(step.Action.Value == WorkflowStepAction.Approved && step.Status == WorkflowStepInstanceStatus.Completed))
                                                     {
                                                         <div class="mb-1">
                                                             <span class="badge bg-@GetActionBadgeColor(step.Action.Value)">

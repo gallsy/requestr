@@ -183,35 +183,6 @@ else
                             </div>
                         </div>
 
-                        <!-- Previous Step History -->
-                        @if (_stepHistory.Any())
-                        {
-                            <div class="mb-4">
-                                <h6>Previous Approvals</h6>
-                                <div class="list-group">
-                                    @foreach (var step in _stepHistory.OrderBy(s => s.CompletedAt))
-                                    {
-                                        <div class="list-group-item">
-                                            <div class="d-flex w-100 justify-content-between">
-                                                <h6 class="mb-1">@GetStepName(step.StepId)</h6>
-                                                <small>@step.CompletedAt?.ToString("MMM dd, yyyy HH:mm")</small>
-                                            </div>
-                                            <p class="mb-1">
-                                                <span class="badge bg-@GetActionBadgeColor(step.Action)">
-                                                    @step.Action
-                                                </span>
-                                                by @step.CompletedByName
-                                            </p>
-                                            @if (!string.IsNullOrEmpty(step.Comments))
-                                            {
-                                                <small class="text-muted">@step.Comments</small>
-                                            }
-                                        </div>
-                                    }
-                                </div>
-                            </div>
-                        }
-
                         <!-- Approval Actions -->
                         @if (_currentStep.Status == WorkflowStepInstanceStatus.Pending || _currentStep.Status == WorkflowStepInstanceStatus.InProgress)
                         {
@@ -288,7 +259,6 @@ else
     private WorkflowStepInstance? _currentStep;
     private WorkflowStep? _currentStepDefinition;
     private FormRequest? _formRequest;
-    private List<WorkflowStepInstance> _stepHistory = new();
     private List<WorkflowStepFieldConfiguration> _fieldConfigurations = new();
     
     private string _approvalComments = "";
@@ -348,9 +318,6 @@ else
         _currentStepDefinition = _workflowDefinition.Steps.FirstOrDefault(s => s.StepId == StepId);
         Logger.LogInformation("LoadWorkflowDataAsync: CurrentStepDefinition found: {Found}", _currentStepDefinition != null);
 
-        // Load step history (completed steps)
-        _stepHistory = allStepInstances.Where(s => s.Status == WorkflowStepInstanceStatus.Completed).ToList();
-
         // Load field configurations for this step
         if (_currentStepDefinition != null)
         {
@@ -359,7 +326,7 @@ else
 
         // Calculate progress
         _totalSteps = _workflowDefinition.Steps.Count(s => s.StepType != WorkflowStepType.Start && s.StepType != WorkflowStepType.End);
-        _currentStepIndex = _stepHistory.Count;
+        _currentStepIndex = allStepInstances.Count(s => s.Status == WorkflowStepInstanceStatus.Completed);
 
         Logger.LogInformation("LoadWorkflowDataAsync: Completed successfully");
     }
@@ -460,11 +427,6 @@ else
         return _formRequest!.FieldValues;
     }
 
-    private string GetStepName(string stepId)
-    {
-        return _workflowDefinition?.Steps.FirstOrDefault(s => s.StepId == stepId)?.Name ?? stepId;
-    }
-
     // Badge color helper methods
     private string GetStepStatusBadgeColor(WorkflowStepInstanceStatus status)
     {
@@ -499,17 +461,6 @@ else
             RequestType.Insert => "success",
             RequestType.Update => "primary",
             RequestType.Delete => "danger",
-            _ => "secondary"
-        };
-    }
-
-    private string GetActionBadgeColor(WorkflowStepAction? action)
-    {
-        return action switch
-        {
-            WorkflowStepAction.Approved => "success",
-            WorkflowStepAction.Rejected => "danger",
-            WorkflowStepAction.Completed => "info",
             _ => "secondary"
         };
     }
