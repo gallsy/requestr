@@ -200,6 +200,7 @@ public class FormPermissionService : IFormPermissionService
         try
         {
             using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
             using var transaction = await connection.BeginTransactionAsync();
             
             try
@@ -434,14 +435,8 @@ public class FormPermissionService : IFormPermissionService
                     [FormPermissionType.UpdateRequest] = true,
                     [FormPermissionType.DeleteRequest] = true,
                     [FormPermissionType.ViewData] = true,
-                    [FormPermissionType.ViewDataDetails] = true,
                     [FormPermissionType.BulkActions] = true,
-                    [FormPermissionType.BulkUploadCsv] = true,
-                    [FormPermissionType.BulkEditRecords] = true,
-                    [FormPermissionType.BulkDeleteRecords] = true,
-                    [FormPermissionType.ViewAuditLog] = true,
-                    [FormPermissionType.ExportData] = true,
-                    [FormPermissionType.ManageFormSettings] = true
+                    [FormPermissionType.BulkUploadCsv] = true
                 },
                 ["FormAdmin"] = new()
                 {
@@ -449,14 +444,8 @@ public class FormPermissionService : IFormPermissionService
                     [FormPermissionType.UpdateRequest] = true,
                     [FormPermissionType.DeleteRequest] = true,
                     [FormPermissionType.ViewData] = true,
-                    [FormPermissionType.ViewDataDetails] = true,
                     [FormPermissionType.BulkActions] = true,
-                    [FormPermissionType.BulkUploadCsv] = true,
-                    [FormPermissionType.BulkEditRecords] = true,
-                    [FormPermissionType.BulkDeleteRecords] = true,
-                    [FormPermissionType.ViewAuditLog] = true,
-                    [FormPermissionType.ExportData] = true,
-                    [FormPermissionType.ManageFormSettings] = false
+                    [FormPermissionType.BulkUploadCsv] = true
                 },
                 ["DataAdmin"] = new()
                 {
@@ -464,14 +453,8 @@ public class FormPermissionService : IFormPermissionService
                     [FormPermissionType.UpdateRequest] = true,
                     [FormPermissionType.DeleteRequest] = false,
                     [FormPermissionType.ViewData] = true,
-                    [FormPermissionType.ViewDataDetails] = true,
                     [FormPermissionType.BulkActions] = true,
-                    [FormPermissionType.BulkUploadCsv] = true,
-                    [FormPermissionType.BulkEditRecords] = true,
-                    [FormPermissionType.BulkDeleteRecords] = false,
-                    [FormPermissionType.ViewAuditLog] = false,
-                    [FormPermissionType.ExportData] = true,
-                    [FormPermissionType.ManageFormSettings] = false
+                    [FormPermissionType.BulkUploadCsv] = true
                 }
             };
 

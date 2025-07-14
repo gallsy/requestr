@@ -143,26 +143,6 @@ BEGIN
 END
 GO
 
--- Enhanced permissions table for granular access control
-IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ApplicationPermissions' AND xtype='U')
-BEGIN
-    CREATE TABLE ApplicationPermissions (
-        Id int IDENTITY(1,1) PRIMARY KEY,
-        RoleName nvarchar(255) NOT NULL,
-        Permission nvarchar(255) NOT NULL, -- 'DataView.Access', 'BulkActions.Execute', 'CSV.Upload', etc.
-        ResourceId int NULL, -- Optional: specific form or resource ID
-        IsGranted bit NOT NULL DEFAULT 1,
-        CreatedAt datetime2 NOT NULL DEFAULT GETUTCDATE(),
-        CreatedBy nvarchar(255) NOT NULL,
-        INDEX IX_ApplicationPermissions_RoleName (RoleName),
-        INDEX IX_ApplicationPermissions_Permission (Permission),
-        INDEX IX_ApplicationPermissions_ResourceId (ResourceId),
-        UNIQUE (RoleName, Permission, ResourceId)
-    );
-    PRINT 'ApplicationPermissions table created successfully.';
-END
-GO
-
 -- Update FormDefinitions to support workflow system
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('FormDefinitions') AND name = 'WorkflowDefinitionId')
 BEGIN
@@ -196,30 +176,6 @@ BEGIN
     CREATE INDEX IX_FormRequests_WorkflowInstanceId ON FormRequests(WorkflowInstanceId);
     
     PRINT 'Added WorkflowInstanceId to FormRequests table';
-END
-GO
-
--- Insert default permissions for existing roles
-IF NOT EXISTS (SELECT * FROM ApplicationPermissions WHERE RoleName = 'Admin')
-BEGIN
-    INSERT INTO ApplicationPermissions (RoleName, Permission, IsGranted, CreatedBy) VALUES
-    ('Admin', 'DataView.Access', 1, 'System'),
-    ('Admin', 'BulkActions.Execute', 1, 'System'),
-    ('Admin', 'CSV.Upload', 1, 'System'),
-    ('Admin', 'Workflow.Design', 1, 'System'),
-    ('Admin', 'Workflow.Manage', 1, 'System'),
-    ('FormAdmin', 'DataView.Access', 1, 'System'),
-    ('FormAdmin', 'BulkActions.Execute', 1, 'System'),
-    ('FormAdmin', 'CSV.Upload', 1, 'System'),
-    ('FormAdmin', 'Workflow.Design', 1, 'System'),
-    ('DataAdmin', 'DataView.Access', 1, 'System'),
-    ('DataAdmin', 'BulkActions.Execute', 1, 'System'),
-    ('DataAdmin', 'CSV.Upload', 1, 'System'),
-    ('ReferenceDataApprover', 'DataView.Access', 0, 'System'),
-    ('ReferenceDataApprover', 'BulkActions.Execute', 0, 'System'),
-    ('ReferenceDataApprover', 'CSV.Upload', 0, 'System');
-    
-    PRINT 'Default permissions inserted successfully.';
 END
 GO
 

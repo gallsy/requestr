@@ -4,13 +4,15 @@
 @using Requestr.Core.Models.DTOs
 @using System.Linq
 @using System.Security.Claims
+@using Requestr.Web.Authorization
 @inject IDataViewService DataViewService
 @inject IFormDefinitionService FormDefinitionService
-@inject IPermissionService PermissionService
+@inject IFormAuthorizationService FormAuthorizationService
 @inject IBulkFormRequestService BulkFormRequestService
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JSRuntime
+@inject ILogger<DataView> Logger
 @attribute [Authorize]
 
 <PageTitle>Data View - Requestr</PageTitle>
@@ -555,15 +557,31 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        await CheckPermissions();
-        if (_canAccessDataView)
+        try
         {
-            await LoadFormDefinition();
-            await LoadData();
+            Logger.LogInformation("DataView loading for FormDefinitionId: {FormDefinitionId}", FormDefinitionId);
+            
+            await CheckPermissions();
+            if (_canAccessDataView)
+            {
+                Logger.LogInformation("User has permission to access data view for form {FormDefinitionId}", FormDefinitionId);
+                await LoadFormDefinition();
+                await LoadData();
+            }
+            else
+            {
+                Logger.LogWarning("User does not have permission to access data view for form {FormDefinitionId}", FormDefinitionId);
+                _errorMessage = "You do not have permission to access the data view for this form.";
+            }
         }
-        else
+        catch (Exception ex)
         {
-            _errorMessage = "You do not have permission to access the data view for this form.";
+            Logger.LogError(ex, "Error initializing DataView for form {FormDefinitionId}", FormDefinitionId);
+            _errorMessage = $"Error loading data view: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
         }
     }
 
@@ -572,15 +590,23 @@ else
         try
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            _userRoles = GetUserRoles(authState.User);
+            var user = authState.User;
+            _userRoles = GetUserRoles(user);
             
-            // Check specific permissions
-            _canAccessDataView = await PermissionService.CanAccessFormDataViewAsync(_userRoles, FormDefinitionId);
-            _canExecuteBulkActions = await PermissionService.CanExecuteBulkActionsAsync(_userRoles);
-            _canUploadCsv = await PermissionService.CanUploadCsvAsync(_userRoles);
+            Logger.LogInformation("Checking permissions for user {UserId} on form {FormDefinitionId}. User roles: {Roles}", 
+                user.Identity?.Name, FormDefinitionId, string.Join(", ", _userRoles));
+            
+            // Check specific permissions using the new form-based authorization
+            _canAccessDataView = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.ViewData);
+            _canExecuteBulkActions = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.BulkActions);
+            _canUploadCsv = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.BulkUploadCsv);
+            
+            Logger.LogInformation("Permission check results for form {FormDefinitionId}: ViewData={ViewData}, BulkActions={BulkActions}, BulkUploadCsv={BulkUploadCsv}", 
+                FormDefinitionId, _canAccessDataView, _canExecuteBulkActions, _canUploadCsv);
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Error checking permissions for form {FormDefinitionId}", FormDefinitionId);
             _errorMessage = $"Error checking permissions: {ex.Message}";
         }
     }
@@ -597,10 +623,22 @@ else
     {
         try
         {
+            Logger.LogInformation("Loading form definition for form {FormDefinitionId}", FormDefinitionId);
             _formDefinition = await FormDefinitionService.GetFormDefinitionAsync(FormDefinitionId);
+            
+            if (_formDefinition == null)
+            {
+                Logger.LogWarning("Form definition not found for FormDefinitionId: {FormDefinitionId}", FormDefinitionId);
+                _errorMessage = "Form definition not found.";
+            }
+            else
+            {
+                Logger.LogInformation("Successfully loaded form definition: {FormName}", _formDefinition.Name);
+            }
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Error loading form definition for form {FormDefinitionId}", FormDefinitionId);
             _errorMessage = $"Error loading form definition: {ex.Message}";
         }
     }
@@ -609,17 +647,24 @@ else
     {
         try
         {
-            _isLoading = true;
+            Logger.LogInformation("Loading data for form {FormDefinitionId}", FormDefinitionId);
             _dataResult = await DataViewService.GetDataAsync(FormDefinitionId, 1, 50, _searchTerm);
             ClearSelection();
+            
+            if (_dataResult == null)
+            {
+                Logger.LogWarning("No data result returned for form {FormDefinitionId}", FormDefinitionId);
+            }
+            else
+            {
+                Logger.LogInformation("Successfully loaded {RecordCount} records for form {FormDefinitionId}", 
+                    _dataResult.Records?.Count ?? 0, FormDefinitionId);
+            }
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Error loading data for form {FormDefinitionId}", FormDefinitionId);
             _errorMessage = $"Error loading data: {ex.Message}";
-        }
-        finally
-        {
-            _isLoading = false;
         }
     }
 

@@ -67,25 +67,3 @@ public interface IWorkflowDesignerService
     Task<List<string>> ValidateWorkflowAsync(int workflowDefinitionId);
     Task<bool> IsWorkflowValidAsync(int workflowDefinitionId);
 }
-
-public interface IPermissionService
-{
-    // Permission Management
-    Task<List<ApplicationPermission>> GetPermissionsAsync();
-    Task<List<ApplicationPermission>> GetPermissionsByRoleAsync(string roleName);
-    Task<ApplicationPermission> GrantPermissionAsync(string roleName, string permission, int? resourceId = null);
-    Task<bool> RevokePermissionAsync(string roleName, string permission, int? resourceId = null);
-    Task<bool> HasPermissionAsync(string roleName, string permission, int? resourceId = null);
-    Task<bool> HasPermissionAsync(List<string> userRoles, string permission, int? resourceId = null);
-    
-    // Specific Permission Checks
-    Task<bool> CanAccessDataViewAsync(List<string> userRoles);
-    Task<bool> CanExecuteBulkActionsAsync(List<string> userRoles);
-    Task<bool> CanUploadCsvAsync(List<string> userRoles);
-    Task<bool> CanDesignWorkflowsAsync(List<string> userRoles);
-    Task<bool> CanManageWorkflowsAsync(List<string> userRoles);
-    
-    // Role-based Access
-    Task<List<FormDefinition>> GetAccessibleFormsForDataViewAsync(List<string> userRoles);
-    Task<bool> CanAccessFormDataViewAsync(List<string> userRoles, int formDefinitionId);
-}

@@ -119,14 +119,6 @@ public class WorkflowStepInstance : BaseEntity
     public Dictionary<string, object?> FieldValues { get; set; } = new();
 }
 
-public class ApplicationPermission : AuditableEntity
-{
-    public string RoleName { get; set; } = string.Empty;
-    public string Permission { get; set; } = string.Empty;
-    public int? ResourceId { get; set; } // Optional: specific form or resource ID
-    public bool IsGranted { get; set; } = true;
-}
-
 public class WorkflowActionResult
 {
     public bool Success { get; set; }

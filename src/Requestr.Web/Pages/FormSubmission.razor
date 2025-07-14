@@ -2,9 +2,11 @@
 @page "/forms/{FormId:int}/edit/{RequestId:int}"
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
+@using Requestr.Web.Authorization
 @inject IFormDefinitionService FormDefinitionService
 @inject IFormRequestService FormRequestService
 @inject IDataService DataService
+@inject IFormAuthorizationService FormAuthorizationService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -74,7 +76,17 @@ else
                             </div>
                         }
 
-                        <EditForm Model="_fieldValues" OnValidSubmit="SubmitForm">
+                        @if (!_canCreateRequests && !_canUpdateRequests && !_canDeleteRequests)
+                        {
+                            <div class="alert alert-warning" role="alert">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                <strong>Access Restricted</strong>
+                                <p class="mb-0 mt-2">You don't have permission to submit requests for this form. Please contact your administrator if you need access.</p>
+                            </div>
+                        }
+                        else
+                        {
+                            <EditForm Model="_fieldValues" OnValidSubmit="SubmitForm">
                             <div class="row">
                                 @foreach (var field in _formDefinition.Fields.Where(f => f.IsVisible).OrderBy(f => f.DisplayOrder))
                                 {
@@ -176,10 +188,25 @@ else
                                     <div class="col-md-6">
                                         <label class="form-label">Request Type</label>
                                         <select class="form-select" @bind="_requestType">
-                                            <option value="@RequestType.Insert">Add New Record</option>
-                                            <option value="@RequestType.Update">Update Existing Record</option>
-                                            <option value="@RequestType.Delete">Delete Record</option>
+                                            @if (_canCreateRequests)
+                                            {
+                                                <option value="@RequestType.Insert">Add New Record</option>
+                                            }
+                                            @if (_canUpdateRequests)
+                                            {
+                                                <option value="@RequestType.Update">Update Existing Record</option>
+                                            }
+                                            @if (_canDeleteRequests)
+                                            {
+                                                <option value="@RequestType.Delete">Delete Record</option>
+                                            }
                                         </select>
+                                        @if (!_canCreateRequests && !_canUpdateRequests && !_canDeleteRequests)
+                                        {
+                                            <div class="text-muted mt-1">
+                                                <small>You don't have permission to submit requests for this form.</small>
+                                            </div>
+                                        }
                                     </div>
                                     @if (_requestType != RequestType.Insert)
                                     {
@@ -206,7 +233,7 @@ else
                                 <button type="button" class="btn btn-secondary" @onclick="Cancel">
                                     Cancel
                                 </button>
-                                <button type="submit" class="btn btn-primary" disabled="@_isSubmitting">
+                                <button type="submit" class="btn btn-primary" disabled="@(_isSubmitting || !CanSubmitCurrentRequestType())">
                                     @if (_isSubmitting)
                                     {
                                         <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
@@ -219,6 +246,7 @@ else
                                 </button>
                             </div>
                         </EditForm>
+                        }
                     </div>
                 </div>
             </div>
@@ -241,6 +269,11 @@ else
     private string _successMessage = "";
     private bool _isLoading = true;
     private bool _isSubmitting = false;
+    
+    // Permission flags
+    private bool _canCreateRequests = false;
+    private bool _canUpdateRequests = false;
+    private bool _canDeleteRequests = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -251,6 +284,28 @@ else
             if (_formDefinition == null || !_formDefinition.IsActive)
             {
                 return;
+            }
+
+            // Check user permissions for this form
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            
+            _canCreateRequests = await FormAuthorizationService.UserHasPermissionAsync(user, FormId, FormPermissionType.CreateRequest);
+            _canUpdateRequests = await FormAuthorizationService.UserHasPermissionAsync(user, FormId, FormPermissionType.UpdateRequest);
+            _canDeleteRequests = await FormAuthorizationService.UserHasPermissionAsync(user, FormId, FormPermissionType.DeleteRequest);
+            
+            // Set default request type based on available permissions
+            if (_canCreateRequests)
+            {
+                _requestType = RequestType.Insert;
+            }
+            else if (_canUpdateRequests)
+            {
+                _requestType = RequestType.Update;
+            }
+            else if (_canDeleteRequests)
+            {
+                _requestType = RequestType.Delete;
             }
 
             // Initialize field values with defaults
@@ -594,6 +649,21 @@ else
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
 
+            // Validate permission for the selected request type
+            var hasPermission = _requestType switch
+            {
+                RequestType.Insert => _canCreateRequests,
+                RequestType.Update => _canUpdateRequests,
+                RequestType.Delete => _canDeleteRequests,
+                _ => false
+            };
+
+            if (!hasPermission)
+            {
+                _errorMessage = $"You don't have permission to submit {_requestType.ToString().ToLower()} requests for this form.";
+                return;
+            }
+
             // Combine regular field values and checkbox values
             var allFieldValues = _fieldValues.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
             foreach (var checkboxValue in _checkboxValues)
@@ -741,5 +811,16 @@ else
         {
             _fieldValues[fieldName] = stringValue;
         }
+    }
+
+    private bool CanSubmitCurrentRequestType()
+    {
+        return _requestType switch
+        {
+            RequestType.Insert => _canCreateRequests,
+            RequestType.Update => _canUpdateRequests,
+            RequestType.Delete => _canDeleteRequests,
+            _ => false
+        };
     }
 }

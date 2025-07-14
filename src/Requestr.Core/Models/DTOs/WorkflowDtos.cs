@@ -144,33 +144,3 @@ public class WorkflowValidationResult
     public List<string> Errors { get; set; } = new();
     public List<string> Warnings { get; set; } = new();
 }
-
-public class ApplicationPermissionDto
-{
-    public int Id { get; set; }
-    public string RoleName { get; set; } = string.Empty;
-    public string Permission { get; set; } = string.Empty;
-    public int? ResourceId { get; set; }
-    public string? ResourceName { get; set; } // For display purposes
-    public bool IsGranted { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public string CreatedBy { get; set; } = string.Empty;
-}
-
-public class PermissionRequest
-{
-    public string RoleName { get; set; } = string.Empty;
-    public string Permission { get; set; } = string.Empty;
-    public int? ResourceId { get; set; }
-}
-
-public class UserPermissionSummary
-{
-    public List<string> Roles { get; set; } = new();
-    public bool CanAccessDataView { get; set; }
-    public bool CanExecuteBulkActions { get; set; }
-    public bool CanUploadCsv { get; set; }
-    public bool CanDesignWorkflows { get; set; }
-    public bool CanManageWorkflows { get; set; }
-    public List<FormDefinition> AccessibleForms { get; set; } = new();
-}

@@ -68,16 +68,8 @@ public enum FormPermissionType
     
     // Data view permissions
     ViewData = 10,          // Can see the data view page
-    ViewDataDetails = 11,   // Can view detailed data records
     
     // Bulk operation permissions
     BulkActions = 20,       // Can perform bulk actions from data view
     BulkUploadCsv = 21,     // Can upload CSV files for bulk operations
-    BulkEditRecords = 22,   // Can edit multiple records at once
-    BulkDeleteRecords = 23, // Can delete multiple records at once
-    
-    // Administrative permissions
-    ViewAuditLog = 30,      // Can view audit logs for this form
-    ExportData = 31,        // Can export data from this form
-    ManageFormSettings = 32 // Can modify form settings (super admin only)
 }

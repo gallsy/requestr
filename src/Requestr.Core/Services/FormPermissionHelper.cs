@@ -18,14 +18,8 @@ public static class FormPermissionHelper
             FormPermissionType.UpdateRequest => "Update existing records via requests",
             FormPermissionType.DeleteRequest => "Delete records via requests",
             FormPermissionType.ViewData => "View the data view page for this form",
-            FormPermissionType.ViewDataDetails => "View detailed data records",
             FormPermissionType.BulkActions => "Perform bulk actions from the data view",
             FormPermissionType.BulkUploadCsv => "Upload CSV files for bulk operations",
-            FormPermissionType.BulkEditRecords => "Edit multiple records at once",
-            FormPermissionType.BulkDeleteRecords => "Delete multiple records at once",
-            FormPermissionType.ViewAuditLog => "View audit logs for this form",
-            FormPermissionType.ExportData => "Export data from this form",
-            FormPermissionType.ManageFormSettings => "Modify form settings and configuration",
             _ => permissionType.ToString()
         };
     }
@@ -41,14 +35,8 @@ public static class FormPermissionHelper
             FormPermissionType.UpdateRequest => "Request Operations", 
             FormPermissionType.DeleteRequest => "Request Operations",
             FormPermissionType.ViewData => "Data Access",
-            FormPermissionType.ViewDataDetails => "Data Access",
             FormPermissionType.BulkActions => "Bulk Operations",
             FormPermissionType.BulkUploadCsv => "Bulk Operations",
-            FormPermissionType.BulkEditRecords => "Bulk Operations",
-            FormPermissionType.BulkDeleteRecords => "Bulk Operations",
-            FormPermissionType.ViewAuditLog => "Administrative",
-            FormPermissionType.ExportData => "Administrative",
-            FormPermissionType.ManageFormSettings => "Administrative",
             _ => "Other"
         };
     }
@@ -103,8 +91,7 @@ public static class FormPermissionHelper
         return permissionType switch
         {
             FormPermissionType.DeleteRequest => true,
-            FormPermissionType.BulkDeleteRecords => true,
-            FormPermissionType.ManageFormSettings => true,
+            FormPermissionType.BulkActions => true,
             _ => false
         };
     }
@@ -119,17 +106,11 @@ public static class FormPermissionHelper
             FormPermissionType.ViewData => new List<FormPermissionType>
             {
                 FormPermissionType.BulkActions,
-                FormPermissionType.BulkUploadCsv,
-                FormPermissionType.BulkEditRecords,
-                FormPermissionType.BulkDeleteRecords,
-                FormPermissionType.ViewDataDetails,
-                FormPermissionType.ExportData
+                FormPermissionType.BulkUploadCsv
             },
             FormPermissionType.BulkActions => new List<FormPermissionType>
             {
-                FormPermissionType.BulkUploadCsv,
-                FormPermissionType.BulkEditRecords,
-                FormPermissionType.BulkDeleteRecords
+                FormPermissionType.BulkUploadCsv
             },
             _ => new List<FormPermissionType>()
         };
@@ -144,10 +125,6 @@ public static class FormPermissionHelper
         {
             FormPermissionType.BulkActions => new List<FormPermissionType> { FormPermissionType.ViewData },
             FormPermissionType.BulkUploadCsv => new List<FormPermissionType> { FormPermissionType.ViewData, FormPermissionType.BulkActions },
-            FormPermissionType.BulkEditRecords => new List<FormPermissionType> { FormPermissionType.ViewData, FormPermissionType.BulkActions },
-            FormPermissionType.BulkDeleteRecords => new List<FormPermissionType> { FormPermissionType.ViewData, FormPermissionType.BulkActions },
-            FormPermissionType.ViewDataDetails => new List<FormPermissionType> { FormPermissionType.ViewData },
-            FormPermissionType.ExportData => new List<FormPermissionType> { FormPermissionType.ViewData },
             _ => new List<FormPermissionType>()
         };
     }
