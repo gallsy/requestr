@@ -9,6 +9,7 @@ public interface IBulkFormRequestService
     Task<BulkFormRequest> CreateBulkFormRequestAsync(CreateBulkFormRequestDto createDto, string userId, string userName);
     Task<BulkFormRequest?> GetBulkFormRequestByIdAsync(int id);
     Task<List<BulkFormRequest>> GetBulkFormRequestsByUserAsync(string userId);
+    Task<List<BulkFormRequest>> GetAllBulkFormRequestsAsync();
     Task<List<BulkFormRequest>> GetBulkFormRequestsForApprovalAsync(string userId, List<string> userRoles);
     Task<List<BulkFormRequest>> GetBulkFormRequestsByFormDefinitionIdAsync(int formDefinitionId, int limit = 10);
     Task<bool> ApproveBulkFormRequestAsync(int id, string userId, string userName, string? comments = null);

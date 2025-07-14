@@ -7,6 +7,7 @@
 @inject IFormRequestService FormRequestService
 @inject IDataService DataService
 @inject IFormAuthorizationService FormAuthorizationService
+@inject IWorkflowService WorkflowService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -701,7 +702,10 @@ else
             else
             {
                 await FormRequestService.CreateAsync(formRequest);
-                _successMessage = _formDefinition.RequiresApproval 
+                
+                // Check if form has workflow to determine success message
+                var hasWorkflow = await WorkflowService.GetWorkflowDefinitionByFormAsync(FormId) != null;
+                _successMessage = hasWorkflow
                     ? "Request submitted successfully and is pending approval!"
                     : "Request submitted and processed successfully!";
             }

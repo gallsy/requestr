@@ -22,9 +22,9 @@
                 New Request
             </NavLink>
             
-            <NavLink class="nav-link sidebar-nav-link" href="my-requests">
-                <i class="bi bi-person-lines-fill me-2"></i>
-                My Requests
+            <NavLink class="nav-link sidebar-nav-link" href="requests">
+                <i class="bi bi-list-check me-2"></i>
+                All Requests
             </NavLink>
             
             <AuthorizeView Roles="Admin">
@@ -36,10 +36,6 @@
                     <NavLink class="nav-link sidebar-nav-link" href="admin/workflows">
                         <i class="bi bi-diagram-2 me-2"></i>
                         Manage Workflows
-                    </NavLink>
-                    <NavLink class="nav-link sidebar-nav-link" href="admin/requests/history">
-                        <i class="bi bi-clock-history me-2"></i>
-                        Request History
                     </NavLink>
                     <NavLink class="nav-link sidebar-nav-link" href="workflow-diagnostics">
                         <i class="bi bi-tools me-2"></i>
@@ -59,9 +55,9 @@
                     
                     @if (hasAdminRole || UserHasPendingWorkflowSteps)
                     {
-                        <NavLink class="nav-link sidebar-nav-link" href="workflow-approvals">
+                        <NavLink class="nav-link sidebar-nav-link" href="approvals">
                             <i class="bi bi-diagram-3 me-2"></i>
-                            Workflow Approvals
+                            Approvals
                         </NavLink>
                     }
                 </Authorized>

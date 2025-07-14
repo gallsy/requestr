@@ -40,4 +40,7 @@ public interface IFormRequestService
     Task<List<FormRequest>> GetRequestsWithCompletedWorkflowsButNotAppliedAsync();
     Task<int> ProcessStuckWorkflowRequestsAsync(string processedBy);
     Task<string> GetWorkflowDiagnosticsAsync(int formRequestId);
+    
+    // Consolidated request access method
+    Task<List<FormRequest>> GetAccessibleFormRequestsAsync(string userId, List<string> userRoles);
 }

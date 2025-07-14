@@ -1976,4 +1976,94 @@ public class FormRequestService : IFormRequestService
             return $"Error getting diagnostics: {ex.Message}";
         }
     }
+    
+    public async Task<List<FormRequest>> GetAccessibleFormRequestsAsync(string userId, List<string> userRoles)
+    {
+        try
+        {
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var parameters = new DynamicParameters();
+            parameters.Add("UserId", userId);
+
+            // Check if user is admin - they can see all requests
+            var isAdmin = userRoles.Contains("Admin");
+            
+            string sql;
+            
+            if (isAdmin)
+            {
+                // Admin users can see all requests
+                sql = @"
+                    SELECT DISTINCT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
+                           fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
+                           fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
+                           fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
+                           fd.Name as FormName, fd.Description as FormDescription, fd.ApproverRoles
+                    FROM FormRequests fr
+                    INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+                    ORDER BY fr.RequestedAt DESC";
+            }
+            else
+            {
+                // Non-admin users can see:
+                // 1. Requests they created
+                // 2. Requests where they have approval permissions through workflow steps
+                sql = @"
+                    SELECT DISTINCT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
+                           fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
+                           fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
+                           fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
+                           fd.Name as FormName, fd.Description as FormDescription, fd.ApproverRoles
+                    FROM FormRequests fr
+                    INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+                    LEFT JOIN WorkflowInstances wi ON fr.WorkflowInstanceId = wi.Id
+                    LEFT JOIN WorkflowStepInstances wsi ON wi.Id = wsi.WorkflowInstanceId
+                    LEFT JOIN WorkflowSteps ws ON wsi.StepId = ws.StepId AND wi.WorkflowDefinitionId = ws.WorkflowDefinitionId
+                    WHERE 
+                        -- Requests created by the user
+                        fr.RequestedBy = @UserId
+                        OR
+                        -- Requests where user has approval permissions through workflow (approval steps only)
+                        (ws.StepType = @ApprovalStepType AND ws.AssignedRoles IS NOT NULL 
+                         AND ws.AssignedRoles != '[]' 
+                         AND JSON_QUERY(ws.AssignedRoles, '$') IS NOT NULL 
+                         AND EXISTS (
+                             SELECT 1 FROM OPENJSON(ws.AssignedRoles) AS roles
+                             WHERE roles.value IN @UserRoles
+                         ))
+                        OR
+                        -- Legacy approval system (for forms without workflows)
+                        (fr.WorkflowInstanceId IS NULL AND EXISTS (
+                            SELECT 1 FROM STRING_SPLIT(fd.ApproverRoles, ',') 
+                            WHERE TRIM(value) IN @UserRoles
+                        ))
+                    ORDER BY fr.RequestedAt DESC";
+                
+                parameters.Add("UserRoles", userRoles);
+                parameters.Add("ApprovalStepType", (int)WorkflowStepType.Approval);
+            }
+
+            _logger.LogInformation("Executing GetAccessibleFormRequestsAsync for user {UserId} with roles {UserRoles}, IsAdmin: {IsAdmin}", 
+                userId, string.Join(", ", userRoles), isAdmin);
+
+            var requests = await connection.QueryAsync(sql, parameters);
+            var result = new List<FormRequest>();
+
+            foreach (var row in requests)
+            {
+                var request = CreateFormRequestFromRow(row);
+                result.Add(request);
+            }
+
+            _logger.LogInformation("Retrieved {Count} accessible requests for user {UserId}", result.Count, userId);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting accessible form requests for user {UserId}", userId);
+            throw;
+        }
+    }
 }

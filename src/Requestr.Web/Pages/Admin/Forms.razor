@@ -100,7 +100,6 @@
                                 <th>Name</th>
                                 <th>Description</th>
                                 <th>Table</th>
-                                <th>Approval?</th>
                                 <th>Status</th>
                                 <th>Created</th>
                                 <th>Actions</th>
@@ -123,22 +122,6 @@
                                     </td>
                                     <td>
                                         <code>@form.TableName</code>
-                                    </td>
-                                    <td>
-                                        @if (form.RequiresApproval)
-                                        {
-                                            <span class="badge bg-success">
-                                                <i class="bi bi-check me-1"></i>
-                                                Yes
-                                            </span>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge bg-secondary">
-                                                <i class="bi bi-x me-1"></i>
-                                                No
-                                            </span>
-                                        }
                                     </td>
                                     <td>
                                         @if (form.IsActive)

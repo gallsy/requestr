@@ -908,4 +908,61 @@ public class BulkFormRequestService : IBulkFormRequestService
             throw;
         }
     }
+
+    public async Task<List<BulkFormRequest>> GetAllBulkFormRequestsAsync()
+    {
+        using var connection = new SqlConnection(_connectionString);
+        
+        var sql = @"
+            SELECT bfr.*
+            FROM BulkFormRequests bfr
+            ORDER BY bfr.RequestedAt DESC";
+
+        var results = await connection.QueryAsync<BulkFormRequest>(sql);
+        
+        // Load FormDefinition and parse RequestType for each result
+        foreach (var result in results)
+        {
+            // Load FormDefinition
+            var formDefinition = await _formDefinitionService.GetFormDefinitionAsync(result.FormDefinitionId);
+            result.FormDefinition = formDefinition;
+            
+            // Parse RequestType
+            var requestType = await connection.QueryFirstOrDefaultAsync<string>(
+                "SELECT RequestType FROM BulkFormRequests WHERE Id = @Id", new { Id = result.Id });
+            if (requestType != null)
+            {
+                result.RequestType = ParseRequestType(requestType);
+            }
+            
+            // Load Items count for display
+            var itemsCount = await connection.QuerySingleOrDefaultAsync<int>(
+                "SELECT COUNT(*) FROM BulkFormRequestItems WHERE BulkFormRequestId = @Id", new { Id = result.Id });
+            
+            // Note: We're not fully loading Items here for performance, just getting the count
+            // The Items will be empty, but we know the count for display purposes
+            result.Items = new List<BulkFormRequestItem>();
+            result.SelectedRows = itemsCount; // Use SelectedRows to track actual count for display
+            
+            // If this bulk request has a workflow, find the associated FormRequest for workflow progress
+            if (result.WorkflowInstanceId.HasValue)
+            {
+                var workflowFormRequestSql = @"
+                    SELECT Id FROM FormRequests 
+                    WHERE BulkFormRequestId = @BulkFormRequestId 
+                    AND WorkflowInstanceId = @WorkflowInstanceId";
+                
+                var workflowFormRequestId = await connection.QueryFirstOrDefaultAsync<int?>(
+                    workflowFormRequestSql, 
+                    new { 
+                        BulkFormRequestId = result.Id, 
+                        WorkflowInstanceId = result.WorkflowInstanceId 
+                    });
+                
+                result.WorkflowFormRequestId = workflowFormRequestId;
+            }
+        }
+        
+        return results.ToList();
+    }
 }

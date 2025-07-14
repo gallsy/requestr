@@ -78,7 +78,7 @@
                                 @onclick="@(() => SetActiveTab("permissions"))" 
                                 type="button">
                             <i class="bi bi-shield-check me-2"></i>
-                            Permissions & Approvals
+                            Permissions
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
@@ -414,70 +414,11 @@
                 </div>
             }
 
-            <!-- Permissions & Approvals Tab -->
+            <!-- Permissions Tab -->
             @if (ActiveTab == "permissions")
             {
                 <div class="row">
                     <div class="col-12">
-                        <!-- Approval Configuration Card -->
-                        <div class="card mb-4">
-                            <div class="card-header">
-                                <h5 class="mb-0">
-                                    <i class="bi bi-shield-check me-2"></i>
-                                    Approval Configuration
-                                </h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="form-check form-switch">
-                                            <input class="form-check-input" type="checkbox" @bind="_formDefinition.RequiresApproval" id="requiresApprovalSwitch">
-                                            <label class="form-check-label" for="requiresApprovalSwitch">
-                                                <strong>Requires Approval</strong>
-                                            </label>
-                                        </div>
-                                        <small class="form-text text-muted">When enabled, all form submissions must be approved before being applied to the database</small>
-                                        
-                                        @if (_formDefinition.RequiresApproval)
-                                        {
-                                            <div class="mt-3">
-                                                <label class="form-label">Approver Roles *</label>
-                                                <input type="text" class="form-control" @bind="_approverRolesText" placeholder="Admin, FormAdmin, DataAdmin" />
-                                                <small class="form-text text-muted">Enter role names separated by commas. Users with these roles can approve requests for this form.</small>
-                                            </div>
-                                        }
-                                    </div>
-                                    <div class="col-md-6">
-                                        @if (_formDefinition.RequiresApproval)
-                                        {
-                                            <div class="alert alert-info">
-                                                <h6 class="alert-heading">
-                                                    <i class="bi bi-info-circle me-2"></i>
-                                                    How Approval Works
-                                                </h6>
-                                                <ul class="mb-0 small">
-                                                    <li>Users submit form requests that go into a "Pending" state</li>
-                                                    <li>Users with the specified roles can view and approve/reject requests</li>
-                                                    <li>Once approved, changes are automatically applied to the database</li>
-                                                    <li>If rejected, the request is marked as rejected with a reason</li>
-                                                </ul>
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <div class="alert alert-warning">
-                                                <h6 class="alert-heading">
-                                                    <i class="bi bi-exclamation-triangle me-2"></i>
-                                                    No Approval Required
-                                                </h6>
-                                                <p class="mb-0 small">Form submissions will be automatically applied to the database without approval.</p>
-                                            </div>
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
                         <!-- Role-Based Permissions Card -->
                         <div class="card">
                             <div class="card-header d-flex justify-content-between align-items-center">
@@ -777,7 +718,6 @@
     private List<string> _tables = new();
     private List<ColumnInfo> _tableColumns = new();
     private string _selectedConnectionString = "";
-    private string _approverRolesText = "";
     private bool _isLoading = true;
     private ColumnInfo? _draggedColumn;
     private Dictionary<string, string> _fieldOriginalSqlTypes = new(); // Track original SQL types for each field
@@ -840,7 +780,6 @@
             {
                 _formDefinition = await FormDefinitionService.GetByIdAsync(FormId.Value) ?? new FormDefinition();
                 _selectedConnectionString = _formDefinition.DatabaseConnectionName;
-                _approverRolesText = string.Join(", ", _formDefinition.ApproverRoles);
                 
                 // Populate ControlType for existing fields if empty (for backward compatibility)
                 foreach (var field in _formDefinition.Fields)
@@ -1309,10 +1248,6 @@
             }
             
             _formDefinition.DatabaseConnectionName = _selectedConnectionString;
-            _formDefinition.ApproverRoles = _approverRolesText.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(r => r.Trim())
-                .Where(r => !string.IsNullOrEmpty(r))
-                .ToList();
             
             // Set timestamps and user info to prevent SQL DateTime overflow
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();

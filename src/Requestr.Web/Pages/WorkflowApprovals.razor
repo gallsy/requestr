@@ -1,4 +1,4 @@
-@page "/workflow-approvals"
+@page "/approvals"
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.JSInterop
 @using Requestr.Core.Models
@@ -13,7 +13,7 @@
 @inject ILogger<WorkflowApprovals> Logger
 @attribute [Authorize]
 
-<PageTitle>Workflow Approvals - Requestr</PageTitle>
+<PageTitle>Approvals - Requestr</PageTitle>
 
 <div class="container-fluid">
     <div class="row">
@@ -22,9 +22,9 @@
                 <div>
                     <h1 class="display-5">
                         <i class="bi bi-diagram-3 me-3 text-primary"></i>
-                        Workflow Approvals
+                        Approvals
                     </h1>
-                    <p class="lead">Review and process workflow-based form requests</p>
+                    <p class="lead">Review and process form requests awaiting approval</p>
                 </div>
                 <div class="d-flex gap-2">
                     <select class="form-select form-select-sm" @bind="SelectedFormFilter" @bind:after="ApplyFilters">
@@ -81,18 +81,18 @@
                             <div class="spinner-border text-primary" role="status">
                                 <span class="visually-hidden">Loading...</span>
                             </div>
-                            <p class="mt-2">Loading workflow approvals...</p>
+                            <p class="mt-2">Loading approvals...</p>
                         </div>
                     }
                     else if (FilteredRequests?.Any() != true)
                     {
                         <div class="text-center py-5">
                             <i class="bi bi-check-circle display-1 text-success mb-3"></i>
-                            <h6 class="text-muted">No pending workflow approvals</h6>
+                            <h6 class="text-muted">No pending approvals</h6>
                             <p class="text-muted small">
                                 @if (string.IsNullOrEmpty(SelectedFormFilter))
                                 {
-                                    <text>All workflow approvals have been processed.</text>
+                                    <text>All approvals have been processed.</text>
                                 }
                                 else
                                 {
@@ -358,7 +358,7 @@
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error loading workflow approvals: {ex.Message}";
+            ErrorMessage = $"Error loading approvals: {ex.Message}";
         }
         finally
         {

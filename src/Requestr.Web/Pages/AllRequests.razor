@@ -1,0 +1,688 @@
+@page "/requests"
+@using System.Linq
+@using Requestr.Core.Models
+@using Requestr.Core.Interfaces
+@using Requestr.Core.Services
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using System.Text.Json
+@attribute [Authorize]
+@inject IFormRequestService FormRequestService
+@inject IBulkFormRequestService BulkFormRequestService
+@inject IWorkflowService WorkflowService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+@inject ILogger<AllRequests> Logger
+
+<PageTitle>All Requests - Requestr</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="display-5">
+                        <i class="bi bi-list-check me-3"></i>
+                        All Requests
+                    </h1>
+                    <p class="lead">View and manage @(_isAdmin ? "all" : "your accessible") data requests</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary" @onclick="RefreshData" disabled="@IsLoading">
+                        <i class="bi bi-arrow-clockwise me-1"></i>
+                        Refresh
+                    </button>
+                    <a href="/forms" class="btn btn-primary">
+                        <i class="bi bi-plus-lg me-2"></i>
+                        New Request
+                    </a>
+                </div>
+            </div>
+
+            <!-- Advanced Filters -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="bi bi-funnel me-2"></i>
+                        Filters
+                        <button class="btn btn-sm btn-link p-0 ms-2" @onclick="ToggleAdvancedFilters">
+                            <i class="bi bi-@(_showAdvancedFilters ? "chevron-up" : "chevron-down")"></i>
+                        </button>
+                    </h6>
+                </div>
+                <div class="card-body @(_showAdvancedFilters ? "" : "d-none")">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Request Type</label>
+                            <select class="form-select form-select-sm" @bind="SelectedRequestTypeFilter" @bind:after="ApplyFilters">
+                                <option value="">All Request Types</option>
+                                <option value="Individual">Individual Requests</option>
+                                <option value="Bulk">Bulk Requests</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Status</label>
+                            <select class="form-select form-select-sm" @bind="SelectedStatusFilter" @bind:after="ApplyFilters">
+                                <option value="">All Status</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Approved">Approved</option>
+                                <option value="Rejected">Rejected</option>
+                                <option value="Applied">Applied</option>
+                                <option value="Failed">Failed</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Operation Type</label>
+                            <select class="form-select form-select-sm" @bind="SelectedOperationTypeFilter" @bind:after="ApplyFilters">
+                                <option value="">All Operations</option>
+                                <option value="Insert">Insert</option>
+                                <option value="Update">Update</option>
+                                <option value="Delete">Delete</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Form</label>
+                            <select class="form-select form-select-sm" @bind="SelectedFormFilter" @bind:after="ApplyFilters">
+                                <option value="">All Forms</option>
+                                @if (AvailableForms?.Any() == true)
+                                {
+                                    @foreach (var form in AvailableForms)
+                                    {
+                                        <option value="@form">@form</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                        @if (!_isAdmin)
+                        {
+                            <div class="col-md-3">
+                                <label class="form-label">Request Source</label>
+                                <select class="form-select form-select-sm" @bind="SelectedSourceFilter" @bind:after="ApplyFilters">
+                                    <option value="">All Sources</option>
+                                    <option value="MyRequests">My Requests</option>
+                                    <option value="ForApproval">For My Approval</option>
+                                </select>
+                            </div>
+                        }
+                        <div class="col-md-3">
+                            <label class="form-label">Date Range</label>
+                            <select class="form-select form-select-sm" @bind="SelectedDateRangeFilter" @bind:after="ApplyFilters">
+                                <option value="">All Time</option>
+                                <option value="Today">Today</option>
+                                <option value="Yesterday">Yesterday</option>
+                                <option value="ThisWeek">This Week</option>
+                                <option value="LastWeek">Last Week</option>
+                                <option value="ThisMonth">This Month</option>
+                                <option value="LastMonth">Last Month</option>
+                                <option value="Last3Months">Last 3 Months</option>
+                            </select>
+                        </div>
+                        @if (_isAdmin)
+                        {
+                            <div class="col-md-3">
+                                <label class="form-label">Requested By</label>
+                                <input type="text" class="form-control form-control-sm" @bind="RequestedByFilter" @bind:after="ApplyFilters" placeholder="Filter by user name...">
+                            </div>
+                        }
+                        <div class="col-md-12">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    @if (HasActiveFilters())
+                                    {
+                                        <button class="btn btn-sm btn-outline-secondary" @onclick="ClearFilters">
+                                            <i class="bi bi-x-lg me-1"></i>
+                                            Clear Filters
+                                        </button>
+                                    }
+                                </div>
+                                <div>
+                                    <small class="text-muted">
+                                        Showing @((FilteredRequests?.Count ?? 0) + (FilteredBulkRequests?.Count ?? 0)) of @((AllFormRequests?.Count ?? 0) + (AllBulkRequests?.Count ?? 0)) requests
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @if (IsLoading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading requests...</p>
+                </div>
+            }
+            else if ((FilteredRequests?.Any() != true) && (FilteredBulkRequests?.Any() != true))
+            {
+                <div class="card">
+                    <div class="card-body">
+                        <div class="text-center py-5">
+                            <i class="bi bi-inbox display-1 text-muted mb-3"></i>
+                            <h6 class="text-muted">No requests found</h6>
+                            <p class="text-muted small">
+                                @if (HasActiveFilters())
+                                {
+                                    <text>No requests match your current filters. Try adjusting your filter criteria.</text>
+                                }
+                                else if (_isAdmin)
+                                {
+                                    <text>No requests have been made yet.</text>
+                                }
+                                else
+                                {
+                                    <text>You haven't made any requests yet or don't have access to approve any requests.</text>
+                                }
+                            </p>
+                            <a href="/forms" class="btn btn-primary">
+                                <i class="bi bi-plus-lg me-2"></i>
+                                Create New Request
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="card">
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Type</th>
+                                        <th>Form</th>
+                                        <th>Operation</th>
+                                        <th>Status</th>
+                                        <th>Requested By</th>
+                                        <th>Requested Date</th>
+                                        <th>Last Updated</th>
+                                        <th>Workflow</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (FilteredBulkRequests?.Any() == true)
+                                    {
+                                        @foreach (var bulkRequest in FilteredBulkRequests)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <div>
+                                                        <strong>#@bulkRequest.Id</strong>
+                                                        <small class="d-block text-muted">Bulk</small>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-info">
+                                                        Bulk Request
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <div>
+                                                        <div class="fw-bold">@bulkRequest.FormDefinition?.Name</div>
+                                                        <small class="text-muted">
+                                                            @bulkRequest.SelectedRows of @bulkRequest.TotalRows records
+                                                        </small>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span class="badge @GetRequestTypeBadgeColor(bulkRequest.RequestType)">
+                                                        @GetRequestTypeDisplayName(bulkRequest.RequestType)
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <span class="badge @GetStatusBadgeClass(bulkRequest.Status)">
+                                                        @bulkRequest.Status
+                                                    </span>
+                                                </td>
+                                                <td>@bulkRequest.RequestedByName</td>
+                                                <td>
+                                                    <div>
+                                                        @bulkRequest.RequestedAt.ToString("MMM dd, yyyy")
+                                                        <br/>
+                                                        <small class="text-muted">@bulkRequest.RequestedAt.ToString("HH:mm")</small>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <div>
+                                                        @if (bulkRequest.ApprovedAt.HasValue)
+                                                        {
+                                                            @bulkRequest.ApprovedAt.Value.ToString("MMM dd, yyyy")
+                                                            <br/>
+                                                            <small class="text-muted">@bulkRequest.ApprovedAt.Value.ToString("HH:mm")</small>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="text-muted">-</span>
+                                                        }
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    @if (bulkRequest.WorkflowFormRequestId.HasValue)
+                                                    {
+                                                        <WorkflowProgressDisplay FormRequestId="bulkRequest.WorkflowFormRequestId.Value" ShowCompact="true" AutoLoad="true" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <small class="text-muted">No workflow</small>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <a href="/bulk-requests/@bulkRequest.Id" class="btn btn-sm btn-outline-primary">
+                                                        <i class="bi bi-eye me-1"></i>
+                                                        View
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                    @if (FilteredRequests?.Any() == true)
+                                    {
+                                        @foreach (var request in FilteredRequests)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <div>
+                                                        <strong>#@request.Id</strong>
+                                                        <small class="d-block text-muted">Individual</small>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-primary">
+                                                        Individual Request
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <div>
+                                                        <div class="fw-bold">@request.FormDefinition?.Name</div>
+                                                        <small class="text-muted">
+                                                            <i class="bi bi-server me-1"></i>@request.FormDefinition?.DatabaseConnectionName
+                                                            <span class="mx-1">•</span>
+                                                            <i class="bi bi-table me-1"></i>@request.FormDefinition?.TableName
+                                                        </small>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span class="badge @GetRequestTypeBadgeColor(request.RequestType)">
+                                                        @GetRequestTypeDisplayName(request.RequestType)
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <span class="badge @GetStatusBadgeClass(request.Status)">
+                                                        @request.Status
+                                                    </span>
+                                                </td>
+                                                <td>@request.RequestedByName</td>
+                                                <td>
+                                                    <div>
+                                                        @request.RequestedAt.ToString("MMM dd, yyyy")
+                                                        <br/>
+                                                        <small class="text-muted">@request.RequestedAt.ToString("HH:mm")</small>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <div>
+                                                        @if (request.ApprovedAt.HasValue)
+                                                        {
+                                                            @request.ApprovedAt.Value.ToString("MMM dd, yyyy")
+                                                            <br/>
+                                                            <small class="text-muted">@request.ApprovedAt.Value.ToString("HH:mm")</small>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="text-muted">-</span>
+                                                        }
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <WorkflowProgressDisplay FormRequestId="request.Id" ShowCompact="true" AutoLoad="true" />
+                                                </td>
+                                                <td>
+                                                    <a href="/requests/@request.Id" class="btn btn-sm btn-outline-primary">
+                                                        <i class="bi bi-eye me-1"></i>
+                                                        View
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="mt-3 pt-3 border-top">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p class="text-muted small mb-0">
+                                        Showing @((FilteredRequests?.Count ?? 0) + (FilteredBulkRequests?.Count ?? 0)) of @((AllFormRequests?.Count ?? 0) + (AllBulkRequests?.Count ?? 0)) requests
+                                        @if (FilteredBulkRequests?.Any() == true)
+                                        {
+                                            <span class="text-info">
+                                                (@FilteredBulkRequests.Count bulk requests with @FilteredBulkRequests.Sum(br => br.SelectedRows) total items)
+                                            </span>
+                                        }
+                                    </p>
+                                </div>
+                                <div class="col-md-6 text-end">
+                                    @if (HasActiveFilters())
+                                    {
+                                        <button class="btn btn-sm btn-outline-secondary" @onclick="ClearFilters">
+                                            <i class="bi bi-x-lg me-1"></i>
+                                            Clear Filters
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<FormRequest>? AllFormRequests;
+    private List<FormRequest>? FilteredRequests;
+    private List<BulkFormRequest>? AllBulkRequests;
+    private List<BulkFormRequest>? FilteredBulkRequests;
+    private string? CurrentUserId;
+    private List<string> UserRoles = new();
+    private bool IsLoading = true;
+    private bool _isAdmin = false;
+    private bool _showAdvancedFilters = true;
+    
+    // Filter properties
+    private string SelectedStatusFilter = "";
+    private string SelectedRequestTypeFilter = "";
+    private string SelectedOperationTypeFilter = "";
+    private string SelectedFormFilter = "";
+    private string SelectedSourceFilter = "";
+    private string SelectedDateRangeFilter = "";
+    private string RequestedByFilter = "";
+    
+    // Available options for filters
+    private List<string> AvailableForms = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            if (authState.User.Identity?.IsAuthenticated == true)
+            {
+                CurrentUserId = authState.User.FindFirst("sub")?.Value ?? 
+                               authState.User.FindFirst("oid")?.Value ?? 
+                               authState.User.Identity.Name;
+
+                // Get user roles from claims
+                UserRoles = GetUserRoles(authState.User);
+                _isAdmin = UserRoles.Contains("Admin");
+
+                Logger.LogInformation("User {UserId} loading all requests. Roles: {Roles}, IsAdmin: {IsAdmin}", 
+                    CurrentUserId, string.Join(", ", UserRoles), _isAdmin);
+
+                await LoadRequestsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading all requests");
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task LoadRequestsAsync()
+    {
+        if (string.IsNullOrEmpty(CurrentUserId)) return;
+
+        try
+        {
+            // Load individual requests using the new access-controlled method
+            AllFormRequests = await FormRequestService.GetAccessibleFormRequestsAsync(CurrentUserId, UserRoles);
+            AllFormRequests = AllFormRequests.Where(r => r.BulkFormRequestId == null).OrderByDescending(r => r.RequestedAt).ToList();
+            
+            // Load bulk requests based on user access
+            if (_isAdmin)
+            {
+                // Admin can see all bulk requests
+                AllBulkRequests = await BulkFormRequestService.GetAllBulkFormRequestsAsync();
+            }
+            else
+            {
+                // Non-admin users can only see their own bulk requests for now
+                // This could be enhanced to include bulk requests they can approve
+                AllBulkRequests = await BulkFormRequestService.GetBulkFormRequestsByUserAsync(CurrentUserId);
+            }
+            
+            // Extract available forms for filter dropdown
+            AvailableForms = AllFormRequests?.Where(r => !string.IsNullOrEmpty(r.FormDefinition?.Name))
+                .Select(r => r.FormDefinition!.Name)
+                .Union(AllBulkRequests?.Where(r => !string.IsNullOrEmpty(r.FormDefinition?.Name))
+                    .Select(r => r.FormDefinition!.Name) ?? Enumerable.Empty<string>())
+                .Distinct()
+                .OrderBy(name => name)
+                .ToList() ?? new List<string>();
+            
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading requests");
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        // Filter individual requests
+        FilteredRequests = AllFormRequests;
+
+        if (!string.IsNullOrEmpty(SelectedStatusFilter))
+        {
+            FilteredRequests = FilteredRequests?.Where(r => r.Status.ToString() == SelectedStatusFilter).ToList();
+        }
+
+        if (!string.IsNullOrEmpty(SelectedOperationTypeFilter))
+        {
+            if (Enum.TryParse<RequestType>(SelectedOperationTypeFilter, out var requestType))
+            {
+                FilteredRequests = FilteredRequests?.Where(r => r.RequestType == requestType).ToList();
+            }
+        }
+
+        if (!string.IsNullOrEmpty(SelectedFormFilter))
+        {
+            FilteredRequests = FilteredRequests?.Where(r => r.FormDefinition?.Name == SelectedFormFilter).ToList();
+        }
+
+        if (!string.IsNullOrEmpty(RequestedByFilter) && _isAdmin)
+        {
+            FilteredRequests = FilteredRequests?.Where(r => r.RequestedByName?.Contains(RequestedByFilter, StringComparison.OrdinalIgnoreCase) == true).ToList();
+        }
+
+        if (!string.IsNullOrEmpty(SelectedSourceFilter) && !_isAdmin)
+        {
+            if (SelectedSourceFilter == "MyRequests")
+            {
+                FilteredRequests = FilteredRequests?.Where(r => r.RequestedBy == CurrentUserId).ToList();
+            }
+            else if (SelectedSourceFilter == "ForApproval")
+            {
+                FilteredRequests = FilteredRequests?.Where(r => r.RequestedBy != CurrentUserId).ToList();
+            }
+        }
+
+        FilteredRequests = ApplyDateFilter(FilteredRequests, r => r.RequestedAt);
+
+        // Filter bulk requests
+        FilteredBulkRequests = AllBulkRequests;
+
+        if (!string.IsNullOrEmpty(SelectedStatusFilter))
+        {
+            FilteredBulkRequests = FilteredBulkRequests?.Where(r => r.Status.ToString() == SelectedStatusFilter).ToList();
+        }
+
+        if (!string.IsNullOrEmpty(SelectedFormFilter))
+        {
+            FilteredBulkRequests = FilteredBulkRequests?.Where(r => r.FormDefinition?.Name == SelectedFormFilter).ToList();
+        }
+
+        if (!string.IsNullOrEmpty(RequestedByFilter) && _isAdmin)
+        {
+            FilteredBulkRequests = FilteredBulkRequests?.Where(r => r.RequestedByName?.Contains(RequestedByFilter, StringComparison.OrdinalIgnoreCase) == true).ToList();
+        }
+
+        if (!string.IsNullOrEmpty(SelectedSourceFilter) && !_isAdmin)
+        {
+            if (SelectedSourceFilter == "MyRequests")
+            {
+                FilteredBulkRequests = FilteredBulkRequests?.Where(r => r.RequestedBy == CurrentUserId).ToList();
+            }
+            else if (SelectedSourceFilter == "ForApproval")
+            {
+                FilteredBulkRequests = FilteredBulkRequests?.Where(r => r.RequestedBy != CurrentUserId).ToList();
+            }
+        }
+
+        FilteredBulkRequests = ApplyDateFilter(FilteredBulkRequests, r => r.RequestedAt);
+
+        // Apply request type filter (Individual vs Bulk)
+        if (!string.IsNullOrEmpty(SelectedRequestTypeFilter))
+        {
+            if (SelectedRequestTypeFilter == "Individual")
+            {
+                FilteredBulkRequests = new List<BulkFormRequest>();
+            }
+            else if (SelectedRequestTypeFilter == "Bulk")
+            {
+                FilteredRequests = new List<FormRequest>();
+            }
+        }
+    }
+
+    private List<T>? ApplyDateFilter<T>(List<T>? requests, Func<T, DateTime> dateSelector) where T : class
+    {
+        if (requests == null || string.IsNullOrEmpty(SelectedDateRangeFilter))
+            return requests;
+
+        var now = DateTime.Now;
+        var startDate = SelectedDateRangeFilter switch
+        {
+            "Today" => now.Date,
+            "Yesterday" => now.Date.AddDays(-1),
+            "ThisWeek" => now.Date.AddDays(-(int)now.DayOfWeek),
+            "LastWeek" => now.Date.AddDays(-(int)now.DayOfWeek - 7),
+            "ThisMonth" => new DateTime(now.Year, now.Month, 1),
+            "LastMonth" => new DateTime(now.Year, now.Month, 1).AddMonths(-1),
+            "Last3Months" => new DateTime(now.Year, now.Month, 1).AddMonths(-3),
+            _ => DateTime.MinValue
+        };
+
+        var endDate = SelectedDateRangeFilter switch
+        {
+            "Today" => now.Date.AddDays(1),
+            "Yesterday" => now.Date,
+            "ThisWeek" => now.Date.AddDays(7 - (int)now.DayOfWeek),
+            "LastWeek" => now.Date.AddDays(-(int)now.DayOfWeek),
+            "ThisMonth" => new DateTime(now.Year, now.Month, 1).AddMonths(1),
+            "LastMonth" => new DateTime(now.Year, now.Month, 1),
+            "Last3Months" => DateTime.Now,
+            _ => DateTime.MaxValue
+        };
+
+        if (startDate != DateTime.MinValue)
+        {
+            return requests.Where(r => dateSelector(r) >= startDate && dateSelector(r) < endDate).ToList();
+        }
+
+        return requests;
+    }
+
+    private void ClearFilters()
+    {
+        SelectedStatusFilter = "";
+        SelectedRequestTypeFilter = "";
+        SelectedOperationTypeFilter = "";
+        SelectedFormFilter = "";
+        SelectedSourceFilter = "";
+        SelectedDateRangeFilter = "";
+        RequestedByFilter = "";
+        ApplyFilters();
+    }
+
+    private bool HasActiveFilters()
+    {
+        return !string.IsNullOrEmpty(SelectedStatusFilter) ||
+               !string.IsNullOrEmpty(SelectedRequestTypeFilter) ||
+               !string.IsNullOrEmpty(SelectedOperationTypeFilter) ||
+               !string.IsNullOrEmpty(SelectedFormFilter) ||
+               !string.IsNullOrEmpty(SelectedSourceFilter) ||
+               !string.IsNullOrEmpty(SelectedDateRangeFilter) ||
+               !string.IsNullOrEmpty(RequestedByFilter);
+    }
+
+    private void ToggleAdvancedFilters()
+    {
+        _showAdvancedFilters = !_showAdvancedFilters;
+    }
+
+    private async Task RefreshData()
+    {
+        IsLoading = true;
+        try
+        {
+            await LoadRequestsAsync();
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private static List<string> GetUserRoles(ClaimsPrincipal user)
+    {
+        var roles = new List<string>();
+
+        // Get roles from standard role claims
+        roles.AddRange(user.FindAll(ClaimTypes.Role).Select(c => c.Value));
+        
+        // Get roles from Entra ID app role claims (these come in as "roles" claim type)
+        roles.AddRange(user.FindAll("roles").Select(c => c.Value));
+
+        return roles.Distinct().ToList();
+    }
+
+    private string GetStatusBadgeClass(RequestStatus status) => status switch
+    {
+        RequestStatus.Pending => "bg-warning text-dark",
+        RequestStatus.Approved => "bg-success",
+        RequestStatus.Rejected => "bg-danger",
+        RequestStatus.Applied => "bg-info text-dark",
+        RequestStatus.Failed => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private string GetRequestTypeBadgeColor(RequestType requestType) => requestType switch
+    {
+        RequestType.Insert => "bg-success",
+        RequestType.Update => "bg-warning text-dark",
+        RequestType.Delete => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private string GetRequestTypeDisplayName(RequestType requestType) => requestType switch
+    {
+        RequestType.Insert => "Add New Record",
+        RequestType.Update => "Update Record",
+        RequestType.Delete => "Delete Record",
+        _ => "Unknown"
+    };
+}
