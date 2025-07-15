@@ -213,7 +213,7 @@ public class WorkflowService : IWorkflowService
     {
         using var connection = new SqlConnection(_connectionString);
         
-        const string sql = "SELECT Id FROM WorkflowDefinitions WHERE FormDefinitionId = @FormDefinitionId AND IsActive = 1";
+        const string sql = "SELECT Id FROM WorkflowDefinitions WHERE FormDefinitionId = @FormDefinitionId";
         var workflowId = await connection.QueryFirstOrDefaultAsync<int?>(sql, new { FormDefinitionId = formDefinitionId });
         
         return workflowId.HasValue ? await GetWorkflowDefinitionAsync(workflowId.Value) : null;
@@ -255,9 +255,9 @@ public class WorkflowService : IWorkflowService
 
             // Insert workflow definition
             const string workflowSql = @"
-                INSERT INTO WorkflowDefinitions (FormDefinitionId, Name, Description, IsActive, Version, CreatedBy, CreatedAt)
+                INSERT INTO WorkflowDefinitions (FormDefinitionId, Name, Description, Version, CreatedBy, CreatedAt)
                 OUTPUT INSERTED.Id
-                VALUES (@FormDefinitionId, @Name, @Description, @IsActive, @Version, @CreatedBy, @CreatedAt)";
+                VALUES (@FormDefinitionId, @Name, @Description, @Version, @CreatedBy, @CreatedAt)";
 
             _logger.LogDebug("Inserting workflow definition into database");
             workflowId = await connection.QuerySingleAsync<int>(workflowSql, workflowDefinition, transaction);
@@ -341,7 +341,7 @@ public class WorkflowService : IWorkflowService
             // Update workflow definition
             const string workflowSql = @"
                 UPDATE WorkflowDefinitions 
-                SET Name = @Name, Description = @Description, IsActive = @IsActive, 
+                SET Name = @Name, Description = @Description, 
                     Version = @Version, UpdatedBy = @UpdatedBy, UpdatedAt = @UpdatedAt
                 WHERE Id = @Id";
 
@@ -410,26 +410,6 @@ public class WorkflowService : IWorkflowService
         var rowsAffected = await connection.ExecuteAsync(sql, new { Id = id });
         
         _logger.LogInformation("Deleted workflow definition {WorkflowId}", id);
-        
-        return rowsAffected > 0;
-    }
-
-    public async Task<bool> ActivateWorkflowDefinitionAsync(int id)
-    {
-        using var connection = new SqlConnection(_connectionString);
-        
-        const string sql = "UPDATE WorkflowDefinitions SET IsActive = 1 WHERE Id = @Id";
-        var rowsAffected = await connection.ExecuteAsync(sql, new { Id = id });
-        
-        return rowsAffected > 0;
-    }
-
-    public async Task<bool> DeactivateWorkflowDefinitionAsync(int id)
-    {
-        using var connection = new SqlConnection(_connectionString);
-        
-        const string sql = "UPDATE WorkflowDefinitions SET IsActive = 0 WHERE Id = @Id";
-        var rowsAffected = await connection.ExecuteAsync(sql, new { Id = id });
         
         return rowsAffected > 0;
     }

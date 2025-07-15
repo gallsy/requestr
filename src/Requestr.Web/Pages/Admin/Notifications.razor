@@ -1,0 +1,767 @@
+@page "/admin/notifications"
+@using Requestr.Core.Models
+@using Requestr.Core.Interfaces
+@inject IEmailConfigurationService EmailConfigurationService
+@inject INotificationTemplateService NotificationTemplateService
+@inject IAdvancedNotificationService AdvancedNotificationService
+@inject IServiceProvider ServiceProvider
+@inject IJSRuntime JSRuntime
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Notification Settings</PageTitle>
+
+<!-- Include the notifications JavaScript -->
+<script src="~/js/notifications.js"></script>
+
+<script src="~/js/notifications.js"></script>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="display-5">
+                        <i class="bi bi-envelope-gear me-3"></i>
+                        Notification Settings
+                    </h1>
+                    <p class="lead">Configure system-wide email settings and notification templates</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="text-center p-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading notification settings...</p>
+        </div>
+    }
+    else
+    {
+        <!-- Tab Navigation -->
+        <ul class="nav nav-tabs mb-4" id="notificationTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(_activeTab == "email" ? "active" : "")" 
+                        @onclick='() => SetActiveTab("email")' 
+                        type="button" role="tab">
+                    <i class="bi bi-envelope-gear me-2"></i>Email Configuration
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(_activeTab == "templates" ? "active" : "")" 
+                        @onclick='() => SetActiveTab("templates")' 
+                        type="button" role="tab">
+                    <i class="bi bi-file-text me-2"></i>Notification Templates
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content">
+            @if (_activeTab == "email")
+            {
+                <!-- Email Configuration Tab -->
+                <div class="tab-pane fade show active">
+                    <div class="row">
+                        <div class="col-lg-8">
+                            <div class="card">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">
+                                        <i class="bi bi-gear me-2"></i>Email Provider Configuration
+                                    </h5>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" 
+                                               @bind="_emailConfig.IsEnabled" id="emailEnabled">
+                                        <label class="form-check-label" for="emailEnabled">
+                                            <strong>@(_emailConfig.IsEnabled ? "Enabled" : "Disabled")</strong>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <form @onsubmit="SaveEmailConfiguration" @onsubmit:preventDefault="true">
+                                        <!-- Provider Selection -->
+                                        <div class="mb-3">
+                                            <label class="form-label">Email Provider</label>
+                                            <select class="form-select" @bind="_emailConfig.Provider">
+                                                <option value="@EmailProvider.SMTP">SMTP</option>
+                                                <option value="@EmailProvider.SendGrid">SendGrid</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Common Settings -->
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">From Email *</label>
+                                                <input type="email" class="form-control" @bind="_emailConfig.FromEmail" required>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">From Name</label>
+                                                <input type="text" class="form-control" @bind="_emailConfig.FromName">
+                                            </div>
+                                        </div>
+
+                                        @if (_emailConfig.Provider == EmailProvider.SMTP)
+                                        {
+                                            <!-- SMTP Settings -->
+                                            <div class="alert alert-info">
+                                                <i class="bi bi-info-circle me-2"></i>
+                                                Configure your SMTP server settings below
+                                            </div>
+                                            
+                                            <div class="row">
+                                                <div class="col-md-8 mb-3">
+                                                    <label class="form-label">SMTP Host *</label>
+                                                    <input type="text" class="form-control" @bind="_emailConfig.SmtpHost" 
+                                                           placeholder="smtp.gmail.com" required>
+                                                </div>
+                                                <div class="col-md-4 mb-3">
+                                                    <label class="form-label">Port *</label>
+                                                    <input type="number" class="form-control" @bind="_emailConfig.SmtpPort" 
+                                                           placeholder="587" required>
+                                                </div>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" 
+                                                           @bind="_emailConfig.SmtpUseSsl" id="smtpUseSsl">
+                                                    <label class="form-check-label" for="smtpUseSsl">
+                                                        Use SSL/TLS
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Username</label>
+                                                    <input type="text" class="form-control" @bind="_emailConfig.SmtpUsername">
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Password</label>
+                                                    <input type="password" class="form-control" @bind="_emailConfig.SmtpPassword">
+                                                </div>
+                                            </div>
+                                        }
+                                        else if (_emailConfig.Provider == EmailProvider.SendGrid)
+                                        {
+                                            <!-- SendGrid Settings -->
+                                            <div class="alert alert-info">
+                                                <i class="bi bi-info-circle me-2"></i>
+                                                Enter your SendGrid API key below. You can find this in your SendGrid dashboard.
+                                            </div>
+                                            
+                                            <div class="mb-3">
+                                                <label class="form-label">SendGrid API Key *</label>
+                                                <input type="password" class="form-control" @bind="_emailConfig.SendGridApiKey" 
+                                                       placeholder="SG...." required>
+                                            </div>
+                                        }
+
+                                        <div class="d-flex gap-2">
+                                            <button type="submit" class="btn btn-primary" disabled="@_isSaving">
+                                                @if (_isSaving)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                                }
+                                                <i class="bi bi-save me-2"></i>Save Configuration
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary" 
+                                                    @onclick="TestConnection" disabled="@_isTesting">
+                                                @if (_isTesting)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                                }
+                                                <i class="bi bi-wifi me-2"></i>Test Connection
+                                            </button>
+                                            <button type="button" class="btn btn-outline-info" 
+                                                    @onclick="SendTestEmail" disabled="@_isSendingTest">
+                                                @if (_isSendingTest)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                                }
+                                                <i class="bi bi-send me-2"></i>Send Test Email
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary" 
+                                                    @onclick="TestLogging" disabled="@_isTestingLogging">
+                                                @if (_isTestingLogging)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                                }
+                                                <i class="bi bi-journal-text me-2"></i>Test Logging
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="bi bi-question-circle me-2"></i>Help & Examples
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <h6>Common SMTP Settings:</h6>
+                                    <ul class="list-unstyled small">
+                                        <li><strong>Gmail:</strong> smtp.gmail.com:587</li>
+                                        <li><strong>Outlook:</strong> smtp-mail.outlook.com:587</li>
+                                        <li><strong>Yahoo:</strong> smtp.mail.yahoo.com:587</li>
+                                    </ul>
+                                    
+                                    <h6>SendGrid:</h6>
+                                    <p class="small">SendGrid provides reliable email delivery. Sign up at sendgrid.com to get your API key.</p>
+                                    
+                                    <h6>Security Note:</h6>
+                                    <p class="small text-muted">For Gmail, use App Passwords instead of your regular password.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+            else if (_activeTab == "templates")
+            {
+                <!-- Templates Tab -->
+                <div class="tab-pane fade show active">
+                    <div class="row">
+                        <div class="col-lg-8">
+                            <div class="card">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">
+                                        <i class="bi bi-file-text me-2"></i>Notification Templates
+                                    </h5>
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-outline-secondary btn-sm" @onclick="CreateDefaultTemplates">
+                                            <i class="bi bi-arrow-clockwise me-2"></i>Reset to Defaults
+                                        </button>
+                                        <button class="btn btn-primary btn-sm" @onclick="CreateNewTemplate">
+                                            <i class="bi bi-plus-lg me-2"></i>New Template
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    @if (_templates?.Any() == true)
+                                    {
+                                        <div class="list-group list-group-flush">
+                                            @foreach (var template in _templates)
+                                            {
+                                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                                    <div>
+                                                        <h6 class="mb-1">@template.Name</h6>
+                                                        <p class="mb-1 text-muted small">@template.TemplateKey</p>
+                                                        <span class="badge @(template.IsEnabled ? "bg-success" : "bg-secondary")">
+                                                            @(template.IsEnabled ? "Enabled" : "Disabled")
+                                                        </span>
+                                                    </div>
+                                                    <div class="btn-group">
+                                                        <button class="btn btn-sm btn-outline-primary" 
+                                                                @onclick="() => EditTemplate(template)">
+                                                            <i class="bi bi-pencil"></i>
+                                                        </button>
+                                                        <button class="btn btn-sm btn-outline-danger" 
+                                                                @onclick="() => DeleteTemplate(template.Id)">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="text-center py-4">
+                                            <i class="bi bi-file-text display-1 text-muted mb-3"></i>
+                                            <h5>No templates found</h5>
+                                            <p class="text-muted">Create your first notification template or reset to defaults.</p>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            @if (_editingTemplate != null)
+                            {
+                                <div class="card mt-4">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h5 class="mb-0">
+                                            <i class="bi bi-pencil me-2"></i>
+                                            @(_editingTemplate.Id == 0 ? "Create" : "Edit") Template
+                                        </h5>
+                                        <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">
+                                            <i class="bi bi-x"></i>
+                                        </button>
+                                    </div>
+                                    <div class="card-body">
+                                        <form @onsubmit="SaveTemplate" @onsubmit:preventDefault="true">
+                                            <div class="row">
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Template Name *</label>
+                                                    <input type="text" class="form-control" @bind="_editingTemplate.Name" required>
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Template Key *</label>
+                                                    <input type="text" class="form-control" @bind="_editingTemplate.TemplateKey" required>
+                                                </div>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" 
+                                                           @bind="_editingTemplate.IsEnabled" id="templateEnabled">
+                                                    <label class="form-check-label" for="templateEnabled">
+                                                        Template Enabled
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label class="form-label">Email Subject *</label>
+                                                <div class="input-group">
+                                                    <input type="text" class="form-control" @bind="_editingTemplate.Subject" 
+                                                           @ref="_subjectInputRef" required>
+                                                    <button class="btn btn-outline-secondary dropdown-toggle" 
+                                                            type="button" data-bs-toggle="dropdown">
+                                                        Variables
+                                                    </button>
+                                                    <ul class="dropdown-menu dropdown-menu-end">
+                                                        @foreach (var category in _variableCategories)
+                                                        {
+                                                            <li><h6 class="dropdown-header">@category</h6></li>
+                                                            @foreach (var variable in NotificationVariables.GetVariablesByCategory(category))
+                                                            {
+                                                                <li>
+                                                                    <button class="dropdown-item" type="button"
+                                                                            @onclick="() => InsertVariable(_subjectInputRef, variable.Key)">
+                                                                        <strong>@variable.Key</strong><br>
+                                                                        <small class="text-muted">@variable.Description</small>
+                                                                    </button>
+                                                                </li>
+                                                            }
+                                                            @if (category != _variableCategories.Last())
+                                                            {
+                                                                <li><hr class="dropdown-divider"></li>
+                                                            }
+                                                        }
+                                                    </ul>
+                                                </div>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label class="form-label">Email Body (HTML) *</label>
+                                                <div class="input-group">
+                                                    <textarea class="form-control" rows="10" @bind="_editingTemplate.Body" 
+                                                              @ref="_bodyInputRef" required></textarea>
+                                                    <div class="input-group-text p-0">
+                                                        <div class="dropdown">
+                                                            <button class="btn btn-outline-secondary dropdown-toggle h-100 border-0" 
+                                                                    type="button" data-bs-toggle="dropdown">
+                                                                Variables
+                                                            </button>
+                                                            <ul class="dropdown-menu">
+                                                                @foreach (var category in _variableCategories)
+                                                                {
+                                                                    <li><h6 class="dropdown-header">@category</h6></li>
+                                                                    @foreach (var variable in NotificationVariables.GetVariablesByCategory(category))
+                                                                    {
+                                                                        <li>
+                                                                            <button class="dropdown-item" type="button"
+                                                                                    @onclick="() => InsertVariable(_bodyInputRef, variable.Key)">
+                                                                                <strong>@variable.Key</strong><br>
+                                                                                <small class="text-muted">@variable.Description</small>
+                                                                            </button>
+                                                                        </li>
+                                                                    }
+                                                                    @if (category != _variableCategories.Last())
+                                                                    {
+                                                                        <li><hr class="dropdown-divider"></li>
+                                                                    }
+                                                                }
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="form-text">
+                                                    Use HTML tags for formatting. Click "Variables" to insert dynamic content.
+                                                </div>
+                                            </div>
+
+                                            <div class="d-flex gap-2">
+                                                <button type="submit" class="btn btn-primary" disabled="@_isSavingTemplate">
+                                                    @if (_isSavingTemplate)
+                                                    {
+                                                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                                    }
+                                                    <i class="bi bi-save me-2"></i>Save Template
+                                                </button>
+                                                <button type="button" class="btn btn-outline-secondary" @onclick="CancelEdit">
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        <div class="col-lg-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="bi bi-info-circle me-2"></i>Available Variables
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    @foreach (var category in _variableCategories)
+                                    {
+                                        <h6>@category</h6>
+                                        <ul class="list-unstyled small mb-3">
+                                            @foreach (var variable in NotificationVariables.GetVariablesByCategory(category))
+                                            {
+                                                <li class="mb-1">
+                                                    <code>@variable.Key</code><br>
+                                                    <span class="text-muted">@variable.Description</span>
+                                                </li>
+                                            }
+                                        </ul>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div class="toast show" role="alert">
+            <div class="toast-header @(_isError ? "bg-danger text-white" : "bg-success text-white")">
+                <i class="bi @(_isError ? "bi-exclamation-triangle" : "bi-check-circle") me-2"></i>
+                <strong class="me-auto">@(_isError ? "Error" : "Success")</strong>
+                <button type="button" class="btn-close btn-close-white" @onclick="ClearMessage"></button>
+            </div>
+            <div class="toast-body">
+                @_message
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private EmailConfiguration _emailConfig = new();
+    private List<NotificationTemplate> _templates = new();
+    private NotificationTemplate? _editingTemplate;
+    private ElementReference _subjectInputRef;
+    private ElementReference _bodyInputRef;
+    
+    private string _activeTab = "email";
+    private bool _isLoading = true;
+    private bool _isSaving = false;
+    private bool _isTesting = false;
+    private bool _isSendingTest = false;
+    private bool _isTestingLogging = false;
+    private bool _isSavingTemplate = false;
+    private string? _message;
+    private bool _isError = false;
+    
+    private readonly List<string> _variableCategories = new() { "Request", "Form", "User", "Workflow", "System" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        
+        try
+        {
+            // Load email configuration
+            var emailResult = await EmailConfigurationService.GetConfigurationAsync();
+            if (emailResult.IsSuccess && emailResult.Value != null)
+            {
+                _emailConfig = emailResult.Value;
+            }
+
+            // Load templates
+            var templatesResult = await NotificationTemplateService.GetAllTemplatesAsync();
+            if (templatesResult.IsSuccess)
+            {
+                _templates = templatesResult.Value!;
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"Error loading data: {ex.Message}", true);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void SetActiveTab(string tab)
+    {
+        _activeTab = tab;
+        _editingTemplate = null;
+    }
+
+    private async Task SaveEmailConfiguration()
+    {
+        _isSaving = true;
+        try
+        {
+            var result = await EmailConfigurationService.SaveConfigurationAsync(_emailConfig);
+            if (result.IsSuccess)
+            {
+                ShowMessage("Email configuration saved successfully!");
+            }
+            else
+            {
+                ShowMessage($"Error saving configuration: {result.ErrorMessage}", true);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"Error saving configuration: {ex.Message}", true);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task TestConnection()
+    {
+        _isTesting = true;
+        try
+        {
+            var result = await EmailConfigurationService.TestConnectionAsync(_emailConfig);
+            if (result.IsSuccess)
+            {
+                ShowMessage("Connection test successful!");
+            }
+            else
+            {
+                ShowMessage($"Connection test failed: {result.ErrorMessage}", true);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"Connection test failed: {ex.Message}", true);
+        }
+        finally
+        {
+            _isTesting = false;
+        }
+    }
+
+    private async Task SendTestEmail()
+    {
+        var testEmail = await JSRuntime.InvokeAsync<string>("prompt", "Enter email address for test:");
+        if (string.IsNullOrEmpty(testEmail))
+            return;
+
+        _isSendingTest = true;
+        try
+        {
+            var result = await EmailConfigurationService.SendTestEmailAsync(
+                testEmail, 
+                "Test Email from Requestr", 
+                "<h2>Test Email</h2><p>This is a test email from your Requestr notification system.</p>");
+            
+            if (result.IsSuccess)
+            {
+                ShowMessage($"Test email sent successfully to {testEmail}!");
+            }
+            else
+            {
+                ShowMessage($"Failed to send test email: {result.ErrorMessage}", true);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"Failed to send test email: {ex.Message}", true);
+        }
+        finally
+        {
+            _isSendingTest = false;
+        }
+    }
+
+    private async Task TestLogging()
+    {
+        _isTestingLogging = true;
+        try
+        {
+            // Create sample notification data
+            var variables = new Dictionary<string, string>
+            {
+                {"{RequestorName}", "John Doe"},
+                {"{RequestorEmail}", "john.doe@example.com"},
+                {"{FormName}", "Test Form"},
+                {"{RequestId}", "REQ-12345"},
+                {"{RequestDescription}", "This is a sample request for testing logging"},
+                {"{CreatingUser}", "Test User"},
+                {"{CreatingUserEmail}", "testuser@example.com"},
+                {"{RequestComments}", "Sample comments for the request"},
+                {"{RequestCreatedDate}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")},
+                {"{RequestUrl}", "https://localhost:5001/request/12345"}
+            };
+
+            // Test template-based notification (this will log regardless of email config)
+            var result = await AdvancedNotificationService.SendNotificationAsync(
+                "request-created", 
+                variables, 
+                "test@example.com", 
+                "Test Recipient");
+
+            if (result.IsSuccess)
+            {
+                ShowMessage("Test logging completed! Check the application logs to see the notification details.");
+            }
+            else
+            {
+                ShowMessage($"Test logging result: {result.ErrorMessage}. Check logs for details.", false);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"Test logging failed: {ex.Message}", true);
+        }
+        finally
+        {
+            _isTestingLogging = false;
+        }
+    }
+
+    private async Task CreateDefaultTemplates()
+    {
+        try
+        {
+            var result = await NotificationTemplateService.CreateDefaultTemplatesAsync();
+            if (result.IsSuccess)
+            {
+                await LoadData();
+                ShowMessage("Default templates created successfully!");
+            }
+            else
+            {
+                ShowMessage($"Error creating default templates: {result.ErrorMessage}", true);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"Error creating default templates: {ex.Message}", true);
+        }
+    }
+
+    private void CreateNewTemplate()
+    {
+        _editingTemplate = new NotificationTemplate
+        {
+            IsEnabled = true,
+            Subject = "",
+            Body = ""
+        };
+    }
+
+    private void EditTemplate(NotificationTemplate template)
+    {
+        _editingTemplate = new NotificationTemplate
+        {
+            Id = template.Id,
+            Name = template.Name,
+            TemplateKey = template.TemplateKey,
+            Subject = template.Subject,
+            Body = template.Body,
+            IsEnabled = template.IsEnabled
+        };
+    }
+
+    private void CancelEdit()
+    {
+        _editingTemplate = null;
+    }
+
+    private async Task SaveTemplate()
+    {
+        if (_editingTemplate == null) return;
+
+        _isSavingTemplate = true;
+        try
+        {
+            var result = await NotificationTemplateService.SaveTemplateAsync(_editingTemplate);
+            if (result.IsSuccess)
+            {
+                await LoadData();
+                _editingTemplate = null;
+                ShowMessage("Template saved successfully!");
+            }
+            else
+            {
+                ShowMessage($"Error saving template: {result.ErrorMessage}", true);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"Error saving template: {ex.Message}", true);
+        }
+        finally
+        {
+            _isSavingTemplate = false;
+        }
+    }
+
+    private async Task DeleteTemplate(int templateId)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this template?");
+        if (!confirmed) return;
+
+        try
+        {
+            var result = await NotificationTemplateService.DeleteTemplateAsync(templateId);
+            if (result.IsSuccess)
+            {
+                await LoadData();
+                ShowMessage("Template deleted successfully!");
+            }
+            else
+            {
+                ShowMessage($"Error deleting template: {result.ErrorMessage}", true);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"Error deleting template: {ex.Message}", true);
+        }
+    }
+
+    private async Task InsertVariable(ElementReference inputRef, string variable)
+    {
+        await JSRuntime.InvokeVoidAsync("insertAtCursor", inputRef, variable);
+    }
+
+    private void ShowMessage(string message, bool isError = false)
+    {
+        _message = message;
+        _isError = isError;
+        StateHasChanged();
+        
+        // Auto-hide after 5 seconds
+        _ = Task.Delay(5000).ContinueWith(_ => ClearMessage());
+    }
+
+    private void ClearMessage()
+    {
+        _message = null;
+        _isError = false;
+        StateHasChanged();
+    }
+}

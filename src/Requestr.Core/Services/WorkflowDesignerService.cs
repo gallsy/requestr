@@ -64,7 +64,6 @@ public class WorkflowDesignerService : IWorkflowDesignerService
                 FormDefinitionId = formDefinitionId,
                 Name = name,
                 Description = description,
-                IsActive = false, // Start as inactive until designed
                 Version = 1,
                 CreatedAt = DateTime.UtcNow,
                 CreatedBy = "System", // TODO: Get from current user context

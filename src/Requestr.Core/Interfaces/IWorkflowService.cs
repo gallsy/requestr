@@ -12,8 +12,6 @@ public interface IWorkflowService
     Task<WorkflowDefinition> CreateWorkflowDefinitionAsync(WorkflowDefinition workflowDefinition);
     Task<WorkflowDefinition> UpdateWorkflowDefinitionAsync(WorkflowDefinition workflowDefinition);
     Task<bool> DeleteWorkflowDefinitionAsync(int id);
-    Task<bool> ActivateWorkflowDefinitionAsync(int id);
-    Task<bool> DeactivateWorkflowDefinitionAsync(int id);
     
     // Workflow Instance Management
     Task<WorkflowInstance> StartWorkflowAsync(int formRequestId, int workflowDefinitionId);

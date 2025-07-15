@@ -1153,6 +1153,25 @@ body[data-theme="dark"] .sidebar .nav .nav-link.active.sidebar-nav-link {
     text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
 }
 
+/* Expandable navigation submenu styles */
+.nav-submenu {
+    background-color: rgba(0, 0, 0, 0.05);
+    border-left: 3px solid var(--primary);
+    margin-left: 0.5rem;
+    padding: 0.5rem 0;
+    border-radius: 0 0.375rem 0.375rem 0;
+}
+
+[data-theme="dark"] .nav-submenu {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.nav-submenu .sidebar-nav-link {
+    padding: 0.5rem 1rem !important;
+    margin-bottom: 0.125rem;
+    font-size: 0.9rem;
+}
+
 /* Timeline styles for request history */
 .timeline {
     position: relative;

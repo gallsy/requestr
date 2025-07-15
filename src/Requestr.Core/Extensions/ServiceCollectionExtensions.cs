@@ -24,6 +24,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFormWorkflowConfigurationService, FormWorkflowConfigurationService>();
         services.AddScoped<IFormPermissionService, FormPermissionService>();
         
+        // Notification Services
+        services.AddScoped<IEmailConfigurationService, EmailConfigurationService>();
+        services.AddScoped<INotificationTemplateService, NotificationTemplateService>();
+        services.AddScoped<IAdvancedNotificationService, AdvancedNotificationService>();
+        
         // Business Logic Services (to be implemented)
         // services.AddScoped<IValidationService, ValidationService>();
         // services.AddScoped<IAuthorizationService, AuthorizationService>();

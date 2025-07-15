@@ -6,7 +6,6 @@ public class WorkflowDefinition : AuditableEntity
     public FormDefinition? FormDefinition { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
-    public bool IsActive { get; set; } = true;
     public int Version { get; set; } = 1;
     public List<WorkflowStep> Steps { get; set; } = new();
     public List<WorkflowTransition> Transitions { get; set; } = new();

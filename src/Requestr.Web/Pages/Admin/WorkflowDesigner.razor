@@ -167,8 +167,12 @@
                     </nav>
                     <h1 class="display-6">
                         <i class="bi bi-diagram-2 me-3"></i>
-                        Workflow Designer
+                        @(workflow?.Name ?? "Workflow Designer")
                     </h1>
+                    @if (!string.IsNullOrEmpty(workflow?.Description))
+                    {
+                        <p class="lead text-muted">@workflow.Description</p>
+                    }
                 </div>
                 <div class="d-flex gap-2">
                     <button class="btn btn-outline-primary" @onclick="SaveWorkflow">
@@ -194,6 +198,31 @@
                 <div class="row">
                     <!-- Workflow Steps Panel -->
                     <div class="col-md-3">
+                        <!-- Workflow Properties Panel -->
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h6 class="mb-0">
+                                    <i class="bi bi-gear me-2"></i>
+                                    Workflow Properties
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Name</label>
+                                    <input type="text" class="form-control" @bind="workflow.Name" @bind:after="SaveWorkflow" />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Description</label>
+                                    <textarea class="form-control" rows="3" @bind="workflow.Description" @bind:after="SaveWorkflow"></textarea>
+                                </div>
+                                <div class="mb-0">
+                                    <small class="text-muted">
+                                        <strong>Version:</strong> @workflow.Version
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div class="card">
                             <div class="card-header">
                                 <h6 class="mb-0">
