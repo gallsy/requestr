@@ -11,9 +11,13 @@
 @inject IDatabaseService DatabaseService
 @inject IDataService DataService
 @inject IFormPermissionService FormPermissionService
+@inject IWorkflowService WorkflowService
+@inject IWorkflowDesignerService WorkflowDesignerService
+@inject IFormWorkflowConfigurationService FormWorkflowConfigurationService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<FormBuilder> Logger
 @attribute [Authorize(Roles = "Admin")]
 
 @* Form Builder *@
@@ -79,6 +83,14 @@
                                 type="button">
                             <i class="bi bi-shield-check me-2"></i>
                             Permissions
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(ActiveTab == "workflow" ? "active" : "")" 
+                                @onclick="@(() => SetActiveTab("workflow"))" 
+                                type="button">
+                            <i class="bi bi-diagram-3 me-2"></i>
+                            Workflow
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
@@ -612,6 +624,270 @@
                 </div>
             }
 
+            <!-- Workflow Tab -->
+            @if (ActiveTab == "workflow")
+            {
+                <div class="row">
+                    <div class="col-12">
+                        <!-- Workflow Assignment Card -->
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="bi bi-diagram-3 me-2"></i>
+                                    Workflow Assignment
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Select Workflow</label>
+                                        <select class="form-select" @bind="_selectedWorkflowId" @bind:after="OnWorkflowChanged">
+                                            <option value="">No Workflow (Auto-apply requests)</option>
+                                            @if (_availableWorkflows?.Any() == true)
+                                            {
+                                                @foreach (var workflow in _availableWorkflows)
+                                                {
+                                                    <option value="@workflow.Id">@workflow.Name</option>
+                                                }
+                                            }
+                                        </select>
+                                        <small class="form-text text-muted">
+                                            Choose a workflow to control how form requests are approved.
+                                        </small>
+                                    </div>
+                                    <div class="col-md-6">
+                                        @if (_selectedWorkflowId.HasValue)
+                                        {
+                                            <div class="alert alert-info">
+                                                <h6 class="alert-heading">
+                                                    <i class="bi bi-info-circle me-2"></i>
+                                                    Workflow Assigned
+                                                </h6>
+                                                <p class="mb-0 small">
+                                                    Form requests will follow the selected workflow for approval.
+                                                    Configure step-specific settings below.
+                                                </p>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="alert alert-warning">
+                                                <h6 class="alert-heading">
+                                                    <i class="bi bi-exclamation-triangle me-2"></i>
+                                                    No Workflow
+                                                </h6>
+                                                <p class="mb-0 small">
+                                                    Form requests will be automatically applied to the database without approval.
+                                                </p>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step Configuration Cards -->
+                        @if (_workflowStepConfigs?.Any() == true)
+                        {
+                            <div class="row">
+                                <div class="col-12">
+                                    <h5 class="mb-3">
+                                        <i class="bi bi-gear me-2"></i>
+                                        Step Configuration
+                                    </h5>
+                                    <p class="text-muted mb-4">Configure how each workflow step behaves for this specific form.</p>
+                                </div>
+                            </div>
+
+                            @foreach (var stepConfig in _workflowStepConfigs.Where(s => s.StepType == "approval" || s.StepType == "parallel"))
+                            {
+                                <div class="card mb-3">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">
+                                            @if (stepConfig.StepType == "approval")
+                                            {
+                                                <i class="bi bi-check-circle me-2"></i>
+                                            }
+                                            else if (stepConfig.StepType == "parallel")
+                                            {
+                                                <i class="bi bi-people me-2"></i>
+                                            }
+                                            @stepConfig.StepName
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        @if (stepConfig.StepType == "approval")
+                                        {
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Assigned Role</label>
+                                                        <select class="form-select" @bind="stepConfig.AssignedRole" @bind:after="@(() => UpdateStepAssignedRole(stepConfig, stepConfig.AssignedRole ?? ""))">
+                                                            <option value="">Select a role...</option>
+                                                            @if (_availableRoles?.Any() == true)
+                                                            {
+                                                                @foreach (var role in _availableRoles)
+                                                                {
+                                                                    <option value="@role">@role</option>
+                                                                }
+                                                            }
+                                                        </select>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Instructions (Optional)</label>
+                                                        <textarea class="form-control" rows="2" 
+                                                                  @bind="stepConfig.Instructions"
+                                                                  @bind:after="@(() => UpdateStepInstructions(stepConfig, stepConfig.Instructions ?? ""))"
+                                                                  placeholder="Special instructions for this approval step..."></textarea>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-12">
+                                                    <hr>
+                                                    <h6>Field Configuration</h6>
+                                                    <p class="text-muted small">Configure field visibility, read-only status, and requirements for this step.</p>
+                                                    
+                                                    @if (_formDefinition?.Fields?.Any() == true)
+                                                    {
+                                                        <div class="table-responsive">
+                                                            <table class="table table-sm">
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th>Field Name</th>
+                                                                        <th>Display Name</th>
+                                                                        <th>Visible</th>
+                                                                        <th>Read Only</th>
+                                                                        <th>Required</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    @foreach (var field in _formDefinition.Fields.OrderBy(f => f.DisplayName))
+                                                                    {
+                                                                        var fieldConfig = GetOrCreateFieldConfig(stepConfig, field.Name);
+                                                                        <tr>
+                                                                            <td>@field.Name</td>
+                                                                            <td>@field.DisplayName</td>
+                                                                            <td>
+                                                                                <div class="form-check">
+                                                                                    <input class="form-check-input" type="checkbox" 
+                                                                                           checked="@fieldConfig.IsVisible" 
+                                                                                           @onchange="(e) => { fieldConfig.IsVisible = (bool)e.Value!; _ = UpdateFieldConfiguration(stepConfig, fieldConfig); }" />
+                                                                                </div>
+                                                                            </td>
+                                                                            <td>
+                                                                                <div class="form-check">
+                                                                                    <input class="form-check-input" type="checkbox" 
+                                                                                           checked="@fieldConfig.IsReadOnly" 
+                                                                                           @onchange="(e) => { fieldConfig.IsReadOnly = (bool)e.Value!; _ = UpdateFieldConfiguration(stepConfig, fieldConfig); }" />
+                                                                                </div>
+                                                                            </td>
+                                                                            <td>
+                                                                                <div class="form-check">
+                                                                                    <input class="form-check-input" type="checkbox" 
+                                                                                           checked="@fieldConfig.IsRequired" 
+                                                                                           @onchange="(e) => { fieldConfig.IsRequired = (bool)e.Value!; _ = UpdateFieldConfiguration(stepConfig, fieldConfig); }" />
+                                                                                </div>
+                                                                            </td>
+                                                                        </tr>
+                                                                    }
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-12">
+                                                    <hr>
+                                                    <h6>Notification Settings</h6>
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Notification Email (Optional)</label>
+                                                        <input type="email" class="form-control" 
+                                                               @bind="stepConfig.NotificationEmail"
+                                                               @bind:after="@(() => UpdateNotificationEmail(stepConfig, stepConfig.NotificationEmail ?? ""))"
+                                                               placeholder="Enter email address for notifications...">
+                                                        <small class="form-text text-muted">
+                                                            Optional email address to notify when this step is reached or completed.
+                                                        </small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                        else if (stepConfig.StepType == "parallel")
+                                        {
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Required Roles</label>
+                                                        <div class="border rounded p-2" style="max-height: 150px; overflow-y: auto;">
+                                                            @if (_availableRoles?.Any() == true)
+                                                            {
+                                                                @foreach (var role in _availableRoles)
+                                                                {
+                                                                    <div class="form-check">
+                                                                        <input class="form-check-input" type="checkbox" 
+                                                                               checked="@(stepConfig.RequiredRoles.Contains(role))"
+                                                                               @onchange="@((e) => ToggleRequiredRole(stepConfig, role, e.Value?.ToString() == "true"))">
+                                                                        <label class="form-check-label">@role</label>
+                                                                    </div>
+                                                                }
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" 
+                                                               checked="@stepConfig.RequireAllApprovals"
+                                                               @onchange="@((e) => UpdateParallelApprovalSetting(stepConfig, e.Value?.ToString() == "true"))">
+                                                        <label class="form-check-label">Require all roles to approve</label>
+                                                        <small class="form-text text-muted d-block">
+                                                            If unchecked, approval from any one role will advance the workflow.
+                                                        </small>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Instructions (Optional)</label>
+                                                        <textarea class="form-control" rows="3" 
+                                                                  @bind="stepConfig.Instructions"
+                                                                  @bind:after="@(() => UpdateStepInstructions(stepConfig, stepConfig.Instructions ?? ""))"
+                                                                  placeholder="Instructions for all approvers in this parallel step..."></textarea>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Notification Email (Optional)</label>
+                                                        <input type="email" class="form-control" 
+                                                               @bind="stepConfig.NotificationEmail"
+                                                               @bind:after="@(() => UpdateNotificationEmail(stepConfig, stepConfig.NotificationEmail ?? ""))"
+                                                               placeholder="Enter email address for notifications...">
+                                                        <small class="form-text text-muted">
+                                                            Optional email address to notify when this step is reached or completed.
+                                                        </small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                        else if (_selectedWorkflowId.HasValue)
+                        {
+                            <div class="alert alert-info">
+                                <h6 class="alert-heading">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    No Configurable Steps
+                                </h6>
+                                <p class="mb-0">
+                                    The selected workflow doesn't have any approval steps that require configuration.
+                                </p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
             <!-- Notifications Tab -->
             @if (ActiveTab == "notifications")
             {
@@ -628,78 +904,77 @@
                                 <div class="alert alert-info">
                                     <h6 class="alert-heading">
                                         <i class="bi bi-info-circle me-2"></i>
-                                        Coming Soon
+                                        Form Notifications
                                     </h6>
-                                    <p class="mb-0">Notification settings will allow you to configure email alerts, Teams notifications, and other communication preferences for form events.</p>
+                                    <p class="mb-0">Configure email notifications for form events. Optionally enter an email address to be notified when requests are created or completed for this form.</p>
                                 </div>
 
-                                <h6 class="mb-3">Planned Notification Features</h6>
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="card bg-light">
-                                            <div class="card-body">
-                                                <h6 class="card-title">
-                                                    <i class="bi bi-envelope me-2"></i>
-                                                    Email Notifications
-                                                </h6>
-                                                <ul class="list-unstyled mb-0 small">
-                                                    <li>• Form submission confirmations</li>
-                                                    <li>• Approval request alerts</li>
-                                                    <li>• Status change notifications</li>
-                                                    <li>• Rejection notifications with reasons</li>
-                                                </ul>
-                                            </div>
+                                <div class="mb-4">
+                                    <label class="form-label">Notification Email Address (Optional)</label>
+                                    <input type="email" class="form-control" 
+                                           value="@(_formDefinition.NotificationEmail ?? "")"
+                                           @onchange="@((ChangeEventArgs e) => _formDefinition.NotificationEmail = e.Value?.ToString())"
+                                           placeholder="Enter email address to receive notifications...">
+                                    <small class="form-text text-muted">
+                                        Leave blank to disable form-level notifications. This email will receive notifications for the events selected below.
+                                    </small>
+                                </div>
+
+                                <div class="mb-3">
+                                    <h6 class="mb-3">Notification Events</h6>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" 
+                                               @bind="_formDefinition.NotifyOnCreation"
+                                               id="notifyOnCreation">
+                                        <label class="form-check-label" for="notifyOnCreation">
+                                            <strong>Request Created</strong>
+                                        </label>
+                                        <div class="text-muted small">
+                                            Send notification when a new request is submitted using this form.
                                         </div>
                                     </div>
-                                    <div class="col-md-6">
-                                        <div class="card bg-light">
-                                            <div class="card-body">
-                                                <h6 class="card-title">
-                                                    <i class="bi bi-microsoft-teams me-2"></i>
-                                                    Teams Integration
-                                                </h6>
-                                                <ul class="list-unstyled mb-0 small">
-                                                    <li>• Channel notifications</li>
-                                                    <li>• Direct message alerts</li>
-                                                    <li>• Approval workflow cards</li>
-                                                    <li>• Quick approve/reject actions</li>
-                                                </ul>
-                                            </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" 
+                                               @bind="_formDefinition.NotifyOnCompletion"
+                                               id="notifyOnCompletion">
+                                        <label class="form-check-label" for="notifyOnCompletion">
+                                            <strong>Request Completed</strong>
+                                        </label>
+                                        <div class="text-muted small">
+                                            Send notification when a request is fully approved and applied to the database.
                                         </div>
                                     </div>
                                 </div>
 
-                                <div class="mt-4">
-                                    <h6 class="mb-3">Notification Preferences</h6>
-                                    <div class="mb-3">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" disabled>
-                                            <label class="form-check-label text-muted">
-                                                Send email notifications to form submitters
-                                            </label>
-                                        </div>
+                                @if (!string.IsNullOrEmpty(_formDefinition.NotificationEmail))
+                                {
+                                    <div class="alert alert-success">
+                                        <h6 class="alert-heading">
+                                            <i class="bi bi-check-circle me-2"></i>
+                                            Notifications Active
+                                        </h6>
+                                        <p class="mb-0">
+                                            <strong>@_formDefinition.NotificationEmail</strong> will receive notifications for:
+                                            @if (_formDefinition.NotifyOnCreation || _formDefinition.NotifyOnCompletion)
+                                            {
+                                                <ul class="mb-0 mt-1">
+                                                    @if (_formDefinition.NotifyOnCreation)
+                                                    {
+                                                        <li>New request submissions</li>
+                                                    }
+                                                    @if (_formDefinition.NotifyOnCompletion)
+                                                    {
+                                                        <li>Request completions</li>
+                                                    }
+                                                </ul>
+                                            }
+                                            else
+                                            {
+                                                <br><em>No events selected</em>
+                                            }
+                                        </p>
                                     </div>
-                                    <div class="mb-3">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" disabled>
-                                            <label class="form-check-label text-muted">
-                                                Send email notifications to approvers
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div class="mb-3">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" disabled>
-                                            <label class="form-check-label text-muted">
-                                                Send Teams notifications for urgent approvals
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label text-muted">Notification Email Template</label>
-                                        <textarea class="form-control" rows="4" disabled placeholder="Custom email template for notifications..."></textarea>
-                                    </div>
-                                </div>
+                                }
                             </div>
                         </div>
                     </div>
@@ -735,6 +1010,35 @@
     private bool _isAddingRole = false;
     private string _newRoleName = "";
 
+    // Workflow-related fields
+    private List<WorkflowDefinition>? _availableWorkflows = new();
+    private int? _selectedWorkflowId;
+    private List<WorkflowStepConfigModel>? _workflowStepConfigs = new();
+    private bool _isLoadingWorkflow = false;
+
+    // Model for step configuration UI
+    public class WorkflowStepConfigModel
+    {
+        public int StepId { get; set; } // BaseEntity Id
+        public string StepIdString { get; set; } = ""; // WorkflowStep.StepId
+        public string StepName { get; set; } = "";
+        public string StepType { get; set; } = "";
+        public string? AssignedRole { get; set; }
+        public string? Instructions { get; set; }
+        public string? NotificationEmail { get; set; }
+        public List<string> RequiredRoles { get; set; } = new(); // For parallel steps
+        public bool RequireAllApprovals { get; set; } = true; // For parallel steps
+        public Dictionary<string, FieldConfigurationModel> FieldConfigurations { get; set; } = new(); // Field visibility, readonly, required settings
+    }
+
+    public class FieldConfigurationModel
+    {
+        public string FieldName { get; set; } = "";
+        public bool IsVisible { get; set; } = true;
+        public bool IsReadOnly { get; set; } = false;
+        public bool IsRequired { get; set; } = false;
+    }
+
     private void SetActiveTab(string tab)
     {
         ActiveTab = tab;
@@ -743,6 +1047,20 @@
         if (tab == "permissions" && FormId.HasValue)
         {
             _ = LoadFormPermissions();
+        }
+        
+        // Load workflow when switching to workflow tab
+        if (tab == "workflow" && FormId.HasValue)
+        {
+            _ = Task.Run(async () =>
+            {
+                _selectedWorkflowId = _formDefinition.WorkflowDefinitionId;
+                if (_selectedWorkflowId.HasValue)
+                {
+                    await LoadWorkflowStepConfigurations();
+                    StateHasChanged();
+                }
+            });
         }
         
         StateHasChanged();
@@ -763,6 +1081,9 @@
             
             // Load connection strings from configuration
             _connectionStrings = await DatabaseService.GetConnectionStringsAsync();
+            
+            // Load available workflows
+            await LoadAvailableWorkflows();
             
             // Load all existing categories for the dropdown
             var allForms = await FormDefinitionService.GetAllAsync();
@@ -809,6 +1130,16 @@
                 {
                     await LoadFormPermissions();
                 }
+                
+                // Load workflow configuration if we're on the workflow tab
+                if (ActiveTab == "workflow")
+                {
+                    _selectedWorkflowId = _formDefinition.WorkflowDefinitionId;
+                    if (_selectedWorkflowId.HasValue)
+                    {
+                        await LoadWorkflowStepConfigurations();
+                    }
+                }
             }
             else
             {
@@ -821,7 +1152,7 @@
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("console.error", $"Error loading form builder: {ex.Message}");
+            Logger.LogError(ex, "Error loading form builder: {Message}", ex.Message);
         }
         finally
         {
@@ -878,7 +1209,7 @@
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("console.error", $"Error loading permissions: {ex.Message}");
+            Logger.LogError(ex, "Error loading permissions: {Message}", ex.Message);
         }
         finally
         {
@@ -1130,8 +1461,9 @@
             }
             catch (Exception ex)
             {
-                await JSRuntime.InvokeVoidAsync("console.error", $"Error loading tables: {ex.Message}");
-                await JSRuntime.InvokeVoidAsync("alert", $"Error connecting to database: {ex.Message}");
+                Logger.LogError(ex, "Error loading tables: {Message}", ex.Message);
+                // Note: Alert dialogs require JavaScript and cannot be shown during server-side prerendering
+                // Consider using a toast notification or status message instead
             }
         }
         else
@@ -1526,4 +1858,326 @@
 
         StateHasChanged();
     }
+
+    // ===================
+    // Workflow-related methods
+    // ===================
+
+    private async Task LoadAvailableWorkflows()
+    {
+        try
+        {
+            _availableWorkflows = await WorkflowService.GetWorkflowDefinitionsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading available workflows");
+            _availableWorkflows = new List<WorkflowDefinition>();
+        }
+    }
+
+    private async Task OnWorkflowChanged()
+    {
+        try
+        {
+            _isLoadingWorkflow = true;
+            StateHasChanged();
+
+            if (_selectedWorkflowId.HasValue)
+            {
+                await LoadWorkflowStepConfigurations();
+            }
+            else
+            {
+                _workflowStepConfigs = new List<WorkflowStepConfigModel>();
+            }
+
+            // Auto-save the form when workflow changes
+            if (FormId.HasValue)
+            {
+                await SaveWorkflowConfiguration();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error handling workflow change");
+        }
+        finally
+        {
+            _isLoadingWorkflow = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadWorkflowStepConfigurations()
+    {
+        if (!_selectedWorkflowId.HasValue) return;
+
+        try
+        {
+            var workflow = await WorkflowService.GetWorkflowDefinitionAsync(_selectedWorkflowId.Value);
+            if (workflow?.Steps?.Any() == true)
+            {
+                _workflowStepConfigs = new List<WorkflowStepConfigModel>();
+
+                foreach (var step in workflow.Steps.Where(s => s.StepType == WorkflowStepType.Approval || s.StepType == WorkflowStepType.Parallel))
+                {
+                    var stepConfig = new WorkflowStepConfigModel
+                    {
+                        StepId = step.Id, // This is the BaseEntity Id (int)
+                        StepIdString = step.StepId, // This is the WorkflowStep.StepId (string)
+                        StepName = step.Name,
+                        StepType = step.StepType.ToString().ToLower()
+                    };
+
+                    // Load existing configuration if form exists
+                    if (FormId.HasValue)
+                    {
+                        try
+                        {
+                            if (step.StepType == WorkflowStepType.Approval)
+                            {
+                                var config = await FormWorkflowConfigurationService.GetStepConfigurationAsync<ApprovalStepConfiguration>(FormId.Value, step.StepId);
+                                if (config != null)
+                                {
+                                    stepConfig.AssignedRole = config.AssignedRole;
+                                    stepConfig.Instructions = config.Instructions;
+                                    stepConfig.NotificationEmail = config.NotificationEmail;
+                                }
+                            }
+                            else if (step.StepType == WorkflowStepType.Parallel)
+                            {
+                                var config = await FormWorkflowConfigurationService.GetStepConfigurationAsync<ParallelApprovalStepConfiguration>(FormId.Value, step.StepId);
+                                if (config != null)
+                                {
+                                    stepConfig.RequiredRoles = config.RequiredRoles?.ToList() ?? new List<string>();
+                                    stepConfig.RequireAllApprovals = config.RequireAllApprovals;
+                                    stepConfig.NotificationEmail = config.NotificationEmail;
+                                    stepConfig.Instructions = null; // ParallelApprovalStepConfiguration doesn't have Instructions
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogWarning(ex, "Could not load existing configuration for step {StepId}", step.Id);
+                        }
+
+                        // Load field configurations for this step
+                        try
+                        {
+                            var fieldConfigs = await WorkflowDesignerService.GetStepFieldConfigurationsAsync(step.Id);
+                            foreach (var fieldConfig in fieldConfigs)
+                            {
+                                stepConfig.FieldConfigurations[fieldConfig.FieldName] = new FieldConfigurationModel
+                                {
+                                    FieldName = fieldConfig.FieldName,
+                                    IsVisible = fieldConfig.IsVisible,
+                                    IsReadOnly = fieldConfig.IsReadOnly,
+                                    IsRequired = fieldConfig.IsRequired
+                                };
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogWarning(ex, "Could not load field configurations for step {StepId}", step.Id);
+                        }
+                    }
+
+                    _workflowStepConfigs.Add(stepConfig);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading workflow step configurations");
+            _workflowStepConfigs = new List<WorkflowStepConfigModel>();
+        }
+    }
+
+    private async Task SaveWorkflowConfiguration()
+    {
+        if (!FormId.HasValue) return;
+
+        try
+        {
+            // Update form definition with selected workflow
+            _formDefinition.WorkflowDefinitionId = _selectedWorkflowId;
+            await FormDefinitionService.UpdateAsync(_formDefinition);
+
+            // Save step configurations
+            if (_workflowStepConfigs?.Any() == true)
+            {
+                // Get current user for audit trail
+                var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+                var currentUser = authState.User.Identity?.Name ?? "Unknown";
+
+                foreach (var stepConfig in _workflowStepConfigs)
+                {
+                    if (stepConfig.StepType == "approval")
+                    {
+                        var config = new ApprovalStepConfiguration
+                        {
+                            AssignedRole = stepConfig.AssignedRole,
+                            Instructions = stepConfig.Instructions,
+                            NotificationEmail = stepConfig.NotificationEmail
+                        };
+
+                        await FormWorkflowConfigurationService.UpdateStepConfigurationAsync(FormId.Value, stepConfig.StepIdString, config, currentUser);
+                    }
+                    else if (stepConfig.StepType == "parallel")
+                    {
+                        var config = new ParallelApprovalStepConfiguration
+                        {
+                            RequiredRoles = stepConfig.RequiredRoles ?? new List<string>(),
+                            RequireAllApprovals = stepConfig.RequireAllApprovals,
+                            NotificationEmail = stepConfig.NotificationEmail
+                        };
+
+                        await FormWorkflowConfigurationService.UpdateStepConfigurationAsync(FormId.Value, stepConfig.StepIdString, config, currentUser);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving workflow configuration");
+            throw; // Re-throw to let the UI handle error display
+        }
+    }
+
+    private async Task UpdateStepAssignedRole(WorkflowStepConfigModel stepConfig, string role)
+    {
+        try
+        {
+            stepConfig.AssignedRole = role;
+            if (FormId.HasValue)
+            {
+                await SaveWorkflowConfiguration();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating step assigned role");
+        }
+    }
+
+    private async Task UpdateStepInstructions(WorkflowStepConfigModel stepConfig, string instructions)
+    {
+        try
+        {
+            stepConfig.Instructions = instructions;
+            if (FormId.HasValue)
+            {
+                await SaveWorkflowConfiguration();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating step instructions");
+        }
+    }
+
+    private async Task UpdateNotificationEmail(WorkflowStepConfigModel stepConfig, string email)
+    {
+        try
+        {
+            stepConfig.NotificationEmail = email;
+            if (FormId.HasValue)
+            {
+                await SaveWorkflowConfiguration();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating notification email");
+        }
+    }
+
+    private async Task ToggleRequiredRole(WorkflowStepConfigModel stepConfig, string role, bool isRequired)
+    {
+        try
+        {
+            if (isRequired)
+            {
+                if (!stepConfig.RequiredRoles.Contains(role))
+                {
+                    stepConfig.RequiredRoles.Add(role);
+                }
+            }
+            else
+            {
+                stepConfig.RequiredRoles.Remove(role);
+            }
+
+            if (FormId.HasValue)
+            {
+                await SaveWorkflowConfiguration();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error toggling required role");
+        }
+    }
+
+    private async Task UpdateParallelApprovalSetting(WorkflowStepConfigModel stepConfig, bool requireAll)
+    {
+        try
+        {
+            stepConfig.RequireAllApprovals = requireAll;
+
+            if (FormId.HasValue)
+            {
+                await SaveWorkflowConfiguration();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating parallel approval setting");
+        }
+    }
+
+    #region Field Configuration Methods
+
+    private FieldConfigurationModel GetOrCreateFieldConfig(WorkflowStepConfigModel stepConfig, string fieldName)
+    {
+        if (!stepConfig.FieldConfigurations.ContainsKey(fieldName))
+        {
+            stepConfig.FieldConfigurations[fieldName] = new FieldConfigurationModel
+            {
+                FieldName = fieldName,
+                IsVisible = true,
+                IsReadOnly = false,
+                IsRequired = false
+            };
+        }
+        return stepConfig.FieldConfigurations[fieldName];
+    }
+
+    private async Task UpdateFieldConfiguration(WorkflowStepConfigModel stepConfig, FieldConfigurationModel fieldConfig)
+    {
+        try
+        {
+            // Update the field configuration in the step config
+            stepConfig.FieldConfigurations[fieldConfig.FieldName] = fieldConfig;
+
+            // Save to database if form exists
+            if (FormId.HasValue)
+            {
+                await WorkflowDesignerService.ConfigureStepFieldAsync(
+                    stepConfig.StepId, 
+                    fieldConfig.FieldName, 
+                    fieldConfig.IsVisible, 
+                    fieldConfig.IsReadOnly, 
+                    fieldConfig.IsRequired
+                );
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating field configuration for field {FieldName}", fieldConfig.FieldName);
+        }
+    }
+
+    #endregion
 }

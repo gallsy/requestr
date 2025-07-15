@@ -19,6 +19,11 @@ public class FormDefinition : AuditableEntity
     
     // Form-specific permissions
     public List<FormPermission> FormPermissions { get; set; } = new();
+    
+    // Notification settings
+    public string? NotificationEmail { get; set; }
+    public bool NotifyOnCreation { get; set; } = false;
+    public bool NotifyOnCompletion { get; set; } = false;
 }
 
 public class FormField : BaseEntity

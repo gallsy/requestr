@@ -83,6 +83,7 @@ public class WorkflowStepFieldConfiguration : BaseEntity
 
 public class FieldValidationRule
 {
+    public string FieldName { get; set; } = string.Empty;
     public string RuleType { get; set; } = string.Empty; // Required, MinLength, MaxLength, Regex, etc.
     public object? Value { get; set; }
     public string ErrorMessage { get; set; } = string.Empty;

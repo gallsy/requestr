@@ -21,6 +21,7 @@ public static class ServiceCollectionExtensions
         // Workflow Services
         services.AddScoped<IWorkflowService, WorkflowService>();
         services.AddScoped<IWorkflowDesignerService, WorkflowDesignerService>();
+        services.AddScoped<IFormWorkflowConfigurationService, FormWorkflowConfigurationService>();
         services.AddScoped<IFormPermissionService, FormPermissionService>();
         
         // Business Logic Services (to be implemented)

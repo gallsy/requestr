@@ -31,7 +31,11 @@ public class FormDefinitionService : IFormDefinitionService
 
             var sql = @"
                 SELECT fd.Id, fd.Name, fd.Description, fd.Category, fd.DatabaseConnectionName, fd.TableName, fd.[Schema], 
-                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
+                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, 
+                       COALESCE(fd.NotificationEmail, '') as NotificationEmail, 
+                       COALESCE(fd.NotifyOnCreation, 0) as NotifyOnCreation, 
+                       COALESCE(fd.NotifyOnCompletion, 0) as NotifyOnCompletion,
+                       fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.MaxLength, 
                        ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder
@@ -76,7 +80,7 @@ public class FormDefinitionService : IFormDefinitionService
                         Name = (string)row.FieldName,
                         DisplayName = (string)row.DisplayName,
                         DataType = (string)row.DataType,
-                        ControlType = (string?)row.ControlType,
+                        ControlType = row.ControlType?.ToString() ?? string.Empty,
                         MaxLength = (int)row.MaxLength,
                         IsRequired = (bool)row.IsRequired,
                         IsReadOnly = (bool)row.IsReadOnly,
@@ -111,7 +115,11 @@ public class FormDefinitionService : IFormDefinitionService
 
             var sql = @"
                 SELECT fd.Id, fd.Name, fd.Description, fd.DatabaseConnectionName, fd.TableName, fd.[Schema], 
-                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
+                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, 
+                       COALESCE(fd.NotificationEmail, '') as NotificationEmail, 
+                       COALESCE(fd.NotifyOnCreation, 0) as NotifyOnCreation, 
+                       COALESCE(fd.NotifyOnCompletion, 0) as NotifyOnCompletion,
+                       fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.MaxLength, 
                        ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder
@@ -156,7 +164,7 @@ public class FormDefinitionService : IFormDefinitionService
                         Name = (string)row.FieldName,
                         DisplayName = (string)(row.DisplayName ?? ""),
                         DataType = (string)row.DataType,
-                        ControlType = row.ControlType as string,
+                        ControlType = (row.ControlType as string) ?? string.Empty,
                         MaxLength = (int)(row.MaxLength ?? 0),
                         IsRequired = (bool)(row.IsRequired ?? false),
                         IsReadOnly = (bool)(row.IsReadOnly ?? false),
@@ -240,7 +248,7 @@ public class FormDefinitionService : IFormDefinitionService
                         Name = (string)row.FieldName,
                         DisplayName = (string)row.DisplayName,
                         DataType = (string)row.DataType,
-                        ControlType = (string?)row.ControlType,
+                        ControlType = row.ControlType?.ToString() ?? string.Empty,
                         MaxLength = (int)row.MaxLength,
                         IsRequired = (bool)row.IsRequired,
                         IsReadOnly = (bool)row.IsReadOnly,
@@ -277,9 +285,9 @@ public class FormDefinitionService : IFormDefinitionService
             try
             {
                 var formSql = @"
-                    INSERT INTO FormDefinitions (Name, Description, Category, DatabaseConnectionName, TableName, [Schema], ApproverRoles, RequiresApproval, IsActive, CreatedAt, CreatedBy)
+                    INSERT INTO FormDefinitions (Name, Description, Category, DatabaseConnectionName, TableName, [Schema], ApproverRoles, RequiresApproval, IsActive, NotificationEmail, NotifyOnCreation, NotifyOnCompletion, CreatedAt, CreatedBy)
                     OUTPUT INSERTED.Id
-                    VALUES (@Name, @Description, @Category, @DatabaseConnectionName, @TableName, @Schema, @ApproverRoles, @RequiresApproval, @IsActive, @CreatedAt, @CreatedBy)";
+                    VALUES (@Name, @Description, @Category, @DatabaseConnectionName, @TableName, @Schema, @ApproverRoles, @RequiresApproval, @IsActive, @NotificationEmail, @NotifyOnCreation, @NotifyOnCompletion, @CreatedAt, @CreatedBy)";
 
                 var formId = await connection.QuerySingleAsync<int>(formSql, new
                 {
@@ -292,6 +300,9 @@ public class FormDefinitionService : IFormDefinitionService
                     ApproverRoles = JsonSerializer.Serialize(formDefinition.ApproverRoles),
                     formDefinition.RequiresApproval,
                     formDefinition.IsActive,
+                    formDefinition.NotificationEmail,
+                    formDefinition.NotifyOnCreation,
+                    formDefinition.NotifyOnCompletion,
                     formDefinition.CreatedAt,
                     formDefinition.CreatedBy
                 }, transaction);
@@ -341,7 +352,9 @@ public class FormDefinitionService : IFormDefinitionService
                     UPDATE FormDefinitions 
                     SET Name = @Name, Description = @Description, Category = @Category, DatabaseConnectionName = @DatabaseConnectionName, 
                         TableName = @TableName, [Schema] = @Schema, ApproverRoles = @ApproverRoles, 
-                        RequiresApproval = @RequiresApproval, IsActive = @IsActive, UpdatedAt = @UpdatedAt, UpdatedBy = @UpdatedBy
+                        RequiresApproval = @RequiresApproval, IsActive = @IsActive, 
+                        NotificationEmail = @NotificationEmail, NotifyOnCreation = @NotifyOnCreation, NotifyOnCompletion = @NotifyOnCompletion,
+                        UpdatedAt = @UpdatedAt, UpdatedBy = @UpdatedBy
                     WHERE Id = @Id";
 
                 await connection.ExecuteAsync(formSql, new
@@ -356,6 +369,9 @@ public class FormDefinitionService : IFormDefinitionService
                     ApproverRoles = JsonSerializer.Serialize(formDefinition.ApproverRoles),
                     formDefinition.RequiresApproval,
                     formDefinition.IsActive,
+                    formDefinition.NotificationEmail,
+                    formDefinition.NotifyOnCreation,
+                    formDefinition.NotifyOnCompletion,
                     formDefinition.UpdatedAt,
                     formDefinition.UpdatedBy
                 }, transaction);
@@ -467,7 +483,7 @@ public class FormDefinitionService : IFormDefinitionService
                         Name = (string)row.FieldName,
                         DisplayName = (string)row.DisplayName,
                         DataType = (string)row.DataType,
-                        ControlType = (string?)row.ControlType,
+                        ControlType = row.ControlType?.ToString() ?? string.Empty,
                         MaxLength = (int)row.MaxLength,
                         IsRequired = (bool)row.IsRequired,
                         IsReadOnly = (bool)row.IsReadOnly,
