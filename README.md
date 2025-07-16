@@ -25,18 +25,32 @@ A modern Blazor .NET 8 application that enables administrators to build dynamic 
    cd requestr
    ```
 
-2. **Update configuration:**
-   - Edit `docker-compose.yml` and replace `your-tenant-id-here` with your Azure AD tenant ID
-   - For development, you can use the default configuration
-
-3. **Start the application:**
+2. **Start the complete stack:**
    ```bash
+   # This will start SQL Server, run migrations, then start the web app
    docker compose up -d
    ```
 
-4. **Access the application:**
+3. **Access the application:**
    - Web Application: http://localhost:8080
    - SQL Server: localhost:1433 (sa/DevPassword123!)
+
+**Note:** The first startup may take a few minutes as it builds the containers and runs database migrations.
+
+#### Alternative: Step-by-step startup
+
+If you prefer more control over the startup process:
+
+```bash
+# Start SQL Server first
+docker compose up -d sqlserver
+
+# Run migrations (optional - they run automatically with full stack)
+./migrate.sh --docker
+
+# Start the web application
+docker compose up -d requestr-web
+```
 
 ### Local Development
 
@@ -46,14 +60,21 @@ A modern Blazor .NET 8 application that enables administrators to build dynamic 
      -p 1433:1433 -d mcr.microsoft.com/mssql/server:2022-latest
    ```
 
-2. **Run the application:**
+2. **Run database migrations:**
+   ```bash
+   # Update connection string in src/Requestr.Migrations/appsettings.json if needed
+   cd src/Requestr.Migrations
+   dotnet run
+   ```
+
+3. **Run the application:**
    ```bash
    dotnet restore
    cd src/Requestr.Web
    dotnet run
    ```
 
-3. **Access at:** https://localhost:5001
+4. **Access at:** https://localhost:5001
 
 ## 🛠️ Technology Stack
 
@@ -73,11 +94,74 @@ src/
 │   ├── Interfaces/          # Service contracts
 │   ├── Services/            # Service implementations
 │   └── Extensions/          # Dependency injection setup
+├── Requestr.Migrations/     # Database migration tool (DbUp)
+│   ├── Scripts/             # SQL migration scripts
+│   ├── Program.cs           # Migration runner
+│   └── README.md            # Migration documentation
 └── Requestr.Web/            # Blazor web application
     ├── Pages/               # Razor pages and components
     ├── Shared/              # Shared UI components
     └── wwwroot/             # Static files
 ```
+
+## 📦 Database Migrations
+
+The project uses DbUp for database schema management. All database changes are managed through versioned SQL scripts.
+
+### Migration Scripts Location
+- `src/Requestr.Migrations/Scripts/` - Contains all migration scripts
+- Scripts are executed in alphabetical order based on filename
+- Each script is only run once and tracked in the database
+
+### Running Migrations
+
+#### Local Development
+```bash
+# Quick way - using the provided script
+./migrate.sh
+
+# Docker way - using containers
+./migrate.sh --docker
+
+# Manual way
+cd src/Requestr.Migrations
+dotnet run
+
+# With custom connection string
+dotnet run --ConnectionStrings:DefaultConnection="your-connection-string"
+```
+
+#### Docker Compose
+```bash
+# Full stack (recommended for first-time setup)
+docker compose up -d
+
+# Just migrations
+./migrate.sh --docker
+
+# Individual services
+docker compose up -d sqlserver    # Just SQL Server
+docker compose up migrations      # Just migrations
+docker compose up -d requestr-web # Just web app
+```
+
+### Docker Compose Configuration
+
+The project uses a single `docker-compose.yml` file optimized for local development:
+
+- **SQL Server** with health checks to ensure it's ready before migrations
+- **Automatic migrations** that run before the web application starts
+- **Web application** that depends on successful migration completion
+- **Volume persistence** for SQL Server data
+- **Development-friendly** environment variables and ports
+
+### Adding New Migrations
+1. Create a new SQL file in `src/Requestr.Migrations/Scripts/`
+2. Use naming convention: `{SequenceNumber:000}_{Description}.sql`
+3. Example: `010_AddNewFeature.sql`
+4. Run the migration tool to apply changes
+
+For detailed migration documentation, see: `src/Requestr.Migrations/README.md`
 
 ## ⚙️ Configuration
 

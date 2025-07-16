@@ -354,6 +354,7 @@ public class FormDefinitionService : IFormDefinitionService
                         TableName = @TableName, [Schema] = @Schema, ApproverRoles = @ApproverRoles, 
                         RequiresApproval = @RequiresApproval, IsActive = @IsActive, 
                         NotificationEmail = @NotificationEmail, NotifyOnCreation = @NotifyOnCreation, NotifyOnCompletion = @NotifyOnCompletion,
+                        WorkflowDefinitionId = @WorkflowDefinitionId,
                         UpdatedAt = @UpdatedAt, UpdatedBy = @UpdatedBy
                     WHERE Id = @Id";
 
@@ -372,6 +373,7 @@ public class FormDefinitionService : IFormDefinitionService
                     formDefinition.NotificationEmail,
                     formDefinition.NotifyOnCreation,
                     formDefinition.NotifyOnCompletion,
+                    formDefinition.WorkflowDefinitionId,
                     formDefinition.UpdatedAt,
                     formDefinition.UpdatedBy
                 }, transaction);
@@ -391,6 +393,23 @@ public class FormDefinitionService : IFormDefinitionService
                         field.FormDefinitionId = formDefinition.Id;
                         await connection.ExecuteAsync(fieldSql, field, transaction);
                     }
+                }
+
+                // Update the workflow definition to establish bidirectional relationship
+                if (formDefinition.WorkflowDefinitionId.HasValue)
+                {
+                    var workflowUpdateSql = @"
+                        UPDATE WorkflowDefinitions 
+                        SET FormDefinitionId = @FormDefinitionId, UpdatedAt = @UpdatedAt, UpdatedBy = @UpdatedBy
+                        WHERE Id = @WorkflowDefinitionId";
+
+                    await connection.ExecuteAsync(workflowUpdateSql, new
+                    {
+                        FormDefinitionId = formDefinition.Id,
+                        WorkflowDefinitionId = formDefinition.WorkflowDefinitionId.Value,
+                        formDefinition.UpdatedAt,
+                        formDefinition.UpdatedBy
+                    }, transaction);
                 }
 
                 await transaction.CommitAsync();

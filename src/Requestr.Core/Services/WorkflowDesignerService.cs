@@ -36,32 +36,30 @@ public class WorkflowDesignerService : IWorkflowDesignerService
             _logger.LogInformation("Creating empty workflow for form {FormDefinitionId} with name '{Name}'", formDefinitionId, name);
 
             // Validate inputs
-            if (formDefinitionId <= 0)
-            {
-                throw new ArgumentException("Form definition ID must be greater than 0", nameof(formDefinitionId));
-            }
-
             if (string.IsNullOrWhiteSpace(name))
             {
                 throw new ArgumentException("Workflow name cannot be empty", nameof(name));
             }
 
-            // Check if form definition exists
+            // Check if form definition exists (only if a form ID is provided)
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();
             
-            var formExists = await connection.QuerySingleOrDefaultAsync<int?>(
-                "SELECT Id FROM FormDefinitions WHERE Id = @FormDefinitionId",
-                new { FormDefinitionId = formDefinitionId });
-
-            if (formExists == null)
+            if (formDefinitionId > 0)
             {
-                throw new InvalidOperationException($"Form definition with ID {formDefinitionId} does not exist");
+                var formExists = await connection.QuerySingleOrDefaultAsync<int?>(
+                    "SELECT Id FROM FormDefinitions WHERE Id = @FormDefinitionId",
+                    new { FormDefinitionId = formDefinitionId });
+
+                if (formExists == null)
+                {
+                    throw new InvalidOperationException($"Form definition with ID {formDefinitionId} does not exist");
+                }
             }
 
             var workflowDefinition = new WorkflowDefinition
             {
-                FormDefinitionId = formDefinitionId,
+                FormDefinitionId = formDefinitionId > 0 ? formDefinitionId : 0, // Will be NULL in database if 0
                 Name = name,
                 Description = description,
                 Version = 1,

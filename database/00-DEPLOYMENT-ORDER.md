@@ -1,5 +1,20 @@
 # Database Deployment Order
 
+## ⚠️ DEPRECATED - This file is no longer used
+
+**The Requestr application now uses DbUp for automated database migrations.**
+
+Please see the new migration system documentation:
+- **Migration Guide:** `database/MIGRATION-GUIDE.md`
+- **Migration Tool:** `src/Requestr.Migrations/`
+- **Quick Start:** Run `./migrate.sh` from the project root
+
+---
+
+## Legacy Information (For Reference Only)
+
+The information below is kept for historical reference only. **Do not use these manual deployment instructions** - they have been replaced by the automated DbUp migration system.
+
 ## For New Database Installations
 
 Run the SQL scripts in this exact order for a clean deployment:

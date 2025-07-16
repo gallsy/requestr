@@ -218,6 +218,16 @@ public class FormWorkflowConfigurationService : IFormWorkflowConfigurationServic
 
             var configJson = JsonSerializer.Serialize(configuration, _jsonOptions);
 
+            // Get the WorkflowDefinitionId for the form
+            var workflowDefinitionId = await connection.QueryFirstOrDefaultAsync<int?>(
+                "SELECT WorkflowDefinitionId FROM FormDefinitions WHERE Id = @FormDefinitionId",
+                new { FormDefinitionId = formDefinitionId });
+
+            if (!workflowDefinitionId.HasValue)
+            {
+                throw new InvalidOperationException($"Form {formDefinitionId} does not have a workflow assigned");
+            }
+
             // Get current configuration for rollback
             var currentConfigSql = @"
                 SELECT StepConfiguration 
@@ -240,15 +250,76 @@ public class FormWorkflowConfigurationService : IFormWorkflowConfigurationServic
                         StepConfiguration = @StepConfiguration,
                         PreviousConfiguration = @PreviousConfiguration,
                         UpdatedAt = @UpdatedAt,
-                        UpdatedBy = @UpdatedBy
+                        UpdatedBy = @UpdatedBy,
+                        IsActive = 1
                 WHEN NOT MATCHED THEN
                     INSERT (FormDefinitionId, WorkflowDefinitionId, WorkflowStepId, StepConfiguration, IsActive, CreatedAt, CreatedBy)
-                    VALUES (@FormDefinitionId, (SELECT WorkflowDefinitionId FROM FormDefinitions WHERE Id = @FormDefinitionId), 
-                            @WorkflowStepId, @StepConfiguration, 1, @UpdatedAt, @UpdatedBy);";
+                    VALUES (@FormDefinitionId, @WorkflowDefinitionId, @WorkflowStepId, @StepConfiguration, 1, @UpdatedAt, @UpdatedBy);";
 
             await connection.ExecuteAsync(sql, new
             {
                 FormDefinitionId = formDefinitionId,
+                WorkflowDefinitionId = workflowDefinitionId.Value,
+                WorkflowStepId = workflowStepId,
+                StepConfiguration = configJson,
+                PreviousConfiguration = currentConfig,
+                UpdatedAt = DateTime.UtcNow,
+                UpdatedBy = updatedBy
+            });
+
+            _logger.LogInformation("Updated step configuration for form {FormId}, step {StepId} by {User}", 
+                formDefinitionId, workflowStepId, updatedBy);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating step configuration for form {FormId}, step {StepId}", 
+                formDefinitionId, workflowStepId);
+            throw;
+        }
+    }
+
+    public async Task UpdateStepConfigurationAsync(int formDefinitionId, int workflowDefinitionId, string workflowStepId, IStepConfiguration configuration, string updatedBy)
+    {
+        try
+        {
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            // Serialize the concrete type, not the interface, to include all properties
+            var configJson = JsonSerializer.Serialize((object)configuration, _jsonOptions);
+
+            // Get current configuration for rollback
+            var currentConfigSql = @"
+                SELECT StepConfiguration 
+                FROM FormWorkflowStepConfigurations 
+                WHERE FormDefinitionId = @FormDefinitionId AND WorkflowStepId = @WorkflowStepId AND IsActive = 1";
+
+            var currentConfig = await connection.QueryFirstOrDefaultAsync<string>(currentConfigSql, new
+            {
+                FormDefinitionId = formDefinitionId,
+                WorkflowStepId = workflowStepId
+            });
+
+            // Update or insert configuration
+            var sql = @"
+                MERGE FormWorkflowStepConfigurations AS target
+                USING (SELECT @FormDefinitionId as FormDefinitionId, @WorkflowStepId as WorkflowStepId) AS source
+                ON target.FormDefinitionId = source.FormDefinitionId AND target.WorkflowStepId = source.WorkflowStepId AND target.IsActive = 1
+                WHEN MATCHED THEN
+                    UPDATE SET 
+                        StepConfiguration = @StepConfiguration,
+                        PreviousConfiguration = @PreviousConfiguration,
+                        UpdatedAt = @UpdatedAt,
+                        UpdatedBy = @UpdatedBy,
+                        IsActive = 1
+                WHEN NOT MATCHED THEN
+                    INSERT (FormDefinitionId, WorkflowDefinitionId, WorkflowStepId, StepConfiguration, IsActive, CreatedAt, CreatedBy)
+                    VALUES (@FormDefinitionId, @WorkflowDefinitionId, @WorkflowStepId, @StepConfiguration, 1, @UpdatedAt, @UpdatedBy);";
+
+            await connection.ExecuteAsync(sql, new
+            {
+                FormDefinitionId = formDefinitionId,
+                WorkflowDefinitionId = workflowDefinitionId,
                 WorkflowStepId = workflowStepId,
                 StepConfiguration = configJson,
                 PreviousConfiguration = currentConfig,

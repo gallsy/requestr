@@ -246,21 +246,24 @@ public class WorkflowService : IWorkflowService
             // Validate the workflow definition
             if (workflowDefinition == null)
                 throw new ArgumentNullException(nameof(workflowDefinition));
-            
             if (string.IsNullOrWhiteSpace(workflowDefinition.Name))
                 throw new ArgumentException("Workflow name cannot be empty", nameof(workflowDefinition.Name));
-            
-            if (workflowDefinition.FormDefinitionId <= 0)
-                throw new ArgumentException("Form definition ID must be greater than 0", nameof(workflowDefinition.FormDefinitionId));
-
+            // Allow FormDefinitionId to be null or 0 for standalone workflows
+            var formDefId = workflowDefinition.FormDefinitionId > 0 ? workflowDefinition.FormDefinitionId : (int?)null;
             // Insert workflow definition
             const string workflowSql = @"
                 INSERT INTO WorkflowDefinitions (FormDefinitionId, Name, Description, Version, CreatedBy, CreatedAt)
                 OUTPUT INSERTED.Id
                 VALUES (@FormDefinitionId, @Name, @Description, @Version, @CreatedBy, @CreatedAt)";
-
             _logger.LogDebug("Inserting workflow definition into database");
-            workflowId = await connection.QuerySingleAsync<int>(workflowSql, workflowDefinition, transaction);
+            workflowId = await connection.QuerySingleAsync<int>(workflowSql, new {
+                FormDefinitionId = formDefId,
+                workflowDefinition.Name,
+                workflowDefinition.Description,
+                workflowDefinition.Version,
+                workflowDefinition.CreatedBy,
+                workflowDefinition.CreatedAt
+            }, transaction);
             workflowDefinition.Id = workflowId;
             
             _logger.LogDebug("Created workflow definition with ID {WorkflowId}", workflowId);
@@ -1766,7 +1769,7 @@ public class WorkflowService : IWorkflowService
                 { 
                     Id = formRequestId, 
                     Status = (int)RequestStatus.Failed,
-                    FailureMessage = $"Error applying data changes: {ex.Message}"
+                    FailureMessage = $"Error applying data changes to target database: {ex.Message}"
                 }, commandTimeout: 30);
             }
             catch (Exception updateEx)
@@ -1954,7 +1957,7 @@ public class WorkflowService : IWorkflowService
         
         if (result == null) 
         {
-            _logger.LogWarning("No workflow instance found for form request {FormRequestId}", formRequestId);
+                       _logger.LogWarning("No workflow instance found for form request {FormRequestId}", formRequestId);
             return null;
         }
 
@@ -2479,7 +2482,7 @@ public class WorkflowService : IWorkflowService
             int formRequestId = workflowData.FormRequestId;
             int currentStatus = workflowData.Status;
             int? bulkFormRequestId = workflowData.BulkFormRequestId;
-            
+
             // Only apply if the request is in Approved status
             if (currentStatus != (int)RequestStatus.Approved)
             {

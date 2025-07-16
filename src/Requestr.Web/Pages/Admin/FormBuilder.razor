@@ -7,6 +7,7 @@
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Models
 @using Requestr.Core.Services
+@using System.Text.Json
 @inject IFormDefinitionService FormDefinitionService
 @inject IDatabaseService DatabaseService
 @inject IDataService DataService
@@ -722,7 +723,7 @@
                                                 <div class="col-md-6">
                                                     <div class="mb-3">
                                                         <label class="form-label">Assigned Role</label>
-                                                        <select class="form-select" @bind="stepConfig.AssignedRole" @bind:after="@(() => UpdateStepAssignedRole(stepConfig, stepConfig.AssignedRole ?? ""))">
+                                                        <select class="form-select" @bind="stepConfig.AssignedRole" @bind:after="() => UpdateStepAssignedRole(stepConfig, stepConfig.AssignedRole)">
                                                             <option value="">Select a role...</option>
                                                             @if (_availableRoles?.Any() == true)
                                                             {
@@ -737,7 +738,6 @@
                                                         <label class="form-label">Instructions (Optional)</label>
                                                         <textarea class="form-control" rows="2" 
                                                                   @bind="stepConfig.Instructions"
-                                                                  @bind:after="@(() => UpdateStepInstructions(stepConfig, stepConfig.Instructions ?? ""))"
                                                                   placeholder="Special instructions for this approval step..."></textarea>
                                                     </div>
                                                 </div>
@@ -807,7 +807,6 @@
                                                         <label class="form-label">Notification Email (Optional)</label>
                                                         <input type="email" class="form-control" 
                                                                @bind="stepConfig.NotificationEmail"
-                                                               @bind:after="@(() => UpdateNotificationEmail(stepConfig, stepConfig.NotificationEmail ?? ""))"
                                                                placeholder="Enter email address for notifications...">
                                                         <small class="form-text text-muted">
                                                             Optional email address to notify when this step is reached or completed.
@@ -852,14 +851,12 @@
                                                         <label class="form-label">Instructions (Optional)</label>
                                                         <textarea class="form-control" rows="3" 
                                                                   @bind="stepConfig.Instructions"
-                                                                  @bind:after="@(() => UpdateStepInstructions(stepConfig, stepConfig.Instructions ?? ""))"
                                                                   placeholder="Instructions for all approvers in this parallel step..."></textarea>
                                                     </div>
                                                     <div class="mb-3">
                                                         <label class="form-label">Notification Email (Optional)</label>
                                                         <input type="email" class="form-control" 
                                                                @bind="stepConfig.NotificationEmail"
-                                                               @bind:after="@(() => UpdateNotificationEmail(stepConfig, stepConfig.NotificationEmail ?? ""))"
                                                                placeholder="Enter email address for notifications...">
                                                         <small class="form-text text-muted">
                                                             Optional email address to notify when this step is reached or completed.
@@ -1131,14 +1128,13 @@
                     await LoadFormPermissions();
                 }
                 
-                // Load workflow configuration if we're on the workflow tab
-                if (ActiveTab == "workflow")
+                // Always load workflow configuration for existing forms
+                _selectedWorkflowId = _formDefinition.WorkflowDefinitionId;
+                
+                // Load workflow step configurations if we have a workflow assigned
+                if (_selectedWorkflowId.HasValue)
                 {
-                    _selectedWorkflowId = _formDefinition.WorkflowDefinitionId;
-                    if (_selectedWorkflowId.HasValue)
-                    {
-                        await LoadWorkflowStepConfigurations();
-                    }
+                    await LoadWorkflowStepConfigurations();
                 }
             }
             else
@@ -1602,15 +1598,26 @@
                     
                     // Load the permissions for the UI
                     await LoadFormPermissions();
+                    
+                    // Save workflow configuration if workflow is assigned
+                    if (_selectedWorkflowId.HasValue)
+                    {
+                        await SaveWorkflowConfiguration();
+                    }
                 }
-            }
-            else // Updating existing form
+            }            else // Updating existing form
             {
                 _formDefinition.UpdatedAt = DateTime.Now;
                 _formDefinition.UpdatedBy = currentUser;
                 await FormDefinitionService.UpdateAsync(_formDefinition);
             }
-            
+
+            // Save workflow configuration if workflow is assigned
+            if (_selectedWorkflowId.HasValue)
+            {
+                await SaveWorkflowConfiguration();
+            }
+
             // Use a small delay to ensure the save operation completes before navigation
             await Task.Delay(100);
             
@@ -1915,13 +1922,26 @@
 
         try
         {
+            Logger.LogInformation("LoadWorkflowStepConfigurations: Starting load for WorkflowId={WorkflowId}, FormId={FormId}", _selectedWorkflowId.Value, FormId);
+
+            // Ensure roles are loaded for the workflow step configurations
+            if (FormId.HasValue && !_availableRoles.Any())
+            {
+                Logger.LogInformation("Loading form permissions to get available roles");
+                await LoadFormPermissions();
+            }
+
             var workflow = await WorkflowService.GetWorkflowDefinitionAsync(_selectedWorkflowId.Value);
             if (workflow?.Steps?.Any() == true)
             {
+                Logger.LogInformation("Found {Count} workflow steps", workflow.Steps.Count());
                 _workflowStepConfigs = new List<WorkflowStepConfigModel>();
 
                 foreach (var step in workflow.Steps.Where(s => s.StepType == WorkflowStepType.Approval || s.StepType == WorkflowStepType.Parallel))
                 {
+                    Logger.LogInformation("Processing step: Id={StepId}, StringId={StepIdString}, Name={Name}, Type={Type}", 
+                        step.Id, step.StepId, step.Name, step.StepType);
+
                     var stepConfig = new WorkflowStepConfigModel
                     {
                         StepId = step.Id, // This is the BaseEntity Id (int)
@@ -1937,12 +1957,19 @@
                         {
                             if (step.StepType == WorkflowStepType.Approval)
                             {
+                                Logger.LogInformation("Loading approval config for FormId={FormId}, StepId={StepId}", FormId.Value, step.StepId);
                                 var config = await FormWorkflowConfigurationService.GetStepConfigurationAsync<ApprovalStepConfiguration>(FormId.Value, step.StepId);
                                 if (config != null)
                                 {
                                     stepConfig.AssignedRole = config.AssignedRole;
                                     stepConfig.Instructions = config.Instructions;
                                     stepConfig.NotificationEmail = config.NotificationEmail;
+                                    Logger.LogInformation("Loaded approval step config for {StepId}: Role={AssignedRole}, Email={NotificationEmail}", 
+                                        step.StepId, config.AssignedRole, config.NotificationEmail);
+                                }
+                                else
+                                {
+                                    Logger.LogInformation("No existing approval config found for step {StepId}", step.StepId);
                                 }
                             }
                             else if (step.StepType == WorkflowStepType.Parallel)
@@ -1986,6 +2013,9 @@
                     _workflowStepConfigs.Add(stepConfig);
                 }
             }
+
+            // Force UI refresh after loading configurations
+            await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
@@ -2000,12 +2030,15 @@
 
         try
         {
+            Logger.LogInformation("SaveWorkflowConfiguration called - FormId: {FormId}, WorkflowId: {WorkflowId}, StepConfigs count: {Count}", 
+                FormId.Value, _selectedWorkflowId, _workflowStepConfigs?.Count ?? 0);
+
             // Update form definition with selected workflow
             _formDefinition.WorkflowDefinitionId = _selectedWorkflowId;
             await FormDefinitionService.UpdateAsync(_formDefinition);
 
             // Save step configurations
-            if (_workflowStepConfigs?.Any() == true)
+            if (_workflowStepConfigs?.Any() == true && _selectedWorkflowId.HasValue)
             {
                 // Get current user for audit trail
                 var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
@@ -2013,6 +2046,9 @@
 
                 foreach (var stepConfig in _workflowStepConfigs)
                 {
+                    Logger.LogInformation("Processing step config - StepId: {StepId}, StepType: {StepType}, AssignedRole: {Role}, Email: {Email}", 
+                        stepConfig.StepIdString, stepConfig.StepType, stepConfig.AssignedRole, stepConfig.NotificationEmail);
+
                     if (stepConfig.StepType == "approval")
                     {
                         var config = new ApprovalStepConfiguration
@@ -2022,7 +2058,22 @@
                             NotificationEmail = stepConfig.NotificationEmail
                         };
 
-                        await FormWorkflowConfigurationService.UpdateStepConfigurationAsync(FormId.Value, stepConfig.StepIdString, config, currentUser);
+                        // Debug logging to trace the exact values being saved
+                        Logger.LogInformation("Creating approval config with - AssignedRole: '{Role}', Instructions: '{Instructions}', NotificationEmail: '{Email}'", 
+                            stepConfig.AssignedRole, stepConfig.Instructions, stepConfig.NotificationEmail);
+                        
+                        Logger.LogInformation("Config object before save - AssignedRole: '{Role}', Instructions: '{Instructions}', NotificationEmail: '{Email}'", 
+                            config.AssignedRole, config.Instructions, config.NotificationEmail);
+                        
+                        // Use the service's JSON options to see exactly what will be serialized
+                        var serviceJsonOptions = new JsonSerializerOptions
+                        {
+                            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                            WriteIndented = true
+                        };
+                        Logger.LogInformation("JSON that will be saved to database: {Json}", JsonSerializer.Serialize(config, serviceJsonOptions));
+
+                        await FormWorkflowConfigurationService.UpdateStepConfigurationAsync(FormId.Value, _selectedWorkflowId!.Value, stepConfig.StepIdString, config, currentUser);
                     }
                     else if (stepConfig.StepType == "parallel")
                     {
@@ -2033,7 +2084,7 @@
                             NotificationEmail = stepConfig.NotificationEmail
                         };
 
-                        await FormWorkflowConfigurationService.UpdateStepConfigurationAsync(FormId.Value, stepConfig.StepIdString, config, currentUser);
+                        await FormWorkflowConfigurationService.UpdateStepConfigurationAsync(FormId.Value, _selectedWorkflowId!.Value, stepConfig.StepIdString, config, currentUser);
                     }
                 }
             }

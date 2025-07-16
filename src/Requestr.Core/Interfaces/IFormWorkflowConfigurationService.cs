@@ -28,6 +28,11 @@ public interface IFormWorkflowConfigurationService
     Task UpdateStepConfigurationAsync(int formDefinitionId, string workflowStepId, IStepConfiguration configuration, string updatedBy);
     
     /// <summary>
+    /// Update configuration for a specific workflow step in a form with explicit workflow ID
+    /// </summary>
+    Task UpdateStepConfigurationAsync(int formDefinitionId, int workflowDefinitionId, string workflowStepId, IStepConfiguration configuration, string updatedBy);
+    
+    /// <summary>
     /// Get configuration for a specific workflow step in a form
     /// </summary>
     Task<T?> GetStepConfigurationAsync<T>(int formDefinitionId, string workflowStepId) where T : class, IStepConfiguration;

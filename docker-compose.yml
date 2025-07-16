@@ -10,9 +10,17 @@ services:
       - "1433:1433"
     volumes:
       - sqlserver_data:/var/opt/mssql
-      - ./database:/docker-entrypoint-initdb.d
-      # Make sure the consolidated schema files are used
 
+  migrations:
+    build:
+      context: .
+      dockerfile: src/Requestr.Migrations/Dockerfile
+    container_name: requestr-migrations
+    environment:
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=RequestrApp;User Id=sa;Password=DevPassword123!;TrustServerCertificate=True;Connection Timeout=30;"
+    depends_on:
+      - sqlserver
+    restart: "no"
 
   requestr-web:
     build:
@@ -27,10 +35,9 @@ services:
       ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=RequestrApp;User Id=sa;Password=DevPassword123!;TrustServerCertificate=True;Connection Timeout=30;"
       DatabaseConnections__ReferenceData: "Server=sqlserver,1433;Database=RequestrApp;User Id=sa;Password=DevPassword123!;TrustServerCertificate=True;Connection Timeout=30;"
       DatabaseConnections__MainApp: "Server=sqlserver,1433;Database=RequestrApp;User Id=sa;Password=DevPassword123!;TrustServerCertificate=True;Connection Timeout=30;"
-      AzureAd__TenantId: ${AzureAd__TenantId}
-      AzureAd__ClientId: ${AzureAd__ClientId}
-      AzureAd__ClientSecret: ${AzureAd__ClientSecret}
-
+      AzureAd__TenantId: ${AzureAd__TenantId:-your-tenant-id-here}
+      AzureAd__ClientId: ${AzureAd__ClientId:-your-client-id-here}
+      AzureAd__ClientSecret: ${AzureAd__ClientSecret:-your-client-secret-here}
     volumes:
       - ./logs:/app/logs
     depends_on:

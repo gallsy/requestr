@@ -115,7 +115,7 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" @onclick="HideCreateWorkflowModal" disabled="@isCreating">Cancel</button>
                 <button type="button" class="btn btn-primary" @onclick="CreateWorkflow" 
-                        disabled="@(isCreating || createWorkflowRequest.FormDefinitionId == 0 || string.IsNullOrWhiteSpace(createWorkflowRequest.Name))">
+                        disabled="@(isCreating || string.IsNullOrWhiteSpace(createWorkflowRequest.Name))">>
                     @if (isCreating)
                     {
                         <span class="spinner-border spinner-border-sm me-2" role="status"></span>
