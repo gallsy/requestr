@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using System.Text.Json;
+using static Requestr.Core.Models.NotificationTemplateKeys;
 
 namespace Requestr.Core.Services;
 
@@ -15,6 +16,7 @@ public class FormRequestService : IFormRequestService
     private readonly IDataService _dataService;
     private readonly IFormDefinitionService _formDefinitionService;
     private readonly IWorkflowService _workflowService;
+    private readonly IAdvancedNotificationService _notificationService;
     private readonly string _connectionString;
 
     public FormRequestService(
@@ -22,13 +24,15 @@ public class FormRequestService : IFormRequestService
         ILogger<FormRequestService> logger,
         IDataService dataService,
         IFormDefinitionService formDefinitionService,
-        IWorkflowService workflowService)
+        IWorkflowService workflowService,
+        IAdvancedNotificationService notificationService)
     {
         _configuration = configuration;
         _logger = logger;
         _dataService = dataService;
         _formDefinitionService = formDefinitionService;
         _workflowService = workflowService;
+        _notificationService = notificationService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
     }
@@ -309,6 +313,10 @@ public class FormRequestService : IFormRequestService
             );
 
             await transaction.CommitAsync();
+            
+            // Send new request notification after successful commit
+            await SendNewRequestNotificationAsync(formRequest);
+            
             return formRequest;
         }
         catch (Exception ex)
@@ -2064,6 +2072,71 @@ public class FormRequestService : IFormRequestService
         {
             _logger.LogError(ex, "Error getting accessible form requests for user {UserId}", userId);
             throw;
+        }
+    }
+
+    private async Task SendNewRequestNotificationAsync(FormRequest formRequest)
+    {
+        try
+        {
+            // Get form definition for notification details
+            var formDefinition = await _formDefinitionService.GetFormDefinitionAsync(formRequest.FormDefinitionId);
+            if (formDefinition == null)
+            {
+                _logger.LogWarning("Could not find form definition {FormDefinitionId} for notification", formRequest.FormDefinitionId);
+                return;
+            }
+
+            // Build notification variables
+            var variables = new Dictionary<string, string>
+            {
+                { "{{RequestId}}", formRequest.Id.ToString() },
+                { "{{FormName}}", formDefinition.Name },
+                { "{{CreatingUser}}", formRequest.RequestedByName ?? formRequest.RequestedBy },
+                { "{{CreatingUserEmail}}", formRequest.RequestedBy },
+                { "{{RequestDescription}}", formRequest.RequestType.ToString() },
+                { "{{RequestCreatedDate}}", formRequest.RequestedAt.ToString("yyyy-MM-dd HH:mm:ss") },
+                { "{{RequestStatus}}", formRequest.Status.ToString() },
+                { "{{RequestComments}}", formRequest.Comments ?? "" },
+                { "{{RequestUrl}}", $"/admin/requests/details/{formRequest.Id}" },
+                { "{{SystemUrl}}", "" }, // Could be populated from configuration
+                { "{{SystemName}}", "Requestr" }
+            };
+
+            // Add field values to variables
+            if (formRequest.FieldValues != null)
+            {
+                foreach (var field in formRequest.FieldValues)
+                {
+                    variables[$"{{{{Field_{field.Key}}}}}"] = field.Value?.ToString() ?? "";
+                }
+            }
+
+            // Determine who to notify - can be improved to include approvers, form admins, etc.
+            var notificationEmails = new List<string>();
+            
+            // Notify form admin if configured
+            if (!string.IsNullOrEmpty(formDefinition.NotificationEmail))
+            {
+                notificationEmails.Add(formDefinition.NotificationEmail);
+            }
+            
+            // Send notifications
+            foreach (var email in notificationEmails)
+            {
+                await _notificationService.SendNotificationAsync(
+                    NewRequestCreated, 
+                    variables, 
+                    email);
+                    
+                _logger.LogInformation("Sent new request notification for request {RequestId} to {Email}", 
+                    formRequest.Id, email);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending new request notification for request {RequestId}", formRequest.Id);
+            // Don't throw - notification failures shouldn't break the request creation
         }
     }
 }

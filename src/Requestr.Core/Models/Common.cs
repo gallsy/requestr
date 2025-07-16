@@ -57,10 +57,17 @@ public enum EmailProvider
     SendGrid = 1
 }
 
+public enum EmailMode
+{
+    Production = 0,
+    Test = 1  // Test mode - emails are logged but not sent
+}
+
 public class EmailConfiguration
 {
     public int Id { get; set; }
     public EmailProvider Provider { get; set; } = EmailProvider.SMTP;
+    public EmailMode Mode { get; set; } = EmailMode.Production;
     public bool IsEnabled { get; set; } = false;
     public string? FromEmail { get; set; }
     public string? FromName { get; set; }
@@ -105,6 +112,9 @@ public static class NotificationTemplateKeys
     public const string RequestApproved = "REQUEST_APPROVED";
     public const string RequestRejected = "REQUEST_REJECTED";
     public const string WorkflowStepPending = "WORKFLOW_STEP_PENDING";
+    public const string WorkflowStepApproved = "WORKFLOW_STEP_APPROVED";
+    public const string WorkflowStepRejected = "WORKFLOW_STEP_REJECTED";
+    public const string WorkflowStepCompleted = "WORKFLOW_STEP_COMPLETED";
     public const string FormSubmissionComplete = "FORM_SUBMISSION_COMPLETE";
 }
 

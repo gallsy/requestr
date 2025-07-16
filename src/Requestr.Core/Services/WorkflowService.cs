@@ -6,6 +6,7 @@ using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using System.Linq;
 using System.Text.Json;
+using static Requestr.Core.Models.NotificationTemplateKeys;
 
 namespace Requestr.Core.Services;
 
@@ -127,14 +128,16 @@ public class WorkflowService : IWorkflowService
     private readonly ILogger<WorkflowService> _logger;
     private readonly IDataService _dataService;
     private readonly IFormDefinitionService _formDefinitionService;
+    private readonly IAdvancedNotificationService _notificationService;
     private readonly string _connectionString;
 
-    public WorkflowService(IConfiguration configuration, ILogger<WorkflowService> logger, IDataService dataService, IFormDefinitionService formDefinitionService)
+    public WorkflowService(IConfiguration configuration, ILogger<WorkflowService> logger, IDataService dataService, IFormDefinitionService formDefinitionService, IAdvancedNotificationService notificationService)
     {
         _configuration = configuration;
         _logger = logger;
         _dataService = dataService;
         _formDefinitionService = formDefinitionService;
+        _notificationService = notificationService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
     }
@@ -445,10 +448,11 @@ public class WorkflowService : IWorkflowService
     {
         int instanceId = 0;
         WorkflowInstance? workflowInstance = null;
+        WorkflowDefinition? workflowDefinition = null;
 
         try
         {
-            var workflowDefinition = await GetWorkflowDefinitionAsync(connection, transaction, workflowDefinitionId);
+            workflowDefinition = await GetWorkflowDefinitionAsync(connection, transaction, workflowDefinitionId);
             if (workflowDefinition == null)
                 throw new InvalidOperationException($"Workflow definition {workflowDefinitionId} not found");
 
@@ -569,6 +573,14 @@ public class WorkflowService : IWorkflowService
                 _logger.LogWarning(ex, "Error loading step instances for workflow instance {InstanceId}", instanceId);
                 workflowInstance.StepInstances = new List<WorkflowStepInstance>();
             }
+            
+            // Add workflow started history entry
+            var historyData = new Dictionary<string, object?>
+            {
+                ["WorkflowName"] = workflowDefinition?.Name ?? "Unknown",
+                ["WorkflowDefinitionId"] = workflowDefinitionId
+            };
+            await AddWorkflowHistoryAsync(connection, transaction, formRequestId, FormRequestChangeType.WorkflowStarted, "System", "System", "Workflow started", historyData);
             
             return workflowInstance;
         }
@@ -698,6 +710,50 @@ public class WorkflowService : IWorkflowService
 
     #endregion
 
+    #region Workflow History
+
+    private async Task AddWorkflowHistoryAsync(SqlConnection connection, SqlTransaction transaction, int formRequestId, FormRequestChangeType changeType, string changedBy, string changedByName, string? comments = null, Dictionary<string, object?>? additionalData = null)
+    {
+        try
+        {
+            var newValues = new Dictionary<string, object?>();
+            if (!string.IsNullOrEmpty(comments))
+            {
+                newValues["Comments"] = comments;
+            }
+            if (additionalData != null)
+            {
+                foreach (var kvp in additionalData)
+                {
+                    newValues[kvp.Key] = kvp.Value;
+                }
+            }
+
+            const string sql = @"
+                INSERT INTO FormRequestHistory (FormRequestId, ChangeType, PreviousValues, NewValues, ChangedBy, ChangedByName, ChangedAt, Comments)
+                VALUES (@FormRequestId, @ChangeType, @PreviousValues, @NewValues, @ChangedBy, @ChangedByName, @ChangedAt, @Comments)";
+
+            await connection.ExecuteAsync(sql, new
+            {
+                FormRequestId = formRequestId,
+                ChangeType = (int)changeType,
+                PreviousValues = JsonSerializer.Serialize(new Dictionary<string, object?>()),
+                NewValues = JsonSerializer.Serialize(newValues),
+                ChangedBy = changedBy,
+                ChangedByName = changedByName,
+                ChangedAt = DateTime.UtcNow,
+                Comments = comments
+            }, transaction);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error adding workflow history for request {FormRequestId}", formRequestId);
+            // Don't rethrow - we don't want history failures to break the workflow
+        }
+    }
+
+    #endregion
+
     #region Step Processing
 
     public async Task<bool> CompleteStepAsync(int workflowInstanceId, string stepId, string userId, string userName, WorkflowStepAction action, string? comments = null, Dictionary<string, object?>? fieldValues = null)
@@ -708,6 +764,18 @@ public class WorkflowService : IWorkflowService
 
         try
         {
+            // Get workflow instance to get form request ID for history
+            var workflowInstance = await GetWorkflowInstanceAsync(connection, transaction, workflowInstanceId);
+            if (workflowInstance == null)
+            {
+                throw new InvalidOperationException($"Workflow instance {workflowInstanceId} not found");
+            }
+
+            // Get the step name from workflow definition for history
+            var workflowDefinition = await GetWorkflowDefinitionAsync(connection, transaction, workflowInstance.WorkflowDefinitionId);
+            var step = workflowDefinition?.Steps?.FirstOrDefault(s => s.StepId == stepId);
+            var stepName = step?.Name ?? stepId;
+
             // Update step instance
             const string updateStepSql = @"
                 UPDATE WorkflowStepInstances 
@@ -728,6 +796,34 @@ public class WorkflowService : IWorkflowService
                 StepId = stepId
             }, transaction);
 
+            // Add workflow history entry
+            var historyData = new Dictionary<string, object?>
+            {
+                ["StepId"] = stepId,
+                ["StepName"] = stepName,
+                ["Action"] = action.ToString()
+            };
+
+            FormRequestChangeType historyChangeType = action switch
+            {
+                WorkflowStepAction.Approved => FormRequestChangeType.WorkflowStepApproved,
+                WorkflowStepAction.Rejected => FormRequestChangeType.WorkflowStepRejected,
+                _ => FormRequestChangeType.WorkflowStepCompleted
+            };
+
+            await AddWorkflowHistoryAsync(connection, transaction, workflowInstance.FormRequestId, historyChangeType, userId, userName, comments, historyData);
+
+            // Send notifications for step actions
+            try
+            {
+                await SendStepActionNotificationAsync(workflowInstance.FormRequestId, stepId, stepName, action, userId, userName, comments);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send notification for step action {Action} on step {StepId} by user {UserId}", action, stepId, userId);
+                // Don't let notification failures break the workflow
+            }
+
             // Handle different step actions
             if (action == WorkflowStepAction.Rejected)
             {
@@ -739,11 +835,10 @@ public class WorkflowService : IWorkflowService
             }
             else if (action == WorkflowStepAction.Approved || action == WorkflowStepAction.Completed)
             {
-                // Get workflow definition to check step types
-                var workflowInstance = await GetWorkflowInstanceAsync(connection, transaction, workflowInstanceId);
-                var workflowDefinition = await GetWorkflowDefinitionAsync(connection, transaction, workflowInstance.WorkflowDefinitionId);
+                // Get workflow definition to check step types using the existing workflowInstance
+                var currentWorkflowDefinition = await GetWorkflowDefinitionAsync(connection, transaction, workflowInstance.WorkflowDefinitionId);
                 
-                if (workflowDefinition == null)
+                if (currentWorkflowDefinition == null)
                 {
                     throw new InvalidOperationException($"Workflow definition {workflowInstance.WorkflowDefinitionId} not found");
                 }
@@ -756,7 +851,7 @@ public class WorkflowService : IWorkflowService
                     
                     // Handle auto-completion for specific step types
                     _logger.LogInformation("Handling auto-completion for step type of step: {NextStepId}", nextStepId);
-                    await HandleStepTypeAutoCompletion(connection, transaction, workflowInstanceId, nextStepId, workflowDefinition);
+                    await HandleStepTypeAutoCompletion(connection, transaction, workflowInstanceId, nextStepId, currentWorkflowDefinition);
                 }
                 else
                 {
@@ -1308,6 +1403,13 @@ public class WorkflowService : IWorkflowService
     {
         _logger.LogInformation("CompleteWorkflowAsync called for workflow instance {WorkflowInstanceId} by {CompletedBy}", workflowInstanceId, completedBy);
         
+        // Get workflow instance to get form request ID for history
+        var workflowInstance = await GetWorkflowInstanceAsync(connection, transaction, workflowInstanceId);
+        if (workflowInstance == null)
+        {
+            throw new InvalidOperationException($"Workflow instance {workflowInstanceId} not found");
+        }
+        
         // Update workflow instance status
         const string sql = @"
             UPDATE WorkflowInstances 
@@ -1328,6 +1430,14 @@ public class WorkflowService : IWorkflowService
         var wasApproved = await CheckIfWorkflowWasApprovedAsync(connection, transaction, workflowInstanceId);
         
         _logger.LogInformation("Workflow {WorkflowInstanceId} approval check result: {WasApproved}", workflowInstanceId, wasApproved);
+        
+        // Add workflow completed history entry
+        var historyData = new Dictionary<string, object?>
+        {
+            ["WorkflowInstanceId"] = workflowInstanceId,
+            ["WasApproved"] = wasApproved
+        };
+        await AddWorkflowHistoryAsync(connection, transaction, workflowInstance.FormRequestId, FormRequestChangeType.WorkflowCompleted, completedBy, completedBy == "System" ? "Workflow System" : completedBy, "Workflow completed", historyData);
         
         if (wasApproved)
         {
@@ -2759,6 +2869,92 @@ public class WorkflowService : IWorkflowService
         {
             _logger.LogError(ex, "Error applying bulk request items for bulk request {BulkRequestId}", bulkFormRequestId);
             return false;
+        }
+    }
+
+    private async Task SendStepActionNotificationAsync(int formRequestId, string stepId, string stepName, WorkflowStepAction action, string userId, string userName, string? comments)
+    {
+        try
+        {
+            // Get form request details for notification
+            const string formRequestSql = @"
+                SELECT fr.*, fd.Name as FormName, fd.NotificationEmail
+                FROM FormRequests fr
+                INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+                WHERE fr.Id = @FormRequestId";
+
+            using var connection = new SqlConnection(_connectionString);
+            var formRequestData = await connection.QueryFirstOrDefaultAsync(formRequestSql, new { FormRequestId = formRequestId });
+            
+            if (formRequestData == null)
+            {
+                _logger.LogWarning("Could not find form request {FormRequestId} for notification", formRequestId);
+                return;
+            }
+
+            // Build notification variables
+            var variables = new Dictionary<string, string>
+            {
+                { "{{RequestId}}", formRequestId.ToString() },
+                { "{{FormName}}", formRequestData.FormName?.ToString() ?? "Unknown Form" },
+                { "{{WorkflowStepName}}", stepName },
+                { "{{Action}}", action.ToString() },
+                { "{{ApproverName}}", userName },
+                { "{{ApproverEmail}}", userId },
+                { "{{RequestComments}}", comments ?? "" },
+                { "{{RequestCreatedDate}}", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") },
+                { "{{CreatingUser}}", formRequestData.RequestedByName?.ToString() ?? formRequestData.RequestedBy?.ToString() ?? "" },
+                { "{{CreatingUserEmail}}", formRequestData.RequestedBy?.ToString() ?? "" },
+                { "{{RequestUrl}}", $"/admin/requests/details/{formRequestId}" },
+                { "{{SystemUrl}}", "" },
+                { "{{SystemName}}", "Requestr" }
+            };
+
+            // Determine template key and notification recipients based on action
+            string templateKey;
+            var notificationEmails = new List<string>();
+
+            switch (action)
+            {
+                case WorkflowStepAction.Approved:
+                    templateKey = WorkflowStepApproved;
+                    // Notify requester and form admin
+                    if (!string.IsNullOrEmpty(formRequestData.RequestedBy?.ToString()))
+                        notificationEmails.Add(formRequestData.RequestedBy.ToString());
+                    if (!string.IsNullOrEmpty(formRequestData.NotificationEmail?.ToString()))
+                        notificationEmails.Add(formRequestData.NotificationEmail.ToString());
+                    break;
+
+                case WorkflowStepAction.Rejected:
+                    templateKey = WorkflowStepRejected;
+                    // Notify requester and form admin
+                    if (!string.IsNullOrEmpty(formRequestData.RequestedBy?.ToString()))
+                        notificationEmails.Add(formRequestData.RequestedBy.ToString());
+                    if (!string.IsNullOrEmpty(formRequestData.NotificationEmail?.ToString()))
+                        notificationEmails.Add(formRequestData.NotificationEmail.ToString());
+                    break;
+
+                default:
+                    templateKey = WorkflowStepCompleted;
+                    // Notify form admin only for other actions
+                    if (!string.IsNullOrEmpty(formRequestData.NotificationEmail?.ToString()))
+                        notificationEmails.Add(formRequestData.NotificationEmail.ToString());
+                    break;
+            }
+
+            // Send notifications
+            foreach (var email in notificationEmails.Distinct())
+            {
+                await _notificationService.SendNotificationAsync(templateKey, variables, email);
+                _logger.LogInformation("Sent {Action} notification for request {RequestId}, step {StepId} to {Email}", 
+                    action, formRequestId, stepId, email);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending step action notification for request {RequestId}, step {StepId}, action {Action}", 
+                formRequestId, stepId, action);
+            // Don't throw - notification failures shouldn't break the workflow
         }
     }
 }

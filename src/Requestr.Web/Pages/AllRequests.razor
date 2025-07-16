@@ -7,6 +7,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
 @using System.Text.Json
+@using Requestr.Web.Components
 @attribute [Authorize]
 @inject IFormRequestService FormRequestService
 @inject IBulkFormRequestService BulkFormRequestService
@@ -15,7 +16,7 @@
 @inject NavigationManager Navigation
 @inject ILogger<AllRequests> Logger
 
-<PageTitle>All Requests - Requestr</PageTitle>
+<PageTitle>Requests Management | Requestr</PageTitle>
 
 <div class="container-fluid">
     <div class="row">
@@ -193,16 +194,12 @@
                             <table class="table table-hover">
                                 <thead class="table-dark">
                                     <tr>
-                                        <th>ID</th>
-                                        <th>Type</th>
-                                        <th>Form</th>
-                                        <th>Operation</th>
-                                        <th>Status</th>
-                                        <th>Requested By</th>
-                                        <th>Requested Date</th>
-                                        <th>Last Updated</th>
-                                        <th>Workflow</th>
-                                        <th>Actions</th>
+                                        <th style="width: 80px;">ID</th>
+                                        <th style="width: 200px;">Request</th>
+                                        <th style="width: 120px;">Status</th>
+                                        <th style="width: 180px;">Requested</th>
+                                        <th style="width: 200px;">Workflow</th>
+                                        <th style="width: 100px;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -218,48 +215,31 @@
                                                     </div>
                                                 </td>
                                                 <td>
-                                                    <span class="badge bg-info">
-                                                        Bulk Request
-                                                    </span>
-                                                </td>
-                                                <td>
                                                     <div>
                                                         <div class="fw-bold">@bulkRequest.FormDefinition?.Name</div>
-                                                        <small class="text-muted">
+                                                        <small class="text-muted d-block">
+                                                            <span class="badge @GetRequestTypeBadgeColor(bulkRequest.RequestType) me-1">
+                                                                @GetRequestTypeDisplayName(bulkRequest.RequestType)
+                                                            </span>
                                                             @bulkRequest.SelectedRows of @bulkRequest.TotalRows records
                                                         </small>
                                                     </div>
-                                                </td>
-                                                <td>
-                                                    <span class="badge @GetRequestTypeBadgeColor(bulkRequest.RequestType)">
-                                                        @GetRequestTypeDisplayName(bulkRequest.RequestType)
-                                                    </span>
                                                 </td>
                                                 <td>
                                                     <span class="badge @GetStatusBadgeClass(bulkRequest.Status)">
                                                         @bulkRequest.Status
                                                     </span>
                                                 </td>
-                                                <td>@bulkRequest.RequestedByName</td>
                                                 <td>
                                                     <div>
-                                                        @bulkRequest.RequestedAt.ToString("MMM dd, yyyy")
-                                                        <br/>
-                                                        <small class="text-muted">@bulkRequest.RequestedAt.ToString("HH:mm")</small>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <div>
-                                                        @if (bulkRequest.ApprovedAt.HasValue)
-                                                        {
-                                                            @bulkRequest.ApprovedAt.Value.ToString("MMM dd, yyyy")
-                                                            <br/>
-                                                            <small class="text-muted">@bulkRequest.ApprovedAt.Value.ToString("HH:mm")</small>
-                                                        }
-                                                        else
-                                                        {
-                                                            <span class="text-muted">-</span>
-                                                        }
+                                                        <div class="fw-bold">@bulkRequest.RequestedByName</div>
+                                                        <small class="text-muted">
+                                                            @bulkRequest.RequestedAt.ToString("MMM dd, yyyy")
+                                                            @if (bulkRequest.ApprovedAt.HasValue)
+                                                            {
+                                                                <text><br />Updated: @bulkRequest.ApprovedAt.Value.ToString("MMM dd")</text>
+                                                            }
+                                                        </small>
                                                     </div>
                                                 </td>
                                                 <td>
@@ -293,50 +273,31 @@
                                                     </div>
                                                 </td>
                                                 <td>
-                                                    <span class="badge bg-primary">
-                                                        Individual Request
-                                                    </span>
-                                                </td>
-                                                <td>
                                                     <div>
                                                         <div class="fw-bold">@request.FormDefinition?.Name</div>
-                                                        <small class="text-muted">
-                                                            <i class="bi bi-server me-1"></i>@request.FormDefinition?.DatabaseConnectionName
-                                                            <span class="mx-1">•</span>
-                                                            <i class="bi bi-table me-1"></i>@request.FormDefinition?.TableName
+                                                        <small class="text-muted d-block">
+                                                            <span class="badge @GetRequestTypeBadgeColor(request.RequestType) me-1">
+                                                                @GetRequestTypeDisplayName(request.RequestType)
+                                                            </span>
+                                                            <i class="bi bi-table"></i> @request.FormDefinition?.TableName
                                                         </small>
                                                     </div>
-                                                </td>
-                                                <td>
-                                                    <span class="badge @GetRequestTypeBadgeColor(request.RequestType)">
-                                                        @GetRequestTypeDisplayName(request.RequestType)
-                                                    </span>
                                                 </td>
                                                 <td>
                                                     <span class="badge @GetStatusBadgeClass(request.Status)">
                                                         @request.Status
                                                     </span>
                                                 </td>
-                                                <td>@request.RequestedByName</td>
                                                 <td>
                                                     <div>
-                                                        @request.RequestedAt.ToString("MMM dd, yyyy")
-                                                        <br/>
-                                                        <small class="text-muted">@request.RequestedAt.ToString("HH:mm")</small>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <div>
-                                                        @if (request.ApprovedAt.HasValue)
-                                                        {
-                                                            @request.ApprovedAt.Value.ToString("MMM dd, yyyy")
-                                                            <br/>
-                                                            <small class="text-muted">@request.ApprovedAt.Value.ToString("HH:mm")</small>
-                                                        }
-                                                        else
-                                                        {
-                                                            <span class="text-muted">-</span>
-                                                        }
+                                                        <div class="fw-bold">@request.RequestedByName</div>
+                                                        <small class="text-muted">
+                                                            @request.RequestedAt.ToString("MMM dd, yyyy")
+                                                            @if (request.ApprovedAt.HasValue)
+                                                            {
+                                                                <text><br />Updated: @request.ApprovedAt.Value.ToString("MMM dd")</text>
+                                                            }
+                                                        </small>
                                                     </div>
                                                 </td>
                                                 <td>

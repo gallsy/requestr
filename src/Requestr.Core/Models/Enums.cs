@@ -17,7 +17,12 @@ public enum FormRequestChangeType
     Approved = 3,
     Rejected = 4,
     Applied = 5,
-    Failed = 6  // Added for when application to target database fails
+    Failed = 6,  // Added for when application to target database fails
+    WorkflowStarted = 7,
+    WorkflowStepCompleted = 8,
+    WorkflowStepApproved = 9,
+    WorkflowStepRejected = 10,
+    WorkflowCompleted = 11
 }
 
 public enum RequestType

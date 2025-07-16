@@ -3,6 +3,7 @@
 @using Requestr.Core.Interfaces
 @using Microsoft.AspNetCore.Components.Web
 @using System.Text.Json
+@using Requestr.Web.Components
 @inject IFormRequestService FormRequestService
 @inject IFormDefinitionService FormDefinitionService
 @inject IWorkflowService WorkflowService
@@ -207,6 +208,35 @@ else
                                                         {
                                                             <p class="mb-1"><strong>Comments:</strong> @historyItem.Comments</p>
                                                         }
+                                                        
+                                                        @* Workflow-specific information *@
+                                                        @if (IsWorkflowHistoryType(historyItem.ChangeType))
+                                                        {
+                                                            <div class="mt-2">
+                                                                @if (historyItem.NewValues.ContainsKey("StepName"))
+                                                                {
+                                                                    <p class="mb-1"><strong>Step:</strong> @historyItem.NewValues["StepName"]</p>
+                                                                }
+                                                                @if (historyItem.NewValues.ContainsKey("Action"))
+                                                                {
+                                                                    <p class="mb-1"><strong>Action:</strong> <span class="badge @GetActionBadgeClass(historyItem.NewValues["Action"]?.ToString())">@historyItem.NewValues["Action"]</span></p>
+                                                                }
+                                                                @if (historyItem.NewValues.ContainsKey("WorkflowName"))
+                                                                {
+                                                                    <p class="mb-1"><strong>Workflow:</strong> @historyItem.NewValues["WorkflowName"]</p>
+                                                                }
+                                                                @if (historyItem.NewValues.ContainsKey("WasApproved"))
+                                                                {
+                                                                    var wasApproved = historyItem.NewValues["WasApproved"]?.ToString() == "True";
+                                                                    <p class="mb-1"><strong>Result:</strong> 
+                                                                        <span class="badge @(wasApproved ? "bg-success" : "bg-danger")">
+                                                                            @(wasApproved ? "Approved" : "Rejected")
+                                                                        </span>
+                                                                    </p>
+                                                                }
+                                                            </div>
+                                                        }
+                                                        
                                                         @if (historyItem.ChangeType == FormRequestChangeType.StatusChanged || historyItem.ChangeType == FormRequestChangeType.Approved || historyItem.ChangeType == FormRequestChangeType.Rejected)
                                                         {
                                                             <div class="mt-2">
@@ -675,6 +705,11 @@ else
         FormRequestChangeType.Rejected => "bg-danger",
         FormRequestChangeType.Applied => "bg-success",
         FormRequestChangeType.Failed => "bg-danger",
+        FormRequestChangeType.WorkflowStarted => "bg-primary",
+        FormRequestChangeType.WorkflowStepCompleted => "bg-info",
+        FormRequestChangeType.WorkflowStepApproved => "bg-success",
+        FormRequestChangeType.WorkflowStepRejected => "bg-danger",
+        FormRequestChangeType.WorkflowCompleted => "bg-success",
         _ => "bg-secondary"
     };
 
@@ -687,6 +722,11 @@ else
         FormRequestChangeType.Rejected => "bi-x-circle",
         FormRequestChangeType.Applied => "bi-check2-all",
         FormRequestChangeType.Failed => "bi-exclamation-triangle",
+        FormRequestChangeType.WorkflowStarted => "bi-play-circle",
+        FormRequestChangeType.WorkflowStepCompleted => "bi-check-square",
+        FormRequestChangeType.WorkflowStepApproved => "bi-check-circle-fill",
+        FormRequestChangeType.WorkflowStepRejected => "bi-x-circle-fill",
+        FormRequestChangeType.WorkflowCompleted => "bi-flag-fill",
         _ => "bi-circle"
     };
 
@@ -699,6 +739,11 @@ else
         FormRequestChangeType.Rejected => "Request Rejected",
         FormRequestChangeType.Applied => "Changes Applied",
         FormRequestChangeType.Failed => "Application Failed",
+        FormRequestChangeType.WorkflowStarted => "Workflow Started",
+        FormRequestChangeType.WorkflowStepCompleted => "Workflow Step Completed",
+        FormRequestChangeType.WorkflowStepApproved => "Workflow Step Approved",
+        FormRequestChangeType.WorkflowStepRejected => "Workflow Step Rejected",
+        FormRequestChangeType.WorkflowCompleted => "Workflow Completed",
         _ => changeType.ToString()
     };
 
@@ -752,6 +797,24 @@ else
         WorkflowStepAction.Rejected => "bg-danger",
         WorkflowStepAction.Completed => "bg-primary",
         WorkflowStepAction.None => "bg-secondary",
+        _ => "bg-secondary"
+    };
+
+    private bool IsWorkflowHistoryType(FormRequestChangeType changeType) => changeType switch
+    {
+        FormRequestChangeType.WorkflowStarted => true,
+        FormRequestChangeType.WorkflowStepCompleted => true,
+        FormRequestChangeType.WorkflowStepApproved => true,
+        FormRequestChangeType.WorkflowStepRejected => true,
+        FormRequestChangeType.WorkflowCompleted => true,
+        _ => false
+    };
+
+    private string GetActionBadgeClass(string? action) => action switch
+    {
+        "Approved" => "bg-success",
+        "Rejected" => "bg-danger",
+        "Completed" => "bg-primary",
         _ => "bg-secondary"
     };
 }

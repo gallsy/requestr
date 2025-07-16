@@ -1,6 +1,7 @@
 @page "/admin/notifications"
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
+@using static Requestr.Core.Models.NotificationTemplateKeys
 @inject IEmailConfigurationService EmailConfigurationService
 @inject INotificationTemplateService NotificationTemplateService
 @inject IAdvancedNotificationService AdvancedNotificationService
@@ -8,7 +9,7 @@
 @inject IJSRuntime JSRuntime
 @attribute [Authorize(Roles = "Admin")]
 
-<PageTitle>Notification Settings</PageTitle>
+<PageTitle>Notification Settings | Requestr Admin</PageTitle>
 
 <!-- Include the notifications JavaScript -->
 <script src="~/js/notifications.js"></script>
@@ -89,6 +90,20 @@
                                                 <option value="@EmailProvider.SMTP">SMTP</option>
                                                 <option value="@EmailProvider.SendGrid">SendGrid</option>
                                             </select>
+                                        </div>
+
+                                        <!-- Mode Selection -->
+                                        <div class="mb-3">
+                                            <label class="form-label">Email Mode</label>
+                                            <select class="form-select" @bind="_emailConfig.Mode">
+                                                <option value="@EmailMode.Production">Production - Send actual emails</option>
+                                                <option value="@EmailMode.Test">Test - Log emails only (no sending)</option>
+                                            </select>
+                                            <div class="form-text">
+                                                <i class="bi bi-info-circle me-1"></i>
+                                                In Test mode, emails will be logged to the application logs instead of being sent. 
+                                                This is useful for development and testing environments.
+                                            </div>
                                         </div>
 
                                         <!-- Common Settings -->
@@ -234,133 +249,40 @@
                                     <h5 class="mb-0">
                                         <i class="bi bi-file-text me-2"></i>Notification Templates
                                     </h5>
-                                    <div class="d-flex gap-2">
-                                        <button class="btn btn-outline-secondary btn-sm" @onclick="CreateDefaultTemplates">
-                                            <i class="bi bi-arrow-clockwise me-2"></i>Reset to Defaults
-                                        </button>
-                                        <button class="btn btn-primary btn-sm" @onclick="CreateNewTemplate">
-                                            <i class="bi bi-plus-lg me-2"></i>New Template
-                                        </button>
-                                    </div>
+                                    <button class="btn btn-outline-secondary btn-sm" @onclick="CreateDefaultTemplates">
+                                        <i class="bi bi-arrow-clockwise me-2"></i>Reset to Defaults
+                                    </button>
                                 </div>
                                 <div class="card-body">
                                     @if (_templates?.Any() == true)
                                     {
-                                        <div class="list-group list-group-flush">
-                                            @foreach (var template in _templates)
-                                            {
-                                                <div class="list-group-item d-flex justify-content-between align-items-center">
-                                                    <div>
-                                                        <h6 class="mb-1">@template.Name</h6>
-                                                        <p class="mb-1 text-muted small">@template.TemplateKey</p>
-                                                        <span class="badge @(template.IsEnabled ? "bg-success" : "bg-secondary")">
-                                                            @(template.IsEnabled ? "Enabled" : "Disabled")
-                                                        </span>
-                                                    </div>
-                                                    <div class="btn-group">
-                                                        <button class="btn btn-sm btn-outline-primary" 
-                                                                @onclick="() => EditTemplate(template)">
-                                                            <i class="bi bi-pencil"></i>
-                                                        </button>
-                                                        <button class="btn btn-sm btn-outline-danger" 
-                                                                @onclick="() => DeleteTemplate(template.Id)">
-                                                            <i class="bi bi-trash"></i>
-                                                        </button>
+                                        @foreach (var template in _templates.OrderBy(t => t.TemplateKey))
+                                        {
+                                            <div class="card mb-4">
+                                                <div class="card-header d-flex justify-content-between align-items-center">
+                                                    <h6 class="mb-0">
+                                                        <span class="fw-medium">@GetTemplateKeyDescription(template.TemplateKey)</span>
+                                                    </h6>
+                                                    <div class="form-check form-switch">
+                                                        <input class="form-check-input" type="checkbox" 
+                                                               checked="@template.IsEnabled" @onchange="@((e) => ToggleTemplateEnabled(template, (bool)e.Value!))"
+                                                               id="enabled_@template.Id">
+                                                        <label class="form-check-label" for="enabled_@template.Id">
+                                                            Enabled
+                                                        </label>
                                                     </div>
                                                 </div>
-                                            }
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <div class="text-center py-4">
-                                            <i class="bi bi-file-text display-1 text-muted mb-3"></i>
-                                            <h5>No templates found</h5>
-                                            <p class="text-muted">Create your first notification template or reset to defaults.</p>
-                                        </div>
-                                    }
-                                </div>
-                            </div>
-
-                            @if (_editingTemplate != null)
-                            {
-                                <div class="card mt-4">
-                                    <div class="card-header d-flex justify-content-between align-items-center">
-                                        <h5 class="mb-0">
-                                            <i class="bi bi-pencil me-2"></i>
-                                            @(_editingTemplate.Id == 0 ? "Create" : "Edit") Template
-                                        </h5>
-                                        <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">
-                                            <i class="bi bi-x"></i>
-                                        </button>
-                                    </div>
-                                    <div class="card-body">
-                                        <form @onsubmit="SaveTemplate" @onsubmit:preventDefault="true">
-                                            <div class="row">
-                                                <div class="col-md-6 mb-3">
-                                                    <label class="form-label">Template Name *</label>
-                                                    <input type="text" class="form-control" @bind="_editingTemplate.Name" required>
-                                                </div>
-                                                <div class="col-md-6 mb-3">
-                                                    <label class="form-label">Template Key *</label>
-                                                    <input type="text" class="form-control" @bind="_editingTemplate.TemplateKey" required>
-                                                </div>
-                                            </div>
-
-                                            <div class="mb-3">
-                                                <div class="form-check">
-                                                    <input class="form-check-input" type="checkbox" 
-                                                           @bind="_editingTemplate.IsEnabled" id="templateEnabled">
-                                                    <label class="form-check-label" for="templateEnabled">
-                                                        Template Enabled
-                                                    </label>
-                                                </div>
-                                            </div>
-
-                                            <div class="mb-3">
-                                                <label class="form-label">Email Subject *</label>
-                                                <div class="input-group">
-                                                    <input type="text" class="form-control" @bind="_editingTemplate.Subject" 
-                                                           @ref="_subjectInputRef" required>
-                                                    <button class="btn btn-outline-secondary dropdown-toggle" 
-                                                            type="button" data-bs-toggle="dropdown">
-                                                        Variables
-                                                    </button>
-                                                    <ul class="dropdown-menu dropdown-menu-end">
-                                                        @foreach (var category in _variableCategories)
-                                                        {
-                                                            <li><h6 class="dropdown-header">@category</h6></li>
-                                                            @foreach (var variable in NotificationVariables.GetVariablesByCategory(category))
-                                                            {
-                                                                <li>
-                                                                    <button class="dropdown-item" type="button"
-                                                                            @onclick="() => InsertVariable(_subjectInputRef, variable.Key)">
-                                                                        <strong>@variable.Key</strong><br>
-                                                                        <small class="text-muted">@variable.Description</small>
-                                                                    </button>
-                                                                </li>
-                                                            }
-                                                            @if (category != _variableCategories.Last())
-                                                            {
-                                                                <li><hr class="dropdown-divider"></li>
-                                                            }
-                                                        }
-                                                    </ul>
-                                                </div>
-                                            </div>
-
-                                            <div class="mb-3">
-                                                <label class="form-label">Email Body (HTML) *</label>
-                                                <div class="input-group">
-                                                    <textarea class="form-control" rows="10" @bind="_editingTemplate.Body" 
-                                                              @ref="_bodyInputRef" required></textarea>
-                                                    <div class="input-group-text p-0">
-                                                        <div class="dropdown">
-                                                            <button class="btn btn-outline-secondary dropdown-toggle h-100 border-0" 
+                                                <div class="card-body">
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Email Subject *</label>
+                                                        <div class="input-group">
+                                                            <input type="text" class="form-control" @bind="template.Subject" 
+                                                                   @onblur="() => SaveTemplateAsync(template)" required>
+                                                            <button class="btn btn-outline-secondary dropdown-toggle" 
                                                                     type="button" data-bs-toggle="dropdown">
                                                                 Variables
                                                             </button>
-                                                            <ul class="dropdown-menu">
+                                                            <ul class="dropdown-menu dropdown-menu-end">
                                                                 @foreach (var category in _variableCategories)
                                                                 {
                                                                     <li><h6 class="dropdown-header">@category</h6></li>
@@ -368,7 +290,7 @@
                                                                     {
                                                                         <li>
                                                                             <button class="dropdown-item" type="button"
-                                                                                    @onclick="() => InsertVariable(_bodyInputRef, variable.Key)">
+                                                                                    @onclick="() => InsertVariableInTemplate(template, FIELD_SUBJECT, variable.Key)">
                                                                                 <strong>@variable.Key</strong><br>
                                                                                 <small class="text-muted">@variable.Description</small>
                                                                             </button>
@@ -382,28 +304,60 @@
                                                             </ul>
                                                         </div>
                                                     </div>
-                                                </div>
-                                                <div class="form-text">
-                                                    Use HTML tags for formatting. Click "Variables" to insert dynamic content.
-                                                </div>
-                                            </div>
 
-                                            <div class="d-flex gap-2">
-                                                <button type="submit" class="btn btn-primary" disabled="@_isSavingTemplate">
-                                                    @if (_isSavingTemplate)
-                                                    {
-                                                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                                                    }
-                                                    <i class="bi bi-save me-2"></i>Save Template
-                                                </button>
-                                                <button type="button" class="btn btn-outline-secondary" @onclick="CancelEdit">
-                                                    Cancel
-                                                </button>
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Email Body (HTML) *</label>
+                                                        <div class="input-group">
+                                                            <textarea class="form-control" rows="8" @bind="template.Body" 
+                                                                      @onblur="() => SaveTemplateAsync(template)" required></textarea>
+                                                            <div class="input-group-text p-0">
+                                                                <div class="dropdown">
+                                                                    <button class="btn btn-outline-secondary dropdown-toggle h-100 border-0" 
+                                                                            type="button" data-bs-toggle="dropdown">
+                                                                        Variables
+                                                                    </button>
+                                                                    <ul class="dropdown-menu">
+                                                                        @foreach (var category in _variableCategories)
+                                                                        {
+                                                                            <li><h6 class="dropdown-header">@category</h6></li>
+                                                                            @foreach (var variable in NotificationVariables.GetVariablesByCategory(category))
+                                                                            {
+                                                                                <li>
+                                                                                    <button class="dropdown-item" type="button"
+                                                                                            @onclick="() => InsertVariableInTemplate(template, FIELD_BODY, variable.Key)">
+                                                                                        <strong>@variable.Key</strong><br>
+                                                                                        <small class="text-muted">@variable.Description</small>
+                                                                                    </button>
+                                                                                </li>
+                                                                            }
+                                                                            @if (category != _variableCategories.Last())
+                                                                            {
+                                                                                <li><hr class="dropdown-divider"></li>
+                                                                            }
+                                                                        }
+                                                                    </ul>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-text">
+                                                            Use HTML tags for formatting. Click "Variables" to insert dynamic content.
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </form>
-                                    </div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <div class="text-center py-4">
+                                            <i class="bi bi-file-text display-1 text-muted mb-3"></i>
+                                            <h5>No templates found</h5>
+                                            <p class="text-muted">Click "Reset to Defaults" to create the standard notification templates.</p>
+                                        </div>
+                                    }
                                 </div>
-                            }
+                            </div>
+
                         </div>
                         <div class="col-lg-4">
                             <div class="card">
@@ -455,9 +409,6 @@
 @code {
     private EmailConfiguration _emailConfig = new();
     private List<NotificationTemplate> _templates = new();
-    private NotificationTemplate? _editingTemplate;
-    private ElementReference _subjectInputRef;
-    private ElementReference _bodyInputRef;
     
     private string _activeTab = "email";
     private bool _isLoading = true;
@@ -465,11 +416,26 @@
     private bool _isTesting = false;
     private bool _isSendingTest = false;
     private bool _isTestingLogging = false;
-    private bool _isSavingTemplate = false;
     private string? _message;
     private bool _isError = false;
+
+    private const string FIELD_SUBJECT = "subject";
+    private const string FIELD_BODY = "body";
     
     private readonly List<string> _variableCategories = new() { "Request", "Form", "User", "Workflow", "System" };
+
+    private string GetTemplateKeyDescription(string templateKey)
+    {
+        return templateKey switch
+        {
+            NewRequestCreated => "New Request Created",
+            RequestApproved => "Request Approved", 
+            RequestRejected => "Request Rejected",
+            WorkflowStepPending => "Workflow Step Pending",
+            FormSubmissionComplete => "Form Submission Complete",
+            _ => templateKey
+        };
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -509,7 +475,6 @@
     private void SetActiveTab(string tab)
     {
         _activeTab = tab;
-        _editingTemplate = null;
     }
 
     private async Task SaveEmailConfiguration()
@@ -617,7 +582,7 @@
 
             // Test template-based notification (this will log regardless of email config)
             var result = await AdvancedNotificationService.SendNotificationAsync(
-                "request-created", 
+                "NEW_REQUEST_CREATED", 
                 variables, 
                 "test@example.com", 
                 "Test Recipient");
@@ -662,46 +627,13 @@
         }
     }
 
-    private void CreateNewTemplate()
+    private async Task SaveTemplateAsync(NotificationTemplate template)
     {
-        _editingTemplate = new NotificationTemplate
-        {
-            IsEnabled = true,
-            Subject = "",
-            Body = ""
-        };
-    }
-
-    private void EditTemplate(NotificationTemplate template)
-    {
-        _editingTemplate = new NotificationTemplate
-        {
-            Id = template.Id,
-            Name = template.Name,
-            TemplateKey = template.TemplateKey,
-            Subject = template.Subject,
-            Body = template.Body,
-            IsEnabled = template.IsEnabled
-        };
-    }
-
-    private void CancelEdit()
-    {
-        _editingTemplate = null;
-    }
-
-    private async Task SaveTemplate()
-    {
-        if (_editingTemplate == null) return;
-
-        _isSavingTemplate = true;
         try
         {
-            var result = await NotificationTemplateService.SaveTemplateAsync(_editingTemplate);
+            var result = await NotificationTemplateService.SaveTemplateAsync(template);
             if (result.IsSuccess)
             {
-                await LoadData();
-                _editingTemplate = null;
                 ShowMessage("Template saved successfully!");
             }
             else
@@ -713,10 +645,29 @@
         {
             ShowMessage($"Error saving template: {ex.Message}", true);
         }
-        finally
+    }
+
+    private async Task InsertVariableInTemplate(NotificationTemplate template, string field, string variable)
+    {
+        if (field == FIELD_SUBJECT)
         {
-            _isSavingTemplate = false;
+            var currentPosition = template.Subject?.Length ?? 0;
+            template.Subject = (template.Subject ?? "") + variable;
         }
+        else if (field == FIELD_BODY)
+        {
+            var currentPosition = template.Body?.Length ?? 0;
+            template.Body = (template.Body ?? "") + variable;
+        }
+        
+        await SaveTemplateAsync(template);
+        StateHasChanged();
+    }
+
+    private async Task ToggleTemplateEnabled(NotificationTemplate template, bool enabled)
+    {
+        template.IsEnabled = enabled;
+        await SaveTemplateAsync(template);
     }
 
     private async Task DeleteTemplate(int templateId)
@@ -741,11 +692,6 @@
         {
             ShowMessage($"Error deleting template: {ex.Message}", true);
         }
-    }
-
-    private async Task InsertVariable(ElementReference inputRef, string variable)
-    {
-        await JSRuntime.InvokeVoidAsync("insertAtCursor", inputRef, variable);
     }
 
     private void ShowMessage(string message, bool isError = false)

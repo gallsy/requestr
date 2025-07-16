@@ -200,7 +200,11 @@ public class FormDefinitionService : IFormDefinitionService
 
             var sql = @"
                 SELECT fd.Id, fd.Name, fd.Description, fd.Category, fd.DatabaseConnectionName, fd.TableName, fd.[Schema], 
-                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, fd.WorkflowDefinitionId, fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
+                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, fd.WorkflowDefinitionId, 
+                       COALESCE(fd.NotificationEmail, '') as NotificationEmail, 
+                       COALESCE(fd.NotifyOnCreation, 0) as NotifyOnCreation, 
+                       COALESCE(fd.NotifyOnCompletion, 0) as NotifyOnCompletion,
+                       fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.MaxLength, 
                        ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder
@@ -230,6 +234,9 @@ public class FormDefinitionService : IFormDefinitionService
                         RequiresApproval = (bool)row.RequiresApproval,
                         IsActive = (bool)row.IsActive,
                         WorkflowDefinitionId = (int?)row.WorkflowDefinitionId,
+                        NotificationEmail = (string?)row.NotificationEmail,
+                        NotifyOnCreation = Convert.ToBoolean(row.NotifyOnCreation),
+                        NotifyOnCompletion = Convert.ToBoolean(row.NotifyOnCompletion),
                         CreatedAt = (DateTime)row.CreatedAt,
                         CreatedBy = (string)row.CreatedBy,
                         UpdatedAt = (DateTime?)row.UpdatedAt,

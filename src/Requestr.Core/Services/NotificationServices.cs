@@ -30,12 +30,35 @@ public class EmailConfigurationService : IEmailConfigurationService
         try
         {
             using var connection = new SqlConnection(_connectionString);
-            const string sql = @"
-                SELECT Id, Provider, IsEnabled, FromEmail, FromName, 
-                       SmtpHost, SmtpPort, SmtpUseSsl, SmtpUsername, SmtpPassword,
-                       SendGridApiKey, CreatedAt, UpdatedAt
-                FROM EmailConfiguration 
-                WHERE Id = 1";
+            
+            // Check if Mode column exists
+            const string checkColumnSql = @"
+                SELECT COUNT(*) 
+                FROM sys.columns 
+                WHERE object_id = OBJECT_ID(N'[dbo].[EmailConfiguration]') 
+                AND name = 'Mode'";
+            
+            var modeColumnExists = await connection.QuerySingleAsync<int>(checkColumnSql) > 0;
+            
+            string sql;
+            if (modeColumnExists)
+            {
+                sql = @"
+                    SELECT Id, Provider, Mode, IsEnabled, FromEmail, FromName, 
+                           SmtpHost, SmtpPort, SmtpUseSsl, SmtpUsername, SmtpPassword,
+                           SendGridApiKey, CreatedAt, UpdatedAt
+                    FROM EmailConfiguration 
+                    WHERE Id = 1";
+            }
+            else
+            {
+                sql = @"
+                    SELECT Id, Provider, 0 as Mode, IsEnabled, FromEmail, FromName, 
+                           SmtpHost, SmtpPort, SmtpUseSsl, SmtpUsername, SmtpPassword,
+                           SendGridApiKey, CreatedAt, UpdatedAt
+                    FROM EmailConfiguration 
+                    WHERE Id = 1";
+            }
             
             var config = await connection.QueryFirstOrDefaultAsync<EmailConfiguration>(sql);
             return Result<EmailConfiguration?>.Success(config);
@@ -59,15 +82,15 @@ public class EmailConfigurationService : IEmailConfigurationService
                 MERGE EmailConfiguration AS target
                 USING (SELECT 1 AS Id) AS source ON target.Id = source.Id
                 WHEN MATCHED THEN
-                    UPDATE SET Provider = @Provider, IsEnabled = @IsEnabled, FromEmail = @FromEmail, 
+                    UPDATE SET Provider = @Provider, Mode = @Mode, IsEnabled = @IsEnabled, FromEmail = @FromEmail, 
                               FromName = @FromName, SmtpHost = @SmtpHost, SmtpPort = @SmtpPort, 
                               SmtpUseSsl = @SmtpUseSsl, SmtpUsername = @SmtpUsername, 
                               SmtpPassword = @SmtpPassword, SendGridApiKey = @SendGridApiKey, 
                               UpdatedAt = @UpdatedAt
                 WHEN NOT MATCHED THEN
-                    INSERT (Id, Provider, IsEnabled, FromEmail, FromName, SmtpHost, SmtpPort, 
+                    INSERT (Provider, Mode, IsEnabled, FromEmail, FromName, SmtpHost, SmtpPort, 
                            SmtpUseSsl, SmtpUsername, SmtpPassword, SendGridApiKey, CreatedAt, UpdatedAt)
-                    VALUES (1, @Provider, @IsEnabled, @FromEmail, @FromName, @SmtpHost, @SmtpPort, 
+                    VALUES (@Provider, @Mode, @IsEnabled, @FromEmail, @FromName, @SmtpHost, @SmtpPort, 
                            @SmtpUseSsl, @SmtpUsername, @SmtpPassword, @SendGridApiKey, @UpdatedAt, @UpdatedAt);";
             
             await connection.ExecuteAsync(sql, configuration);
@@ -106,13 +129,6 @@ public class EmailConfigurationService : IEmailConfigurationService
     {
         try
         {
-            // Always log email details for testing/debugging regardless of configuration
-            _logger.LogInformation("=== EMAIL SENDING ATTEMPT (Testing) ===");
-            _logger.LogInformation("To: {ToEmail}", toEmail);
-            _logger.LogInformation("Subject: {Subject}", subject);
-            _logger.LogInformation("Body: {Body}", body);
-            _logger.LogInformation("=== END EMAIL DETAILS ===");
-
             var configResult = await GetConfigurationAsync();
             if (!configResult.IsSuccess || configResult.Value == null)
             {
@@ -127,15 +143,34 @@ public class EmailConfigurationService : IEmailConfigurationService
                 return Result.Failure("Email notifications are disabled");
             }
 
+            // Always log email details for testing/debugging regardless of configuration
+            _logger.LogInformation("=== EMAIL NOTIFICATION ===");
+            _logger.LogInformation("Mode: {Mode}", config.Mode);
+            _logger.LogInformation("To: {ToEmail}", toEmail);
+            _logger.LogInformation("Subject: {Subject}", subject);
+            _logger.LogInformation("Body: {Body}", body);
+
+            // Check if we're in test mode
+            if (config.Mode == EmailMode.Test)
+            {
+                _logger.LogInformation("EMAIL TEST MODE: Email content logged above but not actually sent.");
+                _logger.LogInformation("=== END EMAIL TEST MODE ===");
+                return Result.Success();
+            }
+
             _logger.LogInformation("Attempting to send email using {Provider} provider", config.Provider);
 
             if (config.Provider == EmailProvider.SMTP)
             {
-                return await SendSmtpEmailAsync(config, toEmail, subject, body);
+                var result = await SendSmtpEmailAsync(config, toEmail, subject, body);
+                _logger.LogInformation("=== EMAIL SENT (Production Mode) ===");
+                return result;
             }
             else if (config.Provider == EmailProvider.SendGrid)
             {
-                return await SendSendGridEmailAsync(config, toEmail, subject, body);
+                var result = await SendSendGridEmailAsync(config, toEmail, subject, body);
+                _logger.LogInformation("=== EMAIL SENT (Production Mode) ===");
+                return result;
             }
 
             return Result.Failure("Unknown email provider");
