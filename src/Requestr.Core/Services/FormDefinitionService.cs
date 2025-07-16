@@ -205,18 +205,24 @@ public class FormDefinitionService : IFormDefinitionService
                        COALESCE(fd.NotifyOnCreation, 0) as NotifyOnCreation, 
                        COALESCE(fd.NotifyOnCompletion, 0) as NotifyOnCompletion,
                        fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
+                       fs.Id as SectionId, fs.Name as SectionName, fs.Description as SectionDescription, 
+                       fs.DisplayOrder as SectionDisplayOrder, fs.IsCollapsible, fs.DefaultExpanded, 
+                       fs.VisibilityCondition as SectionVisibilityCondition, fs.MaxColumns,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.MaxLength, 
                        ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
-                       ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder
+                       ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, ff.FormSectionId,
+                       ff.GridRow, ff.GridColumn, ff.GridColumnSpan
                 FROM FormDefinitions fd
-                LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
+                LEFT JOIN FormSections fs ON fd.Id = fs.FormDefinitionId
+                LEFT JOIN FormFields ff ON (fd.Id = ff.FormDefinitionId AND (fs.Id = ff.FormSectionId OR ff.FormSectionId IS NULL))
                 WHERE fd.Id = @Id AND fd.IsActive = 1
-                ORDER BY ff.DisplayOrder";
+                ORDER BY fs.DisplayOrder, ff.GridRow, ff.GridColumn, ff.DisplayOrder";
 
             var rows = await connection.QueryAsync(sql, new { Id = id });
             if (!rows.Any()) return null;
 
             FormDefinition? form = null;
+            var sectionDict = new Dictionary<int, FormSection>();
 
             foreach (var row in rows)
             {
@@ -242,10 +248,32 @@ public class FormDefinitionService : IFormDefinitionService
                         UpdatedAt = (DateTime?)row.UpdatedAt,
                         UpdatedBy = (string?)row.UpdatedBy,
                         Fields = new List<FormField>(),
+                        Sections = new List<FormSection>(),
                         ApproverRoles = JsonSerializer.Deserialize<List<string>>((string)(row.ApproverRolesJson ?? "[]")) ?? new List<string>()
                     };
                 }
 
+                // Handle sections
+                if (row.SectionId != null && !sectionDict.ContainsKey((int)row.SectionId))
+                {
+                    var section = new FormSection
+                    {
+                        Id = (int)row.SectionId,
+                        FormDefinitionId = form.Id,
+                        Name = (string)row.SectionName,
+                        Description = (string?)row.SectionDescription,
+                        DisplayOrder = (int)row.SectionDisplayOrder,
+                        IsCollapsible = (bool)row.IsCollapsible,
+                        DefaultExpanded = (bool)row.DefaultExpanded,
+                        VisibilityCondition = (string?)row.SectionVisibilityCondition,
+                        MaxColumns = (int)row.MaxColumns,
+                        Fields = new List<FormField>()
+                    };
+                    sectionDict[(int)row.SectionId] = section;
+                    form.Sections.Add(section);
+                }
+
+                // Handle fields
                 if (row.FieldId != null)
                 {
                     var field = new FormField
@@ -266,9 +294,19 @@ public class FormDefinitionService : IFormDefinitionService
                         ValidationMessage = (string?)row.ValidationMessage,
                         VisibilityCondition = (string?)row.VisibilityCondition,
                         DropdownOptions = (string?)row.DropdownOptions,
-                        DisplayOrder = (int)row.DisplayOrder
+                        DisplayOrder = (int)row.DisplayOrder,
+                        FormSectionId = (int?)row.FormSectionId,
+                        GridRow = (int)(row.GridRow ?? 1),
+                        GridColumn = (int)(row.GridColumn ?? 1),
+                        GridColumnSpan = (int)(row.GridColumnSpan ?? 6)
                     };
+                    
+                    // Add field to both the form and its section
                     form.Fields.Add(field);
+                    if (field.FormSectionId.HasValue && sectionDict.ContainsKey(field.FormSectionId.Value))
+                    {
+                        sectionDict[field.FormSectionId.Value].Fields.Add(field);
+                    }
                 }
             }
 
@@ -316,15 +354,46 @@ public class FormDefinitionService : IFormDefinitionService
 
                 formDefinition.Id = formId;
 
+                // Insert sections and map old IDs to new IDs
+                var sectionIdMapping = new Dictionary<int, int>(); // old ID -> new ID
+                if (formDefinition.Sections.Any())
+                {
+                    var sectionSql = @"
+                        INSERT INTO FormSections (FormDefinitionId, Name, Description, DisplayOrder, IsCollapsible, DefaultExpanded, VisibilityCondition, MaxColumns)
+                        OUTPUT INSERTED.Id
+                        VALUES (@FormDefinitionId, @Name, @Description, @DisplayOrder, @IsCollapsible, @DefaultExpanded, @VisibilityCondition, @MaxColumns)";
+
+                    foreach (var section in formDefinition.Sections)
+                    {
+                        var oldSectionId = section.Id; // Store the temporary ID
+                        section.FormDefinitionId = formId;
+                        var newSectionId = await connection.QuerySingleAsync<int>(sectionSql, section, transaction);
+                        
+                        // Map old ID to new ID
+                        if (oldSectionId > 0)
+                        {
+                            sectionIdMapping[oldSectionId] = newSectionId;
+                        }
+                        section.Id = newSectionId;
+                    }
+                }
+
                 if (formDefinition.Fields.Any())
                 {
                     var fieldSql = @"
-                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder)
-                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder)";
+                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan)
+                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan)";
 
                     foreach (var field in formDefinition.Fields)
                     {
                         field.FormDefinitionId = formId;
+                        
+                        // Map the FormSectionId if it exists in our mapping
+                        if (field.FormSectionId.HasValue && sectionIdMapping.ContainsKey(field.FormSectionId.Value))
+                        {
+                            field.FormSectionId = sectionIdMapping[field.FormSectionId.Value];
+                        }
+                        
                         await connection.ExecuteAsync(fieldSql, field, transaction);
                     }
                 }
@@ -385,19 +454,52 @@ public class FormDefinitionService : IFormDefinitionService
                     formDefinition.UpdatedBy
                 }, transaction);
 
-                // Delete existing fields and recreate them
+                // Delete existing sections and fields, then recreate them
                 await connection.ExecuteAsync("DELETE FROM FormFields WHERE FormDefinitionId = @Id", 
                     new { formDefinition.Id }, transaction);
+                await connection.ExecuteAsync("DELETE FROM FormSections WHERE FormDefinitionId = @Id", 
+                    new { formDefinition.Id }, transaction);
+
+                // Insert sections and map old IDs to new IDs
+                var sectionIdMapping = new Dictionary<int, int>(); // old ID -> new ID
+                if (formDefinition.Sections.Any())
+                {
+                    var sectionSql = @"
+                        INSERT INTO FormSections (FormDefinitionId, Name, Description, DisplayOrder, IsCollapsible, DefaultExpanded, VisibilityCondition, MaxColumns)
+                        OUTPUT INSERTED.Id
+                        VALUES (@FormDefinitionId, @Name, @Description, @DisplayOrder, @IsCollapsible, @DefaultExpanded, @VisibilityCondition, @MaxColumns)";
+
+                    foreach (var section in formDefinition.Sections)
+                    {
+                        var oldSectionId = section.Id; // Store the temporary ID
+                        section.FormDefinitionId = formDefinition.Id;
+                        var newSectionId = await connection.QuerySingleAsync<int>(sectionSql, section, transaction);
+                        
+                        // Map old ID to new ID
+                        if (oldSectionId > 0)
+                        {
+                            sectionIdMapping[oldSectionId] = newSectionId;
+                        }
+                        section.Id = newSectionId;
+                    }
+                }
 
                 if (formDefinition.Fields.Any())
                 {
                     var fieldSql = @"
-                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder)
-                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder)";
+                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan)
+                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan)";
 
                     foreach (var field in formDefinition.Fields)
                     {
                         field.FormDefinitionId = formDefinition.Id;
+                        
+                        // Map the FormSectionId if it exists in our mapping
+                        if (field.FormSectionId.HasValue && sectionIdMapping.ContainsKey(field.FormSectionId.Value))
+                        {
+                            field.FormSectionId = sectionIdMapping[field.FormSectionId.Value];
+                        }
+                        
                         await connection.ExecuteAsync(fieldSql, field, transaction);
                     }
                 }

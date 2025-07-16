@@ -9,6 +9,7 @@ public class FormDefinition : AuditableEntity
     public string TableName { get; set; } = string.Empty;
     public string Schema { get; set; } = "dbo";
     public List<FormField> Fields { get; set; } = new();
+    public List<FormSection> Sections { get; set; } = new(); // New: Form sections for layout
     public List<string> ApproverRoles { get; set; } = new(); // Legacy - will be replaced by workflow system
     public bool RequiresApproval { get; set; } = true;
     public bool IsActive { get; set; } = true;
@@ -24,6 +25,25 @@ public class FormDefinition : AuditableEntity
     public string? NotificationEmail { get; set; }
     public bool NotifyOnCreation { get; set; } = false;
     public bool NotifyOnCompletion { get; set; } = false;
+}
+
+/// <summary>
+/// Represents a logical section within a form for better organization and layout
+/// </summary>
+public class FormSection : AuditableEntity
+{
+    public int FormDefinitionId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public int DisplayOrder { get; set; } = 0;
+    public bool IsCollapsible { get; set; } = false;
+    public bool DefaultExpanded { get; set; } = true;
+    public string? VisibilityCondition { get; set; }
+    public int MaxColumns { get; set; } = 12; // Grid system columns (1-12)
+    
+    // Navigation properties
+    public FormDefinition? FormDefinition { get; set; }
+    public List<FormField> Fields { get; set; } = new();
 }
 
 public class FormField : BaseEntity
@@ -44,6 +64,15 @@ public class FormField : BaseEntity
     public string? VisibilityCondition { get; set; }
     public string? DropdownOptions { get; set; } // JSON array of options for select controls
     public int DisplayOrder { get; set; }
+    
+    // Grid positioning properties
+    public int? FormSectionId { get; set; }
+    public int GridRow { get; set; } = 1;        // Row within the section (1-based)
+    public int GridColumn { get; set; } = 1;     // Starting column (1-12)
+    public int GridColumnSpan { get; set; } = 6; // Number of columns to span (1-12)
+    
+    // Navigation properties
+    public FormSection? FormSection { get; set; }
 }
 
 /// <summary>

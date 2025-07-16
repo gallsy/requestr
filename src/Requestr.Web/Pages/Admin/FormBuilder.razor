@@ -225,7 +225,7 @@
             {
                 <div class="row">
                     <!-- Available Fields Panel -->
-                    <div class="col-lg-4">
+                    <div class="col-lg-3">
                         @if (_tableColumns.Any())
                         {
                             <div class="card">
@@ -236,7 +236,7 @@
                                     </h5>
                                 </div>
                                 <div class="card-body">
-                                    <p class="text-muted small mb-3">Drag fields to the form designer to add them</p>
+                                    <p class="text-muted small mb-3">Drag fields to sections in the form designer</p>
                                     <div class="available-fields">
                                         @foreach (var column in _tableColumns)
                                         {
@@ -295,132 +295,221 @@
                         }
                     </div>
                     
-                    <!-- Form Designer Panel -->
-                    <div class="col-lg-8">
+                    <!-- Form Sections Panel -->
+                    <div class="col-lg-9">
                         <div class="card">
-                            <div class="card-header">
+                            <div class="card-header d-flex justify-content-between align-items-center">
                                 <h5 class="mb-0">
                                     <i class="bi bi-ui-checks me-2"></i>
                                     Form Designer
                                 </h5>
+                                <button type="button" class="btn btn-primary btn-sm" @onclick="AddSection">
+                                    <i class="bi bi-plus me-1"></i>
+                                    Add Section
+                                </button>
                             </div>
                             <div class="card-body">
-                                <div class="form-designer @(_isDragOver ? "drag-over" : "")" 
-                                     @ondrop="OnDrop" 
-                                     @ondragover="OnDragOver" 
-                                     @ondragover:preventDefault="true"
-                                     @ondragenter="OnDragEnter"
-                                     @ondragleave="OnDragLeave"
-                                     style="min-height: 500px; border: 2px dashed #ddd; padding: 20px; transition: all 0.3s ease;">
-                                    
-                                    @if (!_formDefinition.Fields.Any())
+                                @if (!_formDefinition.Sections?.Any() == true && !_formDefinition.Fields.Any())
+                                {
+                                    <div class="text-center text-muted p-5">
+                                        <i class="bi bi-dash-square" style="font-size: 3rem;"></i>
+                                        <p class="mt-3">Click "Add Section" to create your first form section</p>
+                                        <small class="text-muted">Then drag fields from the left panel into your sections</small>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <!-- Display existing sections -->
+                                    @if (_formDefinition.Sections?.Any() == true)
                                     {
-                                        <div class="text-center text-muted p-5">
-                                            <i class="bi bi-dash-square" style="font-size: 3rem;"></i>
-                                            <p class="mt-3">Drag fields from the left panel to build your form</p>
-                                            <small class="text-muted">Fields will automatically configure based on their SQL data types</small>
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        @foreach (var field in _formDefinition.Fields.OrderBy(f => f.DisplayOrder))
+                                        @foreach (var section in _formDefinition.Sections.OrderBy(s => s.DisplayOrder))
                                         {
-                                            <div class="form-field-designer mb-3 p-3 border rounded position-relative">
-                                                <div class="d-flex justify-content-between align-items-start">
-                                                    <div class="flex-grow-1">
-                                                        <div class="row">
-                                                            <div class="col-md-6">
-                                                                <label class="form-label">Field Name</label>
-                                                                <input type="text" class="form-control form-control-sm" @bind="field.DisplayName" />
+                                            <div class="section-designer mb-4 border rounded">
+                                                <div class="section-header bg-light p-3 border-bottom">
+                                                    <div class="d-flex justify-content-between align-items-center">
+                                                        <div class="flex-grow-1">
+                                                            <div class="row">
+                                                                <div class="col-md-4">
+                                                                    <label class="form-label small">Section Title</label>
+                                                                    <input type="text" class="form-control form-control-sm" @bind="section.Name" placeholder="Section title..." />
+                                                                </div>
+                                                                <div class="col-md-3">
+                                                                    <label class="form-label small">Max Columns</label>
+                                                                    <select class="form-select form-select-sm" @bind="section.MaxColumns">
+                                                                        <option value="1">1 Column</option>
+                                                                        <option value="2">2 Columns</option>
+                                                                        <option value="3">3 Columns</option>
+                                                                        <option value="4">4 Columns</option>
+                                                                        <option value="6">6 Columns</option>
+                                                                        <option value="12">12 Columns</option>
+                                                                    </select>
+                                                                </div>
+                                                                <div class="col-md-3">
+                                                                    <label class="form-label small">Display Order</label>
+                                                                    <input type="number" class="form-control form-control-sm" @bind="section.DisplayOrder" min="1" />
+                                                                </div>
+                                                                <div class="col-md-2 d-flex align-items-end">
+                                                                    <div class="form-check">
+                                                                        <input class="form-check-input" type="checkbox" @bind="section.IsCollapsible" />
+                                                                        <label class="form-check-label small">Collapsible</label>
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                            <div class="col-md-6">
-                                                                <label class="form-label">Control Type</label>
-                                                                <select class="form-select form-select-sm" @bind="field.ControlType" @bind:after="() => OnControlTypeChanged(field)">
-                                                                    @foreach (var controlOption in GetAvailableControlTypes(field))
-                                                                    {
-                                                                        <option value="@controlOption.Value">@controlOption.Text</option>
-                                                                    }
-                                                                </select>
-                                                                <small class="form-text text-muted">SQL Type: @GetOriginalSqlType(field)</small>
-                                                            </div>
-                                                        </div>
-                                                        
-                                                        <div class="row mt-2">
-                                                            <div class="col-md-6">
-                                                                <label class="form-label">Default Value</label>
-                                                                <input type="text" class="form-control form-control-sm" @bind="field.DefaultValue" />
-                                                            </div>
-                                                            @if (SupportsValidation(field.ControlType ?? field.DataType))
+                                                            @if (!string.IsNullOrEmpty(section.Description))
                                                             {
-                                                                <div class="col-md-6">
-                                                                    <label class="form-label">Validation Regex</label>
-                                                                    <input type="text" class="form-control form-control-sm" @bind="field.ValidationRegex" placeholder="Regex pattern" />
+                                                                <div class="row mt-2">
+                                                                    <div class="col-12">
+                                                                        <label class="form-label small">Description (Optional)</label>
+                                                                        <input type="text" class="form-control form-control-sm" @bind="section.Description" placeholder="Section description..." />
+                                                                    </div>
                                                                 </div>
                                                             }
                                                         </div>
-                                                        
-                                                        @if (ShowMaxLengthOption(field.ControlType ?? field.DataType))
-                                                        {
-                                                            <div class="row mt-2">
-                                                                <div class="col-md-6">
-                                                                    <label class="form-label">Max Length</label>
-                                                                    <input type="number" class="form-control form-control-sm" @bind="field.MaxLength" min="0" />
-                                                                </div>
-                                                                <div class="col-md-6">
-                                                                    <label class="form-label">Validation Message</label>
-                                                                    <input type="text" class="form-control form-control-sm" @bind="field.ValidationMessage" placeholder="Custom error message" />
-                                                                </div>
-                                                            </div>
-                                                        }
-                                                                         @if (field.ControlType == "select" || field.ControlType == "radio" || field.DataType == "select" || field.DataType == "radio")
-                                        {
-                                            <div class="row mt-2">
-                                                <div class="col-12">
-                                                    <label class="form-label">Options (one per line)</label>
-                                                    <textarea class="form-control form-control-sm" rows="3" @bind="field.DropdownOptions" placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
-                                                    <small class="form-text text-muted">Enter each option on a new line</small>
-                                                </div>
-                                            </div>
-                                        }
-                                                        
-                                                        <div class="row mt-2">
-                                                            <div class="col-md-3">
-                                                                <div class="form-check">
-                                                                    <input class="form-check-input" type="checkbox" @bind="field.IsRequired" />
-                                                                    <label class="form-check-label">Required</label>
-                                                                </div>
-                                                            </div>
-                                                            <div class="col-md-3">
-                                                                <div class="form-check">
-                                                                    <input class="form-check-input" type="checkbox" @bind="field.IsReadOnly" />
-                                                                    <label class="form-check-label">Read Only</label>
-                                                                </div>
-                                                            </div>
-                                                            <div class="col-md-3">
-                                                                <div class="form-check">
-                                                                    <input class="form-check-input" type="checkbox" @bind="field.IsVisible" />
-                                                                    <label class="form-check-label">Visible</label>
-                                                                </div>
-                                                            </div>
-                                                            <div class="col-md-3">
-                                                                <div class="form-check">
-                                                                    <input class="form-check-input" type="checkbox" @bind="field.IsVisibleInDataView" />
-                                                                    <label class="form-check-label">Visible in Data View</label>
-                                                                </div>
-                                                            </div>
+                                                        <div class="section-actions ms-3">
+                                                            <button type="button" class="btn btn-outline-secondary btn-sm me-2" @onclick="() => ToggleSectionDescription(section)">
+                                                                <i class="bi bi-card-text"></i>
+                                                            </button>
+                                                            <button type="button" class="btn btn-danger btn-sm" @onclick="() => RemoveSection(section)">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
                                                         </div>
                                                     </div>
+                                                </div>
+                                                
+                                                <!-- Section Grid Designer -->
+                                                <div class="section-grid p-3 @(_draggedColumn != null && _dragTargetSection == section ? "drag-over" : "")"
+                                                     @ondrop="@(e => OnSectionDrop(e, section))"
+                                                     @ondragover="OnDragOver"
+                                                     @ondragover:preventDefault="true"
+                                                     @ondragenter="@(e => OnSectionDragEnter(e, section))"
+                                                     @ondragleave="OnDragLeave"
+                                                     style="min-height: 150px; border: 2px dashed #ddd; transition: all 0.3s ease;">
                                                     
-                                                    <div class="field-actions">
-                                                        <button type="button" class="btn btn-danger btn-sm" @onclick="() => RemoveField(field)">
-                                                            <i class="bi bi-trash"></i>
-                                                        </button>
-                                                    </div>
+                                                    @{
+                                                        var sectionFields = _formDefinition.Fields.Where(f => f.FormSectionId == section.Id).OrderBy(f => f.GridRow).ThenBy(f => f.GridColumn).ToList();
+                                                    }
+                                                    
+                                                    @if (!sectionFields.Any())
+                                                    {
+                                                        <div class="text-center text-muted p-4">
+                                                            <i class="bi bi-dash-square" style="font-size: 2rem;"></i>
+                                                            <p class="mt-2">Drop fields here to add them to this section</p>
+                                                            <small class="text-muted">Maximum @(section.MaxColumns) columns</small>
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <!-- Show grid with fields -->
+                                                        <div class="form-grid" style="display: grid; grid-template-columns: repeat(@(section.MaxColumns), 1fr); gap: 15px;">
+                                                            @foreach (var field in sectionFields)
+                                                            {
+                                                                <div class="grid-field" 
+                                                                     style="grid-column: @field.GridColumn / span @field.GridColumnSpan; grid-row: @field.GridRow;">
+                                                                    <div class="field-preview border rounded p-2 bg-white">
+                                                                        <div class="d-flex justify-content-between align-items-start">
+                                                                            <div class="flex-grow-1">
+                                                                                <small class="text-muted">@field.Name</small>
+                                                                                <h6 class="mb-1">@field.DisplayName</h6>
+                                                                                <small class="badge bg-secondary">@(field.ControlType ?? field.DataType)</small>
+                                                                                
+                                                                                <!-- Grid Position Controls -->
+                                                                                <div class="row mt-2">
+                                                                                    <div class="col-4">
+                                                                                        <label class="form-label small">Row</label>
+                                                                                        <input type="number" class="form-control form-control-sm" @bind="field.GridRow" min="1" />
+                                                                                    </div>
+                                                                                    <div class="col-4">
+                                                                                        <label class="form-label small">Col</label>
+                                                                                        <input type="number" class="form-control form-control-sm" @bind="field.GridColumn" min="1" max="@(section.MaxColumns)" />
+                                                                                    </div>
+                                                                                    <div class="col-4">
+                                                                                        <label class="form-label small">Span</label>
+                                                                                        <select class="form-select form-select-sm" @bind="field.GridColumnSpan">
+                                                                                            @for (int i = 1; i <= section.MaxColumns; i++)
+                                                                                            {
+                                                                                                <option value="@i">@i</option>
+                                                                                            }
+                                                                                        </select>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div class="field-actions ms-2">
+                                                                                <button type="button" class="btn btn-outline-primary btn-sm me-1" @onclick="() => ConfigureField(field)">
+                                                                                    <i class="bi bi-gear"></i>
+                                                                                </button>
+                                                                                <button type="button" class="btn btn-danger btn-sm" @onclick="() => RemoveField(field)">
+                                                                                    <i class="bi bi-trash"></i>
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            }
+                                                        </div>
+                                                    }
                                                 </div>
                                             </div>
                                         }
                                     }
-                                </div>
+                                    
+                                    <!-- Display legacy fields not in sections (backward compatibility) -->
+                                    var legacyFields = _formDefinition.Fields.Where(f => f.FormSectionId == null || f.FormSectionId == 0).OrderBy(f => f.DisplayOrder).ToList();
+                                    if (legacyFields.Any())
+                                    {
+                                        <div class="section-designer mb-4 border rounded border-warning">
+                                            <div class="section-header bg-warning bg-opacity-10 p-3 border-bottom">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <div>
+                                                        <h6 class="mb-0">
+                                                            <i class="bi bi-exclamation-triangle text-warning me-1"></i>
+                                                            Legacy Fields (No Section)
+                                                        </h6>
+                                                        <small class="text-muted">These fields need to be moved to a section for grid layout support</small>
+                                                    </div>
+                                                    <button type="button" class="btn btn-warning btn-sm" @onclick="MigrateLegacyFields">
+                                                        <i class="bi bi-arrow-right me-1"></i>
+                                                        Move to New Section
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="section-grid p-3">
+                                                @foreach (var field in legacyFields)
+                                                {
+                                                    <div class="form-field-designer mb-3 p-3 border rounded position-relative">
+                                                        <div class="d-flex justify-content-between align-items-start">
+                                                            <div class="flex-grow-1">
+                                                                <div class="row">
+                                                                    <div class="col-md-6">
+                                                                        <label class="form-label">Field Name</label>
+                                                                        <input type="text" class="form-control form-control-sm" @bind="field.DisplayName" />
+                                                                    </div>
+                                                                    <div class="col-md-6">
+                                                                        <label class="form-label">Control Type</label>
+                                                                        <select class="form-select form-select-sm" @bind="field.ControlType" @bind:after="() => OnControlTypeChanged(field)">
+                                                                            @foreach (var controlOption in GetAvailableControlTypes(field))
+                                                                            {
+                                                                                <option value="@controlOption.Value">@controlOption.Text</option>
+                                                                            }
+                                                                        </select>
+                                                                        <small class="form-text text-muted">SQL Type: @GetOriginalSqlType(field)</small>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="field-actions">
+                                                                <button type="button" class="btn btn-outline-primary btn-sm me-1" @onclick="() => ConfigureField(field)">
+                                                                    <i class="bi bi-gear"></i>
+                                                                </button>
+                                                                <button type="button" class="btn btn-danger btn-sm" @onclick="() => RemoveField(field)">
+                                                                    <i class="bi bi-trash"></i>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                }
                             </div>
                         </div>
                     </div>
@@ -981,6 +1070,105 @@
     }
 </div>
 
+<!-- Field Configuration Modal -->
+@if (_selectedField != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.3);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Configure Field: @_selectedField.DisplayName</h5>
+                    <button type="button" class="btn-close" @onclick="CloseFieldConfig" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label">Field Name</label>
+                            <input type="text" class="form-control" @bind="_selectedField.DisplayName" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Control Type</label>
+                            <select class="form-select" @bind="_selectedField.ControlType" @bind:after="() => OnControlTypeChanged(_selectedField)">
+                                @foreach (var controlOption in GetAvailableControlTypes(_selectedField))
+                                {
+                                    <option value="@controlOption.Value">@controlOption.Text</option>
+                                }
+                            </select>
+                            <small class="form-text text-muted">SQL Type: @GetOriginalSqlType(_selectedField)</small>
+                        </div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label">Default Value</label>
+                            <input type="text" class="form-control" @bind="_selectedField.DefaultValue" />
+                        </div>
+                        @if (SupportsValidation(_selectedField.ControlType ?? _selectedField.DataType))
+                        {
+                            <div class="col-md-6">
+                                <label class="form-label">Validation Regex</label>
+                                <input type="text" class="form-control" @bind="_selectedField.ValidationRegex" placeholder="Regex pattern" />
+                            </div>
+                        }
+                    </div>
+                    @if (ShowMaxLengthOption(_selectedField.ControlType ?? _selectedField.DataType))
+                    {
+                        <div class="row mb-2">
+                            <div class="col-md-6">
+                                <label class="form-label">Max Length</label>
+                                <input type="number" class="form-control" @bind="_selectedField.MaxLength" min="0" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Validation Message</label>
+                                <input type="text" class="form-control" @bind="_selectedField.ValidationMessage" placeholder="Custom error message" />
+                            </div>
+                        </div>
+                    }
+                    @if (_selectedField.ControlType == "select" || _selectedField.ControlType == "radio" || _selectedField.DataType == "select" || _selectedField.DataType == "radio")
+                    {
+                        <div class="row mb-2">
+                            <div class="col-12">
+                                <label class="form-label">Options (one per line)</label>
+                                <textarea class="form-control" rows="3" @bind="_selectedField.DropdownOptions" placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
+                                <small class="form-text text-muted">Enter each option on a new line</small>
+                            </div>
+                        </div>
+                    }
+                    <div class="row mb-2">
+                        <div class="col-md-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" @bind="_selectedField.IsRequired" />
+                                <label class="form-check-label">Required</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" @bind="_selectedField.IsReadOnly" />
+                                <label class="form-check-label">Read Only</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" @bind="_selectedField.IsVisible" />
+                                <label class="form-check-label">Visible</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" @bind="_selectedField.IsVisibleInDataView" />
+                                <label class="form-check-label">Visible in Data View</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseFieldConfig">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
 @code {
     [Parameter] public int? FormId { get; set; }
     
@@ -995,6 +1183,10 @@
     private Dictionary<string, string> _fieldOriginalSqlTypes = new(); // Track original SQL types for each field
     private bool _isDragOver = false;
     private string ActiveTab = "details"; // Default to Form Details tab
+
+    // Section-related drag and drop fields
+    private FormSection? _dragTargetSection;
+    private FormField? _selectedField;
 
     // Permission-related fields
     private bool _isLoadingPermissions = false;
@@ -2231,4 +2423,183 @@
     }
 
     #endregion
+
+    // Section-related drag and drop methods
+    private void OnSectionDragEnter(DragEventArgs e, FormSection section)
+    {
+        _dragTargetSection = section;
+        StateHasChanged();
+    }
+
+    private void OnSectionDrop(DragEventArgs e, FormSection section)
+    {
+        _isDragOver = false;
+        _dragTargetSection = null;
+        
+        if (_draggedColumn != null)
+        {
+            var existingField = _formDefinition.Fields.FirstOrDefault(f => f.Name == _draggedColumn.Name);
+            if (existingField == null)
+            {
+                var defaultControlType = GetDefaultControlTypeForSqlType(_draggedColumn.DataType);
+                var newField = new FormField
+                {
+                    Name = _draggedColumn.Name,
+                    DisplayName = _draggedColumn.Name,
+                    DataType = defaultControlType,
+                    ControlType = defaultControlType,
+                    MaxLength = _draggedColumn.MaxLength,
+                    IsRequired = !_draggedColumn.IsNullable && !_draggedColumn.IsIdentity,
+                    IsReadOnly = _draggedColumn.IsIdentity || _draggedColumn.IsPrimaryKey,
+                    IsVisible = true,
+                    IsVisibleInDataView = true,
+                    DefaultValue = GetDefaultValueForSqlType(_draggedColumn.DataType, _draggedColumn.IsNullable, _draggedColumn.DefaultValue),
+                    DisplayOrder = _formDefinition.Fields.Count + 1,
+                    FormSectionId = section.Id,
+                    GridRow = GetNextAvailableRow(section),
+                    GridColumn = 1,
+                    GridColumnSpan = 6
+                };
+                
+                // Store the original SQL type for this field
+                _fieldOriginalSqlTypes[newField.Name] = _draggedColumn.DataType;
+                
+                _formDefinition.Fields.Add(newField);
+            }
+            
+            _draggedColumn = null;
+            StateHasChanged();
+        }
+    }
+
+    // Section management methods
+    private void AddSection()
+    {
+        if (_formDefinition.Sections == null)
+        {
+            _formDefinition.Sections = new List<FormSection>();
+        }
+        
+        var newSection = new FormSection
+        {
+            Id = GetNextSectionId(),
+            FormDefinitionId = FormId ?? 0,
+            Name = $"Section {_formDefinition.Sections.Count + 1}",
+            DisplayOrder = _formDefinition.Sections.Count + 1,
+            MaxColumns = 2,
+            IsCollapsible = false
+        };
+        
+        _formDefinition.Sections.Add(newSection);
+        StateHasChanged();
+    }
+
+    private void RemoveSection(FormSection section)
+    {
+        if (_formDefinition.Sections != null)
+        {
+            // Move fields from this section to unassigned (for backward compatibility)
+            var fieldsInSection = _formDefinition.Fields.Where(f => f.FormSectionId == section.Id).ToList();
+            foreach (var field in fieldsInSection)
+            {
+                field.FormSectionId = null;
+                field.GridRow = 1;
+                field.GridColumn = 1;
+                field.GridColumnSpan = 6;
+            }
+            
+            _formDefinition.Sections.Remove(section);
+            
+            // Reorder remaining sections
+            var orderedSections = _formDefinition.Sections.OrderBy(s => s.DisplayOrder).ToList();
+            for (int i = 0; i < orderedSections.Count; i++)
+            {
+                orderedSections[i].DisplayOrder = i + 1;
+            }
+        }
+        StateHasChanged();
+    }
+
+    private void ToggleSectionDescription(FormSection section)
+    {
+        if (string.IsNullOrEmpty(section.Description))
+        {
+            section.Description = "";
+        }
+        else
+        {
+            section.Description = null;
+        }
+        StateHasChanged();
+    }
+
+    private void ConfigureField(FormField field)
+    {
+        _selectedField = field;
+        // This could open a modal or expand an accordion for detailed field configuration
+        StateHasChanged();
+    }
+
+    private void CloseFieldConfig()
+    {
+        _selectedField = null;
+        StateHasChanged();
+    }
+
+    private void MigrateLegacyFields()
+    {
+        var legacyFields = _formDefinition.Fields.Where(f => f.FormSectionId == null || f.FormSectionId == 0).ToList();
+        if (legacyFields.Any())
+        {
+            // Create a new section for legacy fields
+            AddSection();
+            var newSection = _formDefinition.Sections?.LastOrDefault();
+            
+            if (newSection != null)
+            {
+                newSection.Name = "Migrated Fields";
+                
+                // Move all legacy fields to this section
+                int currentRow = 1;
+                int currentColumn = 1;
+                
+                foreach (var field in legacyFields)
+                {
+                    field.FormSectionId = newSection.Id;
+                    field.GridRow = currentRow;
+                    field.GridColumn = currentColumn;
+                    field.GridColumnSpan = 6;
+                    
+                    currentColumn++;
+                    if (currentColumn > newSection.MaxColumns)
+                    {
+                        currentColumn = 1;
+                        currentRow++;
+                    }
+                }
+            }
+        }
+        StateHasChanged();
+    }
+
+    // Helper methods
+    private int GetNextSectionId()
+    {
+        if (_formDefinition.Sections?.Any() == true)
+        {
+            return _formDefinition.Sections.Max(s => s.Id) + 1;
+        }
+        return 1;
+    }
+
+    private int GetNextAvailableRow(FormSection section)
+    {
+        var fieldsInSection = _formDefinition.Fields.Where(f => f.FormSectionId == section.Id).ToList();
+        if (!fieldsInSection.Any())
+        {
+            return 1;
+        }
+        
+        return fieldsInSection.Max(f => f.GridRow) + 1;
+    }
 }

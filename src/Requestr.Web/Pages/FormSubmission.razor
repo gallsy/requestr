@@ -88,101 +88,236 @@ else
                         else
                         {
                             <EditForm Model="_fieldValues" OnValidSubmit="SubmitForm">
-                            <div class="row">
-                                @foreach (var field in _formDefinition.Fields.Where(f => f.IsVisible).OrderBy(f => f.DisplayOrder))
+                            
+                            @* Render form sections with grid layout *@
+                            @if (_formDefinition.Sections.Any())
+                            {
+                                @foreach (var formSection in _formDefinition.Sections.OrderBy(s => s.DisplayOrder))
                                 {
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label">
-                                            @field.DisplayName
-                                            @if (field.IsRequired)
-                                            {
-                                                <span class="text-danger">*</span>
+                                    <div class="form-section mb-4">
+                                        @if (!string.IsNullOrEmpty(formSection.Name))
+                                        {
+                                            <h5 class="section-title border-bottom pb-2 mb-3">
+                                                @formSection.Name
+                                            </h5>
+                                        }
+                                        @if (!string.IsNullOrEmpty(formSection.Description))
+                                        {
+                                            <p class="text-muted small mb-3">@formSection.Description</p>
+                                        }
+                                        
+                                        @* Grid layout for form fields *@
+                                        <div class="form-grid" style="display: grid; grid-template-columns: repeat(@formSection.MaxColumns, 1fr); gap: 1rem; margin-bottom: 1rem;">
+                                            @{
+                                                var sectionFields = formSection.Fields.Where(f => f.IsVisible).ToList();
+                                                var maxRow = sectionFields.Any() ? sectionFields.Max(f => f.GridRow) : 0;
                                             }
-                                        </label>
-                                        
-                                        @{
-                                            var dataType = field.DataType?.ToLower() ?? "text";
-                                            var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : DetermineControlType(dataType);
-                                        }
-                                        
-                                        @if (controlType == "textarea")
-                                        {
-                                            <textarea class="form-control" 
-                                                     rows="3"
-                                                     @bind="_fieldValues[field.Name]"
-                                                     disabled="@field.IsReadOnly"
-                                                     placeholder="@field.DefaultValue">
-                                            </textarea>
-                                        }
-                                        else if (controlType == "checkbox")
-                                        {
-                                            <div class="form-check">
-                                                <input class="form-check-input" 
-                                                       type="checkbox" 
-                                                       @bind="_checkboxValues[field.Name]"
-                                                       disabled="@field.IsReadOnly" />
-                                                <label class="form-check-label">
-                                                    @field.DisplayName
-                                                </label>
-                                            </div>
-                                        }
-                                        else if (controlType == "select")
-                                        {
-                                            <select class="form-select" 
-                                                    @bind="_fieldValues[field.Name]"
-                                                    disabled="@field.IsReadOnly">
-                                                <option value="">Select an option</option>
-                                                @if (!string.IsNullOrEmpty(field.DropdownOptions))
+                                            @for (int row = 1; row <= maxRow; row++)
+                                            {
+                                                @foreach (var field in sectionFields
+                                                    .Where(f => f.GridRow == row)
+                                                    .OrderBy(f => f.GridColumn))
                                                 {
-                                                    @foreach (var option in GetDropdownOptions(field.DropdownOptions))
-                                                    {
-                                                        <option value="@option.Value">@option.Text</option>
-                                                    }
+                                                    <div class="form-field-container" 
+                                                         style="grid-row: @row; grid-column: @field.GridColumn / span @field.GridColumnSpan;">
+                                                        <label class="form-label">
+                                                            @field.DisplayName
+                                                            @if (field.IsRequired)
+                                                            {
+                                                                <span class="text-danger">*</span>
+                                                            }
+                                                        </label>
+                                                        
+                                                        @{
+                                                            var dataType = field.DataType?.ToLower() ?? "text";
+                                                            var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : DetermineControlType(dataType);
+                                                        }
+                                                        
+                                                        @* Render the appropriate control type *@
+                                                        @if (controlType == "textarea")
+                                                        {
+                                                            <textarea class="form-control" 
+                                                                     rows="3"
+                                                                     @bind="_fieldValues[field.Name]"
+                                                                     disabled="@field.IsReadOnly"
+                                                                     placeholder="@field.DefaultValue">
+                                                            </textarea>
+                                                        }
+                                                        else if (controlType == "checkbox")
+                                                        {
+                                                            <div class="form-check">
+                                                                <input class="form-check-input" 
+                                                                       type="checkbox" 
+                                                                       @bind="_checkboxValues[field.Name]"
+                                                                       disabled="@field.IsReadOnly" />
+                                                                <label class="form-check-label">
+                                                                    @field.DisplayName
+                                                                </label>
+                                                            </div>
+                                                        }
+                                                        else if (controlType == "select")
+                                                        {
+                                                            <select class="form-select" 
+                                                                    @bind="_fieldValues[field.Name]"
+                                                                    disabled="@field.IsReadOnly">
+                                                                <option value="">Select an option</option>
+                                                                @if (!string.IsNullOrEmpty(field.DropdownOptions))
+                                                                {
+                                                                    @foreach (var option in GetDropdownOptions(field.DropdownOptions))
+                                                                    {
+                                                                        <option value="@option.Value">@option.Text</option>
+                                                                    }
+                                                                }
+                                                            </select>
+                                                        }
+                                                        else if (controlType == "date")
+                                                        {
+                                                            <input type="date" 
+                                                                   class="form-control"
+                                                                   value="@GetDateValue(field.Name)"
+                                                                   @onchange="@((e) => SetFieldValue(field.Name, e.Value))"
+                                                                   disabled="@field.IsReadOnly" />
+                                                        }
+                                                        else if (controlType == "datetime-local")
+                                                        {
+                                                            <input type="datetime-local" 
+                                                                   class="form-control"
+                                                                   value="@GetDateTimeValue(field.Name)"
+                                                                   @onchange="@((e) => SetFieldValue(field.Name, e.Value))"
+                                                                   disabled="@field.IsReadOnly" />
+                                                        }
+                                                        else if (controlType == "time")
+                                                        {
+                                                            <input type="time" 
+                                                                   class="form-control"
+                                                                   value="@GetTimeValue(field.Name)"
+                                                                   @onchange="@((e) => SetFieldValue(field.Name, e.Value))"
+                                                                   disabled="@field.IsReadOnly" />
+                                                        }
+                                                        else
+                                                        {
+                                                            var inputType = GetInputType(dataType);
+                                                            <input type="@inputType" 
+                                                                   class="form-control"
+                                                                   @bind="_fieldValues[field.Name]"
+                                                                   disabled="@field.IsReadOnly"
+                                                                   placeholder="@field.DefaultValue"
+                                                                   step="@(inputType == "number" ? "any" : null)"
+                                                                   maxlength="@(inputType == "text" && field.MaxLength > 0 ? field.MaxLength.ToString() : null)" />
+                                                        }
+                                                        
+                                                        @if (!string.IsNullOrEmpty(field.ValidationMessage))
+                                                        {
+                                                            <small class="form-text text-muted">@field.ValidationMessage</small>
+                                                        }
+                                                    </div>
                                                 }
-                                            </select>
-                                        }
-                                        else if (controlType == "date")
-                                        {
-                                            <input type="date" 
-                                                   class="form-control"
-                                                   value="@GetDateValue(field.Name)"
-                                                   @onchange="@((e) => SetFieldValue(field.Name, e.Value))"
-                                                   disabled="@field.IsReadOnly" />
-                                        }                        else if (controlType == "datetime-local")
-                        {
-                            <input type="datetime-local" 
-                                   class="form-control"
-                                   value="@GetDateTimeValue(field.Name)"
-                                   @onchange="@((e) => SetFieldValue(field.Name, e.Value))"
-                                   disabled="@field.IsReadOnly" />
-                        }
-                                        else if (controlType == "time")
-                                        {
-                                            <input type="time" 
-                                                   class="form-control"
-                                                   value="@GetTimeValue(field.Name)"
-                                                   @onchange="@((e) => SetFieldValue(field.Name, e.Value))"
-                                                   disabled="@field.IsReadOnly" />
-                                        }
-                                        else
-                                        {
-                                            var inputType = GetInputType(dataType);
-                                            <input type="@inputType" 
-                                                   class="form-control"
-                                                   @bind="_fieldValues[field.Name]"
-                                                   disabled="@field.IsReadOnly"
-                                                   placeholder="@field.DefaultValue"
-                                                   step="@(inputType == "number" ? "any" : null)"
-                                                   maxlength="@(inputType == "text" && field.MaxLength > 0 ? field.MaxLength.ToString() : null)" />
-                                        }
-                                        
-                                        @if (!string.IsNullOrEmpty(field.ValidationMessage))
-                                        {
-                                            <small class="form-text text-muted">@field.ValidationMessage</small>
-                                        }
+                                            }
+                                        </div>
                                     </div>
                                 }
-                            </div>
+                            }
+                            else
+                            {
+                                @* Fallback: Render fields without form sections using legacy layout *@
+                                <div class="row">
+                                    @foreach (var field in _formDefinition.Fields.Where(f => f.IsVisible).OrderBy(f => f.DisplayOrder))
+                                    {
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">
+                                                @field.DisplayName
+                                                @if (field.IsRequired)
+                                                {
+                                                    <span class="text-danger">*</span>
+                                                }
+                                            </label>
+                                            
+                                            @{
+                                                var dataType = field.DataType?.ToLower() ?? "text";
+                                                var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : DetermineControlType(dataType);
+                                            }
+                                            
+                                            @* Same control rendering logic as above *@
+                                            @if (controlType == "textarea")
+                                            {
+                                                <textarea class="form-control" 
+                                                         rows="3"
+                                                         @bind="_fieldValues[field.Name]"
+                                                         disabled="@field.IsReadOnly"
+                                                         placeholder="@field.DefaultValue">
+                                                </textarea>
+                                            }
+                                            else if (controlType == "checkbox")
+                                            {
+                                                <div class="form-check">
+                                                    <input class="form-check-input" 
+                                                           type="checkbox" 
+                                                           @bind="_checkboxValues[field.Name]"
+                                                           disabled="@field.IsReadOnly" />
+                                                    <label class="form-check-label">
+                                                        @field.DisplayName
+                                                    </label>
+                                                </div>
+                                            }
+                                            else if (controlType == "select")
+                                            {
+                                                <select class="form-select" 
+                                                        @bind="_fieldValues[field.Name]"
+                                                        disabled="@field.IsReadOnly">
+                                                    <option value="">Select an option</option>
+                                                    @if (!string.IsNullOrEmpty(field.DropdownOptions))
+                                                    {
+                                                        @foreach (var option in GetDropdownOptions(field.DropdownOptions))
+                                                        {
+                                                            <option value="@option.Value">@option.Text</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            }
+                                            else if (controlType == "date")
+                                            {
+                                                <input type="date" 
+                                                       class="form-control"
+                                                       value="@GetDateValue(field.Name)"
+                                                       @onchange="@((e) => SetFieldValue(field.Name, e.Value))"
+                                                       disabled="@field.IsReadOnly" />
+                                            }
+                                            else if (controlType == "datetime-local")
+                                            {
+                                                <input type="datetime-local" 
+                                                       class="form-control"
+                                                       value="@GetDateTimeValue(field.Name)"
+                                                       @onchange="@((e) => SetFieldValue(field.Name, e.Value))"
+                                                       disabled="@field.IsReadOnly" />
+                                            }
+                                            else if (controlType == "time")
+                                            {
+                                                <input type="time" 
+                                                       class="form-control"
+                                                       value="@GetTimeValue(field.Name)"
+                                                       @onchange="@((e) => SetFieldValue(field.Name, e.Value))"
+                                                       disabled="@field.IsReadOnly" />
+                                            }
+                                            else
+                                            {
+                                                var inputType = GetInputType(dataType);
+                                                <input type="@inputType" 
+                                                       class="form-control"
+                                                       @bind="_fieldValues[field.Name]"
+                                                       disabled="@field.IsReadOnly"
+                                                       placeholder="@field.DefaultValue"
+                                                       step="@(inputType == "number" ? "any" : null)"
+                                                       maxlength="@(inputType == "text" && field.MaxLength > 0 ? field.MaxLength.ToString() : null)" />
+                                            }
+                                            
+                                            @if (!string.IsNullOrEmpty(field.ValidationMessage))
+                                            {
+                                                <small class="form-text text-muted">@field.ValidationMessage</small>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
                             
                             <div class="mt-4">
                                 <div class="row">

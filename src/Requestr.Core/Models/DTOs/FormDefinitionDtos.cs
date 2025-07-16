@@ -23,6 +23,7 @@ public class CreateFormDefinitionDto
 
     public string Schema { get; set; } = "dbo";
     public List<CreateFormFieldDto> Fields { get; set; } = new();
+    public List<CreateFormSectionDto> Sections { get; set; } = new();
     public List<string> ApproverRoles { get; set; } = new();
     public bool RequiresApproval { get; set; } = true;
 }
@@ -32,6 +33,26 @@ public class UpdateFormDefinitionDto : CreateFormDefinitionDto
     [Required]
     public int Id { get; set; }
     public bool IsActive { get; set; } = true;
+}
+
+public class CreateFormSectionDto
+{
+    [Required(ErrorMessage = "Section name is required")]
+    [MaxLength(255, ErrorMessage = "Section name cannot exceed 255 characters")]
+    public string Name { get; set; } = string.Empty;
+
+    [MaxLength(1000, ErrorMessage = "Description cannot exceed 1000 characters")]
+    public string? Description { get; set; }
+
+    [Range(0, 1000, ErrorMessage = "Display order must be between 0 and 1000")]
+    public int DisplayOrder { get; set; } = 0;
+
+    public bool IsCollapsible { get; set; } = false;
+    public bool DefaultExpanded { get; set; } = true;
+    public string? VisibilityCondition { get; set; }
+
+    [Range(1, 12, ErrorMessage = "Max columns must be between 1 and 12")]
+    public int MaxColumns { get; set; } = 12;
 }
 
 public class CreateFormFieldDto
@@ -63,6 +84,18 @@ public class CreateFormFieldDto
 
     [Range(0, 1000, ErrorMessage = "Display order must be between 0 and 1000")]
     public int DisplayOrder { get; set; }
+
+    // Grid positioning properties
+    public int? FormSectionId { get; set; }
+
+    [Range(1, 100, ErrorMessage = "Grid row must be between 1 and 100")]
+    public int GridRow { get; set; } = 1;
+
+    [Range(1, 12, ErrorMessage = "Grid column must be between 1 and 12")]
+    public int GridColumn { get; set; } = 1;
+
+    [Range(1, 12, ErrorMessage = "Grid column span must be between 1 and 12")]
+    public int GridColumnSpan { get; set; } = 6;
 }
 
 public class FormDefinitionSummaryDto
@@ -78,5 +111,6 @@ public class FormDefinitionSummaryDto
     public DateTime CreatedAt { get; set; }
     public string CreatedBy { get; set; } = string.Empty;
     public int FieldCount { get; set; }
+    public int SectionCount { get; set; }
     public int PendingRequestCount { get; set; }
 }
