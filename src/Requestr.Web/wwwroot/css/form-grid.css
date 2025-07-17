@@ -3,14 +3,15 @@
     border: 1px solid #e9ecef;
     border-radius: 0.5rem;
     padding: 1.5rem;
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    background: #ffffff;
     margin-bottom: 2rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-    transition: all 0.3s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    transition: all 0.2s ease;
 }
 
 .form-section:hover {
-    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    border-color: #dee2e6;
 }
 
 .section-title {
@@ -28,7 +29,7 @@
     top: 0;
     bottom: 0;
     width: 4px;
-    background: linear-gradient(135deg, #007bff, #0056b3);
+    background: #007bff;
     border-radius: 2px;
 }
 
@@ -115,24 +116,20 @@
     border: 2px dashed #e9ecef;
     padding: 20px;
     border-radius: 12px;
-    background: linear-gradient(135deg, #fafbfc 0%, #f8f9fa 100%);
+    background: #fafafa;
     background-image: 
-        linear-gradient(rgba(0,123,255,0.08) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0,123,255,0.08) 1px, transparent 1px);
+        linear-gradient(rgba(0,123,255,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,123,255,0.06) 1px, transparent 1px);
     background-size: 20px 20px;
     position: relative;
-    transition: all 0.3s ease;
-    box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+    transition: all 0.2s ease;
 }
 
 .grid-designer.drag-over {
     border-color: #007bff;
-    background: linear-gradient(135deg, #e8f4fd 0%, #f0f8ff 100%);
-    box-shadow: 
-        inset 0 1px 3px rgba(0,0,0,0.05),
-        0 0 0 3px rgba(0,123,255,0.1),
-        0 8px 25px rgba(0,123,255,0.15);
-    transform: translateY(-2px);
+    background: #f0f8ff;
+    box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
+    transform: translateY(-1px);
 }
 
 .grid-designer.has-fields {
@@ -152,26 +149,23 @@
 }
 
 .grid-cell.empty {
-    background: linear-gradient(135deg, rgba(248,249,250,0.6) 0%, rgba(233,236,239,0.3) 100%);
-    backdrop-filter: blur(2px);
+    background: rgba(248,249,250,0.8);
 }
 
 .grid-cell.empty:hover {
-    background: linear-gradient(135deg, rgba(0,123,255,0.1) 0%, rgba(0,123,255,0.05) 100%);
+    background: rgba(0,123,255,0.08);
     border-color: #007bff;
     border-style: solid;
-    box-shadow: 
-        0 4px 12px rgba(0,123,255,0.15),
-        inset 0 1px 0 rgba(255,255,255,0.2);
+    box-shadow: 0 2px 8px rgba(0,123,255,0.15);
     transform: translateY(-1px);
 }
 
 .grid-cell.drop-target {
-    background: linear-gradient(135deg, rgba(0,123,255,0.15) 0%, rgba(0,123,255,0.08) 100%);
+    background: rgba(0,123,255,0.12);
     border-color: #007bff;
     border-style: solid;
     animation: pulse 1.5s ease-in-out infinite;
-    box-shadow: 0 0 20px rgba(0,123,255,0.3);
+    box-shadow: 0 0 15px rgba(0,123,255,0.25);
 }
 
 @keyframes pulse {
@@ -193,25 +187,23 @@
     background-color: #fff;
     border-color: #007bff;
     border-style: solid;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
 .field-in-grid {
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    background: #ffffff;
     border: 2px solid #e9ecef;
     border-radius: 12px;
     padding: 16px;
     cursor: grab;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.2s ease;
     height: 100%;
     min-height: 80px;
     display: flex;
     flex-direction: column;
     position: relative;
     overflow: hidden;
-    box-shadow: 
-        0 2px 8px rgba(0,0,0,0.08),
-        0 1px 2px rgba(0,0,0,0.06);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .field-in-grid::before {
@@ -221,18 +213,16 @@
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #007bff, #0056b3);
+    background: #007bff;
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.2s ease;
 }
 
 .field-in-grid:hover {
-    background: linear-gradient(135deg, #f0f8ff 0%, #e8f4fd 100%);
+    background: #f8f9fa;
     border-color: #007bff;
-    transform: translateY(-3px);
-    box-shadow: 
-        0 8px 25px rgba(0,123,255,0.15),
-        0 4px 12px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,123,255,0.15);
     cursor: grab;
 }
 
@@ -247,11 +237,9 @@
 
 .field-in-grid.dragging {
     opacity: 0.8;
-    transform: rotate(3deg) scale(0.98);
+    transform: rotate(2deg) scale(0.98);
     z-index: 1000;
-    box-shadow: 
-        0 12px 35px rgba(0,123,255,0.3),
-        0 6px 15px rgba(0,0,0,0.2);
+    box-shadow: 0 8px 25px rgba(0,123,255,0.25);
 }
 
 .field-in-grid .field-header {
@@ -282,13 +270,12 @@
     font-size: 0.65rem;
     padding: 3px 8px;
     border-radius: 12px;
-    background: linear-gradient(135deg, #6c757d, #495057);
+    background: #6c757d;
     color: white;
     display: inline-block;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.3px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .field-in-grid .field-controls {
@@ -301,15 +288,13 @@
     position: absolute;
     top: 8px;
     right: 8px;
-    background: linear-gradient(135deg, rgba(0,123,255,0.1), rgba(0,123,255,0.05));
+    background: rgba(0,123,255,0.1);
     border: 1px solid rgba(0,123,255,0.2);
     border-radius: 6px;
     padding: 3px 8px;
     font-size: 0.65rem;
     color: #007bff;
     font-weight: 700;
-    backdrop-filter: blur(4px);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .field-resizer {
@@ -318,7 +303,7 @@
     right: 0;
     width: 16px;
     height: 16px;
-    background: linear-gradient(-45deg, transparent 30%, #007bff 30%, #007bff 40%, transparent 40%, transparent 60%, #007bff 60%, #007bff 70%, transparent 70%);
+    background-image: repeating-linear-gradient(-45deg, transparent, transparent 2px, #007bff 2px, #007bff 4px);
     cursor: nw-resize;
     border-radius: 0 0 0.375rem 0;
 }
@@ -326,29 +311,24 @@
 .section-designer {
     border: 2px solid #e9ecef;
     border-radius: 16px;
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    background: #ffffff;
     margin-bottom: 32px;
     overflow: hidden;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 
-        0 4px 12px rgba(0,0,0,0.08),
-        0 1px 3px rgba(0,0,0,0.06);
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
 .section-designer:hover {
-    box-shadow: 
-        0 8px 25px rgba(0,0,0,0.12),
-        0 3px 8px rgba(0,0,0,0.08);
-    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    transform: translateY(-1px);
     border-color: #007bff;
 }
 
 .section-header {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    background: #f8f9fa;
     padding: 20px 24px;
     border-bottom: 2px solid #e9ecef;
     position: relative;
-    backdrop-filter: blur(8px);
 }
 
 .section-header::before {
@@ -358,7 +338,7 @@
     top: 0;
     bottom: 0;
     width: 5px;
-    background: linear-gradient(135deg, #007bff, #0056b3);
+    background: #007bff;
     border-radius: 0 2px 2px 0;
 }
 
@@ -369,23 +349,21 @@
     left: 0;
     right: 0;
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
+    background: rgba(255,255,255,0.6);
 }
 
 .section-grid {
     padding: 24px;
     min-height: 200px;
-    background: linear-gradient(135deg, #fafbfc 0%, #ffffff 100%);
+    background: #ffffff;
 }
 
 /* Enhanced drag and drop states */
 .drag-over {
     border-color: #007bff !important;
-    background: linear-gradient(135deg, #e8f4fd 0%, #f0f8ff 100%) !important;
-    box-shadow: 
-        0 0 0 3px rgba(0,123,255,0.1),
-        0 8px 25px rgba(0,123,255,0.2) !important;
-    transform: translateY(-2px) !important;
+    background: #f0f8ff !important;
+    box-shadow: 0 0 0 3px rgba(0,123,255,0.1) !important;
+    transform: translateY(-1px) !important;
 }
 
 .field-draggable {
@@ -409,29 +387,25 @@
 }
 
 .field-palette {
-    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+    background: #ffffff;
     border: 2px solid #e9ecef;
     border-radius: 16px;
     padding: 20px;
-    box-shadow: 
-        inset 0 1px 0 rgba(255,255,255,0.2),
-        0 2px 8px rgba(0,0,0,0.06);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .field-palette .field-item {
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    background: #ffffff;
     border: 2px solid #e9ecef;
     border-radius: 12px;
     padding: 16px;
     margin-bottom: 12px;
     cursor: grab;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.2s ease;
     user-select: none;
     position: relative;
     overflow: hidden;
-    box-shadow: 
-        0 2px 8px rgba(0,0,0,0.06),
-        0 1px 2px rgba(0,0,0,0.04);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .field-palette .field-item::before {
@@ -441,18 +415,16 @@
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, #007bff, #0056b3);
+    background: #007bff;
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.2s ease;
 }
 
 .field-palette .field-item:hover {
-    background: linear-gradient(135deg, #f0f8ff 0%, #e8f4fd 100%);
+    background: #f8f9fa;
     border-color: #007bff;
-    transform: translateX(6px) translateY(-2px);
-    box-shadow: 
-        0 8px 25px rgba(0,123,255,0.15),
-        0 4px 12px rgba(0,0,0,0.1);
+    transform: translateX(4px) translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,123,255,0.15);
     cursor: grab;
 }
 
@@ -466,7 +438,7 @@
 }
 
 .field-palette .field-item.field-disabled {
-    background: linear-gradient(135deg, #f1f3f4 0%, #e9ecef 100%);
+    background: #f1f3f4;
     color: #6c757d;
     cursor: not-allowed;
     transform: none;
@@ -476,11 +448,9 @@
 
 .field-palette .field-item.field-disabled:hover {
     transform: none;
-    box-shadow: 
-        0 2px 8px rgba(0,0,0,0.06),
-        0 1px 2px rgba(0,0,0,0.04);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     border-color: #e9ecef;
-    background: linear-gradient(135deg, #f1f3f4 0%, #e9ecef 100%);
+    background: #f1f3f4;
 }
 
 .field-palette .field-item.field-disabled::before {
@@ -594,12 +564,12 @@
     /* Form Section Styles - Dark Mode */
     .form-section {
         border-color: #374151;
-        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        background: #1f2937;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.4);
     }
 
     .form-section:hover {
-        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.5);
     }
 
     .section-title {
@@ -607,7 +577,7 @@
     }
 
     .section-title::before {
-        background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        background: #3b82f6;
     }
 
     .form-field-container .form-label {
@@ -641,20 +611,16 @@
     /* Grid Designer - Dark Mode */
     .grid-designer {
         border-color: #374151;
-        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+        background: #1f2937;
         background-image: 
-            linear-gradient(rgba(59,130,246,0.1) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(59,130,246,0.1) 1px, transparent 1px);
-        box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+            linear-gradient(rgba(59,130,246,0.08) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(59,130,246,0.08) 1px, transparent 1px);
     }
 
     .grid-designer.drag-over {
         border-color: #3b82f6;
-        background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
-        box-shadow: 
-            inset 0 1px 3px rgba(0,0,0,0.2),
-            0 0 0 3px rgba(59,130,246,0.2),
-            0 8px 25px rgba(59,130,246,0.3);
+        background: #1e3a8a;
+        box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
     }
 
     .grid-designer.has-fields {
@@ -662,54 +628,46 @@
     }
 
     .grid-cell.empty {
-        background: linear-gradient(135deg, rgba(31,41,55,0.8) 0%, rgba(17,24,39,0.4) 100%);
+        background: rgba(31,41,55,0.8);
     }
 
     .grid-cell.empty:hover {
-        background: linear-gradient(135deg, rgba(59,130,246,0.2) 0%, rgba(59,130,246,0.1) 100%);
+        background: rgba(59,130,246,0.15);
         border-color: #3b82f6;
-        box-shadow: 
-            0 4px 12px rgba(59,130,246,0.25),
-            inset 0 1px 0 rgba(255,255,255,0.05);
+        box-shadow: 0 2px 8px rgba(59,130,246,0.25);
     }
 
     .grid-cell.drop-target {
-        background: linear-gradient(135deg, rgba(59,130,246,0.25) 0%, rgba(59,130,246,0.15) 100%);
+        background: rgba(59,130,246,0.2);
         border-color: #3b82f6;
-        box-shadow: 0 0 20px rgba(59,130,246,0.4);
+        box-shadow: 0 0 15px rgba(59,130,246,0.4);
     }
 
     .grid-cell.occupied {
         background-color: #1f2937;
         border-color: #3b82f6;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
 
     /* Field in Grid - Dark Mode */
     .field-in-grid {
-        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+        background: #1f2937;
         border-color: #374151;
-        box-shadow: 
-            0 2px 8px rgba(0,0,0,0.3),
-            0 1px 2px rgba(0,0,0,0.2);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.4);
     }
 
     .field-in-grid::before {
-        background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+        background: #3b82f6;
     }
 
     .field-in-grid:hover {
-        background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+        background: #1e3a8a;
         border-color: #3b82f6;
-        box-shadow: 
-            0 8px 25px rgba(59,130,246,0.25),
-            0 4px 12px rgba(0,0,0,0.3);
+        box-shadow: 0 4px 12px rgba(59,130,246,0.25);
     }
 
     .field-in-grid.dragging {
-        box-shadow: 
-            0 12px 35px rgba(59,130,246,0.4),
-            0 6px 15px rgba(0,0,0,0.4);
+        box-shadow: 0 8px 25px rgba(59,130,246,0.4);
     }
 
     .field-in-grid .field-name {
@@ -730,100 +688,85 @@
     }
 
     .field-in-grid .field-type-badge {
-        background: linear-gradient(135deg, #374151, #1f2937);
+        background: #374151;
         color: #e5e7eb;
     }
 
     .field-in-grid .grid-position-indicator {
-        background: linear-gradient(135deg, rgba(59,130,246,0.2), rgba(59,130,246,0.1));
+        background: rgba(59,130,246,0.15);
         border-color: rgba(59,130,246,0.3);
         color: #60a5fa;
-        backdrop-filter: blur(8px);
     }
 
     /* Section Designer - Dark Mode */
     .section-designer {
         border-color: #374151;
-        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-        box-shadow: 
-            0 4px 12px rgba(0,0,0,0.3),
-            0 1px 3px rgba(0,0,0,0.2);
+        background: #1f2937;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
 
     .section-designer:hover {
-        box-shadow: 
-            0 8px 25px rgba(0,0,0,0.4),
-            0 3px 8px rgba(0,0,0,0.3);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.5);
         border-color: #3b82f6;
     }
 
     .section-header {
-        background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
+        background: #374151;
         border-bottom-color: #374151;
     }
 
     .section-header::before {
-        background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        background: #3b82f6;
     }
 
     .section-header::after {
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+        background: rgba(255,255,255,0.05);
     }
 
     .section-grid {
-        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+        background: #1f2937;
     }
 
     /* Field Palette - Dark Mode */
     .field-palette {
-        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+        background: #1f2937;
         border-color: #374151;
-        box-shadow: 
-            inset 0 1px 0 rgba(255,255,255,0.05),
-            0 2px 8px rgba(0,0,0,0.2);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
 
     .field-palette .field-item {
-        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+        background: #1f2937;
         border-color: #374151;
-        box-shadow: 
-            0 2px 8px rgba(0,0,0,0.2),
-            0 1px 2px rgba(0,0,0,0.15);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
 
     .field-palette .field-item::before {
-        background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+        background: #3b82f6;
     }
 
     .field-palette .field-item:hover {
-        background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+        background: #1e3a8a;
         border-color: #3b82f6;
-        box-shadow: 
-            0 8px 25px rgba(59,130,246,0.25),
-            0 4px 12px rgba(0,0,0,0.3);
+        box-shadow: 0 4px 12px rgba(59,130,246,0.25);
     }
 
     .field-palette .field-item.field-disabled {
-        background: linear-gradient(135deg, #111827 0%, #0f172a 100%);
+        background: #111827;
         color: #4b5563;
         filter: grayscale(0.6);
     }
 
     .field-palette .field-item.field-disabled:hover {
-        background: linear-gradient(135deg, #111827 0%, #0f172a 100%);
+        background: #111827;
         border-color: #374151;
-        box-shadow: 
-            0 2px 8px rgba(0,0,0,0.2),
-            0 1px 2px rgba(0,0,0,0.15);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
 
     /* Enhanced drag states - Dark Mode */
     .drag-over {
         border-color: #3b82f6 !important;
-        background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%) !important;
-        box-shadow: 
-            0 0 0 3px rgba(59,130,246,0.2),
-            0 8px 25px rgba(59,130,246,0.3) !important;
+        background: #1e3a8a !important;
+        box-shadow: 0 0 0 3px rgba(59,130,246,0.2) !important;
     }
 
     /* Field item details - Dark Mode */
@@ -873,12 +816,12 @@
     
     .form-section {
         border-color: #374151;
-        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        background: #1f2937;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.4);
     }
 
     .form-section:hover {
-        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.5);
     }
 
     .section-title {
@@ -886,26 +829,22 @@
     }
 
     .section-title::before {
-        background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        background: #3b82f6;
     }
 
     /* Grid and field styles for explicit dark theme - Higher specificity */
     [data-theme="dark"] .grid-designer {
         border-color: #374151 !important;
-        background: linear-gradient(135deg, #1f2937 0%, #111827 100%) !important;
+        background: #1f2937 !important;
         background-image: 
-            linear-gradient(rgba(59,130,246,0.1) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(59,130,246,0.1) 1px, transparent 1px) !important;
-        box-shadow: inset 0 1px 3px rgba(0,0,0,0.2) !important;
+            linear-gradient(rgba(59,130,246,0.08) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(59,130,246,0.08) 1px, transparent 1px) !important;
     }
 
     [data-theme="dark"] .grid-designer.drag-over {
         border-color: #3b82f6 !important;
-        background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%) !important;
-        box-shadow: 
-            inset 0 1px 3px rgba(0,0,0,0.2),
-            0 0 0 3px rgba(59,130,246,0.2),
-            0 8px 25px rgba(59,130,246,0.3) !important;
+        background: #1e3a8a !important;
+        box-shadow: 0 0 0 3px rgba(59,130,246,0.2) !important;
     }
 
     [data-theme="dark"] .grid-designer.has-fields {
@@ -913,7 +852,7 @@
     }
 
     [data-theme="dark"] .field-in-grid {
-        background: linear-gradient(135deg, #1f2937 0%, #111827 100%) !important;
+        background: #1f2937 !important;
         border-color: #374151 !important;
         color: #f9fafb !important;
     }
@@ -928,23 +867,21 @@
 
     [data-theme="dark"] .field-palette .field-item,
     [data-theme="dark"] div.field-item {
-        background: linear-gradient(135deg, #1f2937 0%, #111827 100%) !important;
+        background: #1f2937 !important;
         border-color: #374151 !important;
         color: #f9fafb !important;
     }
 
     [data-theme="dark"] .field-palette .field-item:hover,
     [data-theme="dark"] div.field-item:hover {
-        background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%) !important;
+        background: #1e3a8a !important;
         border-color: #3b82f6 !important;
-        box-shadow: 
-            0 8px 25px rgba(59,130,246,0.25),
-            0 4px 12px rgba(0,0,0,0.3) !important;
+        box-shadow: 0 4px 12px rgba(59,130,246,0.25) !important;
     }
 
     [data-theme="dark"] .field-palette .field-item.field-disabled,
     [data-theme="dark"] div.field-item.field-disabled {
-        background: linear-gradient(135deg, #111827 0%, #0f172a 100%) !important;
+        background: #111827 !important;
         color: #4b5563 !important;
         border-color: #374151 !important;
         filter: grayscale(0.6) !important;
@@ -952,11 +889,9 @@
 
     [data-theme="dark"] .field-palette .field-item.field-disabled:hover,
     [data-theme="dark"] div.field-item.field-disabled:hover {
-        background: linear-gradient(135deg, #111827 0%, #0f172a 100%) !important;
+        background: #111827 !important;
         border-color: #374151 !important;
-        box-shadow: 
-            0 2px 8px rgba(0,0,0,0.2),
-            0 1px 2px rgba(0,0,0,0.15) !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3) !important;
         transform: none !important;
     }
 }
