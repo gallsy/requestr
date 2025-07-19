@@ -448,8 +448,8 @@
                                                     
                                                     @{
                                                         var sectionFields = _formDefinition.Fields.Where(f => f.FormSectionId == section.Id).OrderBy(f => f.GridRow).ThenBy(f => f.GridColumn).ToList();
-                                                        var maxRow = sectionFields.Any() ? sectionFields.Max(f => f.GridRow) : 6;
-                                                        var gridRows = Math.Max(maxRow, 6); // Minimum 6 rows
+                                                        var maxRow = sectionFields.Any() ? sectionFields.Max(f => f.GridRow) : 0;
+                                                        var gridRows = maxRow + 1; // n+1 rows where n is the maximum row count
                                                         var gridTemplateColumns = $"repeat({section.MaxColumns}, 1fr)";
                                                         var gridTemplateRows = $"repeat({gridRows}, 80px)";
                                                         var gridStyle = $"grid-template-columns: {gridTemplateColumns}; grid-template-rows: {gridTemplateRows}; --columns: {section.MaxColumns}; --rows: {gridRows};";
@@ -459,10 +459,7 @@
                                                     <div class="grid-designer @(sectionFields.Any() ? "has-fields" : "")" 
                                                          style="@gridStyle"
                                                          @onclick="@(e => OnGridCellClick(e, section))">
-                                                        
-                                                        <!-- Grid Overlay for Visual Guidelines -->
-                                                        <div class="grid-overlay"></div>
-                                                        
+                                                                                                                
                                                         @if (!sectionFields.Any())
                                                         {
                                                             <!-- Empty state with visual grid -->
@@ -518,7 +515,7 @@
                                                             var fieldGridStyle = $"grid-column: {field.GridColumn} / span {field.GridColumnSpan}; grid-row: {field.GridRow};";
                                                             <div class="field-in-grid @(_draggedField == field ? "dragging" : "")" 
                                                                  style="@fieldGridStyle"
-                                                                 draggable="true"
+                                                                 draggable="@(_isResizing ? "false" : "true")"
                                                                  @ondragstart="@(e => OnFieldDragStart(e, field))"
                                                                  @ondragend="OnFieldDragEnd"
                                                                  @onclick="@(e => OnFieldClick(e, field))">
@@ -583,7 +580,15 @@
                                                                 </div>
                                                                 
                                                                 <!-- Resize handle for visual feedback -->
-                                                                <div class="field-resizer" title="Drag to resize"></div>
+                                                                <div class="field-resizer" 
+                                                                     title="Drag to resize"
+                                                                     draggable="false"
+                                                                     @onmousedown="@(e => OnResizeStart(e, field))"
+                                                                     @onmousedown:stopPropagation="true"
+                                                                     @onmousedown:preventDefault="true"
+                                                                     @ondragstart:preventDefault="true"
+                                                                     @ondragstart:stopPropagation="true"
+                                                                     @onclick:stopPropagation="true"></div>
                                                             </div>
                                                         }
                                                     </div>
@@ -1346,6 +1351,12 @@
     private string _fieldFilter = "";
     private bool _showGridGuides = false;
     private FormField? _selectedFieldForPositioning;
+
+    // Resize-related fields
+    private bool _isResizing = false;
+    private FormField? _resizingField;
+    private int _resizeStartX = 0;
+    private int _initialColumnSpan = 1;
 
     // Section-related drag and drop fields
     private FormSection? _dragTargetSection;
@@ -2623,7 +2634,7 @@
                     FormSectionId = section.Id,
                     GridRow = GetNextAvailableRow(section),
                     GridColumn = 1,
-                    GridColumnSpan = 6
+                    GridColumnSpan = Math.Min(6, section.MaxColumns) // Ensure span doesn't exceed section width
                 };
                 
                 // Store the original SQL type for this field
@@ -2840,6 +2851,10 @@
 
     private void OnFieldClick(MouseEventArgs e, FormField field)
     {
+        // Don't handle field clicks during resize operations
+        if (_isResizing)
+            return;
+            
         if (_selectedFieldForPositioning == field)
         {
             _selectedFieldForPositioning = null;
@@ -3002,9 +3017,60 @@
             // Move existing field to new position
             if (targetRow.HasValue && targetCol.HasValue)
             {
+                var originalSpan = _draggedField.GridColumnSpan;
                 _draggedField.FormSectionId = section.Id;
                 _draggedField.GridRow = targetRow.Value;
                 _draggedField.GridColumn = targetCol.Value;
+                
+                // Check if current span fits in the new position, adjust if necessary
+                var maxAllowedSpan = section.MaxColumns - targetCol.Value + 1;
+                if (_draggedField.GridColumnSpan > maxAllowedSpan)
+                {
+                    _draggedField.GridColumnSpan = Math.Max(1, maxAllowedSpan);
+                }
+                
+                // Also check for collisions with other fields and adjust span if needed
+                var fieldsInSection = _formDefinition.Fields.Where(f => f.FormSectionId == section.Id && f != _draggedField).ToList();
+                
+                // Find the maximum span that fits without collision
+                var maxSpanWithoutCollision = _draggedField.GridColumnSpan;
+                for (int span = 1; span <= _draggedField.GridColumnSpan; span++)
+                {
+                    bool hasCollision = false;
+                    
+                    // Check if this span would cause any collisions
+                    for (int checkCol = targetCol.Value; checkCol < targetCol.Value + span; checkCol++)
+                    {
+                        var collision = fieldsInSection.Any(f => 
+                            f.GridRow == targetRow.Value && 
+                            f.GridColumn <= checkCol && 
+                            f.GridColumn + f.GridColumnSpan > checkCol);
+                            
+                        if (collision)
+                        {
+                            hasCollision = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!hasCollision)
+                    {
+                        maxSpanWithoutCollision = span;
+                    }
+                    else
+                    {
+                        // Stop at the first span that causes collision
+                        break;
+                    }
+                }
+                
+                // Log span adjustment for debugging
+                if (originalSpan != maxSpanWithoutCollision)
+                {
+                    Console.WriteLine($"Adjusted field '{_draggedField.Name}' span from {originalSpan} to {maxSpanWithoutCollision} at position {targetRow.Value},{targetCol.Value}");
+                }
+                
+                _draggedField.GridColumnSpan = maxSpanWithoutCollision;
             }
             else
             {
@@ -3012,10 +3078,132 @@
                 _draggedField.FormSectionId = section.Id;
                 _draggedField.GridRow = GetNextAvailableRow(section);
                 _draggedField.GridColumn = 1;
+                
+                // Check if current span fits in the section, adjust if necessary
+                if (_draggedField.GridColumnSpan > section.MaxColumns)
+                {
+                    _draggedField.GridColumnSpan = Math.Max(1, section.MaxColumns);
+                }
             }
             _draggedField = null;
         }
         
         StateHasChanged();
     }
+
+    private async Task OnResizeStart(MouseEventArgs e, FormField field)
+    {
+        _isResizing = true;
+        _resizingField = field;
+        _resizeStartX = (int)e.ClientX;
+        _initialColumnSpan = field.GridColumnSpan;
+        
+        // Debug logging
+        await JSRuntime.InvokeVoidAsync("console.log", $"Resize started for field {field.Name}, initial span: {_initialColumnSpan}, startX: {_resizeStartX}");
+        
+        // Attach global mouse event listeners
+        await JSRuntime.InvokeVoidAsync("addGlobalResizeListeners", DotNetObjectReference.Create(this));
+        StateHasChanged(); // Force re-render to disable dragging
+    }
+
+    [JSInvokable]
+    public async Task OnResizeMove(int clientX)
+    {
+        if (!_isResizing || _resizingField == null) return;
+
+        var deltaX = clientX - _resizeStartX;
+        var section = _formDefinition.Sections.FirstOrDefault(s => s.Id == _resizingField.FormSectionId);
+        if (section == null) return;
+
+        // Calculate new column span based on mouse movement
+        // Using 50px per column for more responsive resizing
+        var columnChange = Math.Round(deltaX / 50.0);
+        var maxAllowedSpan = section.MaxColumns - _resizingField.GridColumn + 1;
+        var newColumnSpan = Math.Max(1, Math.Min(maxAllowedSpan, _initialColumnSpan + (int)columnChange));
+
+        // Debug logging
+        await JSRuntime.InvokeVoidAsync("console.log", $"Resize move: deltaX={deltaX}, columnChange={columnChange}, newSpan={newColumnSpan}, currentSpan={_resizingField.GridColumnSpan}");
+
+        if (newColumnSpan != _resizingField.GridColumnSpan)
+        {
+            _resizingField.GridColumnSpan = newColumnSpan;
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnResizeEnd()
+    {
+        if (_isResizing)
+        {
+            await JSRuntime.InvokeVoidAsync("console.log", $"Resize ended for field {_resizingField?.Name}, final span: {_resizingField?.GridColumnSpan}");
+            
+            // Remove global mouse event listeners first
+            await JSRuntime.InvokeVoidAsync("removeGlobalResizeListeners");
+            
+            // Add a small delay before clearing resize state to prevent immediate field clicks
+            await Task.Delay(100);
+            
+            _isResizing = false;
+            _resizingField = null;
+            StateHasChanged(); // Force re-render to re-enable dragging
+        }
+    }
 }
+
+<script>
+    let dotNetRef = null;
+    let resizeStartX = 0;
+
+    window.addGlobalResizeListeners = (dotNetReference) => {
+        dotNetRef = dotNetReference;
+        
+        document.addEventListener('mousemove', handleMouseMove, true);
+        document.addEventListener('mouseup', handleMouseUp, true);
+        document.addEventListener('dragstart', preventDragDuringResize, true);
+        
+        // Prevent text selection during resize
+        document.body.style.userSelect = 'none';
+        document.body.style.webkitUserSelect = 'none';
+        document.body.style.mozUserSelect = 'none';
+        document.body.style.msUserSelect = 'none';
+    };
+
+    window.removeGlobalResizeListeners = () => {
+        document.removeEventListener('mousemove', handleMouseMove, true);
+        document.removeEventListener('mouseup', handleMouseUp, true);
+        document.removeEventListener('dragstart', preventDragDuringResize, true);
+        
+        // Restore text selection
+        document.body.style.userSelect = '';
+        document.body.style.webkitUserSelect = '';
+        document.body.style.mozUserSelect = '';
+        document.body.style.msUserSelect = '';
+        
+        dotNetRef = null;
+    };
+
+    function preventDragDuringResize(e) {
+        if (dotNetRef) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+    }
+
+    function handleMouseMove(e) {
+        if (dotNetRef) {
+            e.preventDefault();
+            e.stopPropagation();
+            dotNetRef.invokeMethodAsync('OnResizeMove', e.clientX);
+        }
+    }
+
+    function handleMouseUp(e) {
+        if (dotNetRef) {
+            e.preventDefault();
+            e.stopPropagation();
+            dotNetRef.invokeMethodAsync('OnResizeEnd');
+        }
+    }
+</script>
