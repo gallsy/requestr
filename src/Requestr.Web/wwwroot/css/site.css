@@ -1247,9 +1247,9 @@ small,
     animation: slideInFromLeft 0.3s ease-out;
 }
 
-.main {
+/* .main {
     animation: fadeIn 0.5s ease-in-out 0.1s both;
-}
+} */
 
 /* Additional responsive improvements */
 @media (max-width: 768px) {
