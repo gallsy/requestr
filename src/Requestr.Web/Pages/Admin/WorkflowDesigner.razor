@@ -456,25 +456,14 @@
                                                 </div>
                                                 
                                                 <div class="mb-3">
-                                                    <div class="form-check">
-                                                        <input class="form-check-input" type="checkbox" 
-                                                               @bind="selectedStep.Configuration.RequiresAllApprovers" 
-                                                               @bind:after="UpdateSelectedStep" 
-                                                               id="requiresAllApprovers">
-                                                        <label class="form-check-label" for="requiresAllApprovers">
-                                                            Requires all approvers
-                                                        </label>
-                                                    </div>
-                                                    <small class="text-muted">If checked, all assigned roles must approve. Otherwise, approval from any role is sufficient.</small>
+                                                    <label class="form-label">Notification Email (Optional)</label>
+                                                    <input type="email" class="form-control" placeholder="Enter email for approval notifications..." 
+                                                           @bind="selectedStep.NotificationEmail" @bind:after="UpdateSelectedStep" />
+                                                    <small class="form-text text-muted">
+                                                        Email address to notify when this approval step requires action.
+                                                    </small>
                                                 </div>
-                                                
-                                                <div class="mb-3">
-                                                    <label class="form-label">Minimum Approvers</label>
-                                                    <input type="number" class="form-control" min="1" 
-                                                           @bind="selectedStep.Configuration.MinimumApprovers" 
-                                                           @bind:after="UpdateSelectedStep" />
-                                                    <small class="text-muted">Minimum number of approvers required if not requiring all.</small>
-                                                </div>
+
                                             }
                                             @if (selectedStep.StepType == WorkflowStepType.Branch)
                                             {
@@ -555,84 +544,6 @@
                                         </div>
                                     </div>
                                 </div>
-                                
-                                <!-- Field Configuration Section -->
-                                @if (selectedStep.StepType == WorkflowStepType.Approval)
-                                {
-                                    <div class="row mt-4">
-                                        <div class="col-12">
-                                            <h6 class="mb-3">
-                                                <i class="bi bi-list-check me-2"></i>
-                                                Field Configuration
-                                                <button type="button" class="btn btn-outline-primary btn-sm ms-2" @onclick="LoadFormFields">
-                                                    <i class="bi bi-arrow-clockwise"></i> Load Form Fields
-                                                </button>
-                                            </h6>
-                                            
-                                            @if (formFields.Any())
-                                            {
-                                                <div class="table-responsive">
-                                                    <table class="table table-sm">
-                                                        <thead>
-                                                            <tr>
-                                                                <th>Field Name</th>
-                                                                <th>Display Name</th>
-                                                                <th>Visible</th>
-                                                                <th>Read Only</th>
-                                                                <th>Required</th>
-                                                                <th>Actions</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            @foreach (var field in formFields)
-                                                            {
-                                                                var config = GetOrCreateFieldConfig(field.Name);
-                                                                <tr>
-                                                                    <td>@field.Name</td>
-                                                                    <td>@field.DisplayName</td>
-                                                                    <td>
-                                                                        <div class="form-check">
-                                                                            <input class="form-check-input" type="checkbox" 
-                                                                                   checked="@config.IsVisible" 
-                                                                                   @onchange="(e) => { config.IsVisible = (bool)e.Value!; _ = UpdateFieldConfig(config); }" />
-                                                                        </div>
-                                                                    </td>
-                                                                    <td>
-                                                                        <div class="form-check">
-                                                                            <input class="form-check-input" type="checkbox" 
-                                                                                   checked="@config.IsReadOnly" 
-                                                                                   @onchange="(e) => { config.IsReadOnly = (bool)e.Value!; _ = UpdateFieldConfig(config); }" />
-                                                                        </div>
-                                                                    </td>
-                                                                    <td>
-                                                                        <div class="form-check">
-                                                                            <input class="form-check-input" type="checkbox" 
-                                                                                   checked="@config.IsRequired" 
-                                                                                   @onchange="(e) => { config.IsRequired = (bool)e.Value!; _ = UpdateFieldConfig(config); }" />
-                                                                        </div>
-                                                                    </td>
-                                                                    <td>
-                                                                        <button type="button" class="btn btn-outline-primary btn-sm" 
-                                                                                @onclick="() => ShowFieldValidationModal(config)">
-                                                                            <i class="bi bi-gear"></i>
-                                                                        </button>
-                                                                    </td>
-                                                                </tr>
-                                                            }
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            }
-                                            else
-                                            {
-                                                <div class="alert alert-info">
-                                                    <i class="bi bi-info-circle me-2"></i>
-                                                    No form fields found. Click "Load Form Fields" to retrieve fields from the associated form.
-                                                </div>
-                                            }
-                                        </div>
-                                    </div>
-                                }
                             </div>
                         </div>
                     </div>
@@ -649,7 +560,6 @@
     private WorkflowStep? selectedStep;
     private List<string> validationErrors = new();
     private string newRoleName = string.Empty;
-    private List<FormField> formFields = new();
 
     // Linking mode state
     private bool isLinkingMode = false;
@@ -980,74 +890,6 @@
         selectedStep.Configuration.BranchConditions.Remove(condition);
         await UpdateSelectedStep();
         StateHasChanged();
-    }
-
-    private async Task LoadFormFields()
-    {
-        try
-        {
-            if (workflow?.FormDefinitionId == null) return;
-
-            var formDefinition = await FormDefinitionService.GetFormDefinitionAsync(workflow.FormDefinitionId);
-            formFields = formDefinition?.Fields ?? new List<FormField>();
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error loading form fields: {ex.Message}");
-            await JSRuntime.InvokeVoidAsync("alert", $"Error loading form fields: {ex.Message}");
-        }
-    }
-
-    private WorkflowStepFieldConfiguration GetOrCreateFieldConfig(string fieldName)
-    {
-        if (selectedStep?.FieldConfigurations == null)
-            selectedStep!.FieldConfigurations = new List<WorkflowStepFieldConfiguration>();
-
-        var existing = selectedStep.FieldConfigurations.FirstOrDefault(fc => fc.FieldName == fieldName);
-        if (existing != null) return existing;
-
-        var newConfig = new WorkflowStepFieldConfiguration
-        {
-            WorkflowStepId = selectedStep.Id,
-            FieldName = fieldName,
-            IsVisible = true,
-            IsReadOnly = false,
-            IsRequired = false,
-            ValidationRules = new List<FieldValidationRule>()
-        };
-
-        selectedStep.FieldConfigurations.Add(newConfig);
-        return newConfig;
-    }
-
-    private async Task UpdateFieldConfig(WorkflowStepFieldConfiguration config)
-    {
-        try
-        {
-            if (selectedStep == null) return;
-            
-            // Save field configuration to database
-            await WorkflowDesignerService.ConfigureStepFieldAsync(
-                selectedStep.Id, 
-                config.FieldName, 
-                config.IsVisible, 
-                config.IsReadOnly, 
-                config.IsRequired);
-            
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error updating field configuration: {ex.Message}");
-            await JSRuntime.InvokeVoidAsync("alert", $"Error updating field configuration: {ex.Message}");
-        }
-    }
-
-    private async Task ShowFieldValidationModal(WorkflowStepFieldConfiguration config)
-    {
-        // TODO: Implement validation rules modal
-        await JSRuntime.InvokeVoidAsync("alert", $"Field validation configuration for {config.FieldName} - Coming soon!");
     }
 
     private async Task UpdateSelectedStep()

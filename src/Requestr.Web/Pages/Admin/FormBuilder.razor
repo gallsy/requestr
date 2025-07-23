@@ -973,32 +973,7 @@
                                         @if (stepConfig.StepType == "approval")
                                         {
                                             <div class="row">
-                                                <div class="col-md-6">
-                                                    <div class="mb-3">
-                                                        <label class="form-label">Assigned Role</label>
-                                                        <select class="form-select" @bind="stepConfig.AssignedRole" @bind:after="() => UpdateStepAssignedRole(stepConfig, stepConfig.AssignedRole)">
-                                                            <option value="">Select a role...</option>
-                                                            @if (_availableRoles?.Any() == true)
-                                                            {
-                                                                @foreach (var role in _availableRoles)
-                                                                {
-                                                                    <option value="@role">@role</option>
-                                                                }
-                                                            }
-                                                        </select>
-                                                    </div>
-                                                    <div class="mb-3">
-                                                        <label class="form-label">Instructions (Optional)</label>
-                                                        <textarea class="form-control" rows="2" 
-                                                                  @bind="stepConfig.Instructions"
-                                                                  placeholder="Special instructions for this approval step..."></textarea>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div class="row">
                                                 <div class="col-12">
-                                                    <hr>
                                                     <h6>Field Configuration</h6>
                                                     <p class="text-muted small">Configure field visibility, read-only status, and requirements for this step.</p>
                                                     
@@ -1051,22 +1026,6 @@
                                                     }
                                                 </div>
                                             </div>
-
-                                            <div class="row">
-                                                <div class="col-12">
-                                                    <hr>
-                                                    <h6>Notification Settings</h6>
-                                                    <div class="mb-3">
-                                                        <label class="form-label">Notification Email (Optional)</label>
-                                                        <input type="email" class="form-control" 
-                                                               @bind="stepConfig.NotificationEmail"
-                                                               placeholder="Enter email address for notifications...">
-                                                        <small class="form-text text-muted">
-                                                            Optional email address to notify when this step is reached or completed.
-                                                        </small>
-                                                    </div>
-                                                </div>
-                                            </div>
                                         }
                                         else if (stepConfig.StepType == "parallel")
                                         {
@@ -1096,23 +1055,6 @@
                                                         <label class="form-check-label">Require all roles to approve</label>
                                                         <small class="form-text text-muted d-block">
                                                             If unchecked, approval from any one role will advance the workflow.
-                                                        </small>
-                                                    </div>
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <div class="mb-3">
-                                                        <label class="form-label">Instructions (Optional)</label>
-                                                        <textarea class="form-control" rows="3" 
-                                                                  @bind="stepConfig.Instructions"
-                                                                  placeholder="Instructions for all approvers in this parallel step..."></textarea>
-                                                    </div>
-                                                    <div class="mb-3">
-                                                        <label class="form-label">Notification Email (Optional)</label>
-                                                        <input type="email" class="form-control" 
-                                                               @bind="stepConfig.NotificationEmail"
-                                                               placeholder="Enter email address for notifications...">
-                                                        <small class="form-text text-muted">
-                                                            Optional email address to notify when this step is reached or completed.
                                                         </small>
                                                     </div>
                                                 </div>
@@ -1379,9 +1321,6 @@
         public string StepIdString { get; set; } = ""; // WorkflowStep.StepId
         public string StepName { get; set; } = "";
         public string StepType { get; set; } = "";
-        public string? AssignedRole { get; set; }
-        public string? Instructions { get; set; }
-        public string? NotificationEmail { get; set; }
         public List<string> RequiredRoles { get; set; } = new(); // For parallel steps
         public bool RequireAllApprovals { get; set; } = true; // For parallel steps
         public Dictionary<string, FieldConfigurationModel> FieldConfigurations { get; set; } = new(); // Field visibility, readonly, required settings
@@ -2322,11 +2261,7 @@
                                 var config = await FormWorkflowConfigurationService.GetStepConfigurationAsync<ApprovalStepConfiguration>(FormId.Value, step.StepId);
                                 if (config != null)
                                 {
-                                    stepConfig.AssignedRole = config.AssignedRole;
-                                    stepConfig.Instructions = config.Instructions;
-                                    stepConfig.NotificationEmail = config.NotificationEmail;
-                                    Logger.LogInformation("Loaded approval step config for {StepId}: Role={AssignedRole}, Email={NotificationEmail}", 
-                                        step.StepId, config.AssignedRole, config.NotificationEmail);
+                                    Logger.LogInformation("Loaded approval step config for {StepId}", step.StepId);
                                 }
                                 else
                                 {
@@ -2340,8 +2275,6 @@
                                 {
                                     stepConfig.RequiredRoles = config.RequiredRoles?.ToList() ?? new List<string>();
                                     stepConfig.RequireAllApprovals = config.RequireAllApprovals;
-                                    stepConfig.NotificationEmail = config.NotificationEmail;
-                                    stepConfig.Instructions = null; // ParallelApprovalStepConfiguration doesn't have Instructions
                                 }
                             }
                         }
@@ -2407,32 +2340,12 @@
 
                 foreach (var stepConfig in _workflowStepConfigs)
                 {
-                    Logger.LogInformation("Processing step config - StepId: {StepId}, StepType: {StepType}, AssignedRole: {Role}, Email: {Email}", 
-                        stepConfig.StepIdString, stepConfig.StepType, stepConfig.AssignedRole, stepConfig.NotificationEmail);
+                    Logger.LogInformation("Processing step config - StepId: {StepId}, StepType: {StepType}", 
+                        stepConfig.StepIdString, stepConfig.StepType);
 
                     if (stepConfig.StepType == "approval")
                     {
-                        var config = new ApprovalStepConfiguration
-                        {
-                            AssignedRole = stepConfig.AssignedRole,
-                            Instructions = stepConfig.Instructions,
-                            NotificationEmail = stepConfig.NotificationEmail
-                        };
-
-                        // Debug logging to trace the exact values being saved
-                        Logger.LogInformation("Creating approval config with - AssignedRole: '{Role}', Instructions: '{Instructions}', NotificationEmail: '{Email}'", 
-                            stepConfig.AssignedRole, stepConfig.Instructions, stepConfig.NotificationEmail);
-                        
-                        Logger.LogInformation("Config object before save - AssignedRole: '{Role}', Instructions: '{Instructions}', NotificationEmail: '{Email}'", 
-                            config.AssignedRole, config.Instructions, config.NotificationEmail);
-                        
-                        // Use the service's JSON options to see exactly what will be serialized
-                        var serviceJsonOptions = new JsonSerializerOptions
-                        {
-                            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                            WriteIndented = true
-                        };
-                        Logger.LogInformation("JSON that will be saved to database: {Json}", JsonSerializer.Serialize(config, serviceJsonOptions));
+                        var config = new ApprovalStepConfiguration();
 
                         await FormWorkflowConfigurationService.UpdateStepConfigurationAsync(FormId.Value, _selectedWorkflowId!.Value, stepConfig.StepIdString, config, currentUser);
                     }
@@ -2441,8 +2354,7 @@
                         var config = new ParallelApprovalStepConfiguration
                         {
                             RequiredRoles = stepConfig.RequiredRoles ?? new List<string>(),
-                            RequireAllApprovals = stepConfig.RequireAllApprovals,
-                            NotificationEmail = stepConfig.NotificationEmail
+                            RequireAllApprovals = stepConfig.RequireAllApprovals
                         };
 
                         await FormWorkflowConfigurationService.UpdateStepConfigurationAsync(FormId.Value, _selectedWorkflowId!.Value, stepConfig.StepIdString, config, currentUser);
@@ -2454,54 +2366,6 @@
         {
             Logger.LogError(ex, "Error saving workflow configuration");
             throw; // Re-throw to let the UI handle error display
-        }
-    }
-
-    private async Task UpdateStepAssignedRole(WorkflowStepConfigModel stepConfig, string role)
-    {
-        try
-        {
-            stepConfig.AssignedRole = role;
-            if (FormId.HasValue)
-            {
-                await SaveWorkflowConfiguration();
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error updating step assigned role");
-        }
-    }
-
-    private async Task UpdateStepInstructions(WorkflowStepConfigModel stepConfig, string instructions)
-    {
-        try
-        {
-            stepConfig.Instructions = instructions;
-            if (FormId.HasValue)
-            {
-                await SaveWorkflowConfiguration();
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error updating step instructions");
-        }
-    }
-
-    private async Task UpdateNotificationEmail(WorkflowStepConfigModel stepConfig, string email)
-    {
-        try
-        {
-            stepConfig.NotificationEmail = email;
-            if (FormId.HasValue)
-            {
-                await SaveWorkflowConfiguration();
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error updating notification email");
         }
     }
 

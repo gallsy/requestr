@@ -1397,6 +1397,16 @@ public class WorkflowService : IWorkflowService
         }, transaction);
 
         _logger.LogInformation("Moved workflow instance {WorkflowInstanceId} to step {StepId}", workflowInstanceId, nextStepId);
+
+        // Send notification for step becoming active
+        try
+        {
+            await SendStepBecomesActiveNotificationAsync(connection, transaction, workflowInstanceId, nextStepId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send step becomes active notification for workflow {WorkflowInstanceId}, step {StepId}", workflowInstanceId, nextStepId);
+        }
     }
 
     private async Task CompleteWorkflowAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId, string completedBy)
@@ -2876,15 +2886,18 @@ public class WorkflowService : IWorkflowService
     {
         try
         {
-            // Get form request details for notification
+            // Get form request details and step notification email for notification
             const string formRequestSql = @"
-                SELECT fr.*, fd.Name as FormName, fd.NotificationEmail
+                SELECT fr.*, fd.Name as FormName, fd.NotificationEmail as FormNotificationEmail,
+                       ws.NotificationEmail as StepNotificationEmail
                 FROM FormRequests fr
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+                INNER JOIN WorkflowInstances wi ON fr.WorkflowInstanceId = wi.Id
+                INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId AND ws.StepId = @StepId
                 WHERE fr.Id = @FormRequestId";
 
             using var connection = new SqlConnection(_connectionString);
-            var formRequestData = await connection.QueryFirstOrDefaultAsync(formRequestSql, new { FormRequestId = formRequestId });
+            var formRequestData = await connection.QueryFirstOrDefaultAsync(formRequestSql, new { FormRequestId = formRequestId, StepId = stepId });
             
             if (formRequestData == null)
             {
@@ -2921,8 +2934,8 @@ public class WorkflowService : IWorkflowService
                     // Notify requester and form admin
                     if (!string.IsNullOrEmpty(formRequestData.RequestedBy?.ToString()))
                         notificationEmails.Add(formRequestData.RequestedBy.ToString());
-                    if (!string.IsNullOrEmpty(formRequestData.NotificationEmail?.ToString()))
-                        notificationEmails.Add(formRequestData.NotificationEmail.ToString());
+                    if (!string.IsNullOrEmpty(formRequestData.FormNotificationEmail?.ToString()))
+                        notificationEmails.Add(formRequestData.FormNotificationEmail.ToString());
                     break;
 
                 case WorkflowStepAction.Rejected:
@@ -2930,16 +2943,25 @@ public class WorkflowService : IWorkflowService
                     // Notify requester and form admin
                     if (!string.IsNullOrEmpty(formRequestData.RequestedBy?.ToString()))
                         notificationEmails.Add(formRequestData.RequestedBy.ToString());
-                    if (!string.IsNullOrEmpty(formRequestData.NotificationEmail?.ToString()))
-                        notificationEmails.Add(formRequestData.NotificationEmail.ToString());
+                    if (!string.IsNullOrEmpty(formRequestData.FormNotificationEmail?.ToString()))
+                        notificationEmails.Add(formRequestData.FormNotificationEmail.ToString());
                     break;
 
                 default:
                     templateKey = WorkflowStepCompleted;
                     // Notify form admin only for other actions
-                    if (!string.IsNullOrEmpty(formRequestData.NotificationEmail?.ToString()))
-                        notificationEmails.Add(formRequestData.NotificationEmail.ToString());
+                    if (!string.IsNullOrEmpty(formRequestData.FormNotificationEmail?.ToString()))
+                        notificationEmails.Add(formRequestData.FormNotificationEmail.ToString());
                     break;
+            }
+
+            // Add step-specific notification email if configured
+            if (!string.IsNullOrEmpty(formRequestData.StepNotificationEmail?.ToString()))
+            {
+                var stepEmail = formRequestData.StepNotificationEmail.ToString();
+                notificationEmails.Add(stepEmail);
+                _logger.LogInformation("Adding step-specific notification email for step {StepId}: {Email}", 
+                    stepId, (string)stepEmail);
             }
 
             // Send notifications
@@ -2954,6 +2976,75 @@ public class WorkflowService : IWorkflowService
         {
             _logger.LogError(ex, "Error sending step action notification for request {RequestId}, step {StepId}, action {Action}", 
                 formRequestId, stepId, action);
+            // Don't throw - notification failures shouldn't break the workflow
+        }
+    }
+
+    /// <summary>
+    /// Sends notification when a workflow step becomes active (requires action)
+    /// </summary>
+    private async Task SendStepBecomesActiveNotificationAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId, string stepId)
+    {
+        try
+        {
+            // Get workflow and form request data
+            const string sql = @"
+                SELECT 
+                    wi.Id as WorkflowInstanceId,
+                    wi.FormRequestId,
+                    fr.Title as FormTitle,
+                    fr.RequestorEmail,
+                    ws.Name as StepName,
+                    ws.NotificationEmail as StepNotificationEmail
+                FROM WorkflowInstances wi
+                INNER JOIN FormRequests fr ON wi.FormRequestId = fr.Id
+                INNER JOIN WorkflowSteps ws ON ws.StepId = @StepId
+                WHERE wi.Id = @WorkflowInstanceId";
+
+            var stepData = await connection.QueryFirstOrDefaultAsync(sql, new 
+            { 
+                WorkflowInstanceId = workflowInstanceId,
+                StepId = stepId
+            }, transaction);
+
+            if (stepData == null)
+            {
+                _logger.LogWarning("No data found for workflow instance {WorkflowInstanceId}, step {StepId}", workflowInstanceId, stepId);
+                return;
+            }
+
+            // Prepare notification variables
+            var variables = new Dictionary<string, string>
+            {
+                ["FormTitle"] = (stepData.FormTitle ?? "Form Request").ToString(),
+                ["StepName"] = (stepData.StepName ?? stepId).ToString(),
+                ["FormRequestId"] = stepData.FormRequestId.ToString(),
+                ["RequestorEmail"] = (stepData.RequestorEmail ?? "Unknown").ToString()
+            };
+
+            var notificationEmails = new List<string>();
+
+            // Add step-specific notification email if configured
+            if (!string.IsNullOrWhiteSpace((string)stepData.StepNotificationEmail))
+            {
+                notificationEmails.Add((string)stepData.StepNotificationEmail);
+                _logger.LogInformation("Adding step-specific notification email for step {StepId}: {Email}", 
+                    stepId, (string)stepData.StepNotificationEmail);
+            }
+
+            // Send notifications for step becoming active
+            const string templateKey = "step-requires-action";
+            foreach (var email in notificationEmails.Distinct())
+            {
+                await _notificationService.SendNotificationAsync(templateKey, variables, email);
+                _logger.LogInformation("Sent step requires action notification for request {RequestId}, step {StepId} to {Email}", 
+                    (int)stepData.FormRequestId, stepId, email);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending step becomes active notification for workflow {WorkflowInstanceId}, step {StepId}", 
+                workflowInstanceId, stepId);
             // Don't throw - notification failures shouldn't break the workflow
         }
     }

@@ -20,6 +20,7 @@ public class WorkflowStep : BaseEntity
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public List<string> AssignedRoles { get; set; } = new(); // Entra roles
+    public string? NotificationEmail { get; set; } // Email for step-specific notifications
     public int PositionX { get; set; }
     public int PositionY { get; set; }
     public WorkflowStepConfiguration Configuration { get; set; } = new();
