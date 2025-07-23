@@ -4,6 +4,12 @@
 @using Requestr.Core.Models.DTOs
 @using System.Linq
 @using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using BlazorBootstrap
 @using Requestr.Web.Authorization
 @inject IDataViewService DataViewService
 @inject IFormDefinitionService FormDefinitionService
@@ -11,7 +17,6 @@
 @inject IBulkFormRequestService BulkFormRequestService
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
-@inject IJSRuntime JSRuntime
 @inject ILogger<DataView> Logger
 @attribute [Authorize]
 
@@ -277,250 +282,211 @@ else
 }
 
 <!-- Bulk Update Modal -->
-@if (_showBulkUpdateModal)
-{
-    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
-        <div class="modal-dialog modal-lg" role="document">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Bulk Update Records</h5>
-                    <button type="button" class="btn-close" @onclick="() => _showBulkUpdateModal = false"></button>
-                </div>
-                <div class="modal-body">
-                    <p>You are about to update <strong>@_selectedRecords.Count</strong> records.</p>
-                    <p>Choose the fields to update:</p>
-                    
-                    @if (_formDefinition != null)
-                    {
-                        @foreach (var field in _formDefinition.Fields.Where(f => f.IsVisible && !f.IsReadOnly))
-                        {
-                            <div class="mb-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" 
-                                           @onchange="@((e) => ToggleFieldForUpdate(field.Name, e.Value))"
-                                           id="update-@field.Name">
-                                    <label class="form-check-label" for="update-@field.Name">
-                                        @field.DisplayName
-                                    </label>
-                                </div>
-                                @if (_bulkUpdateFields.ContainsKey(field.Name))
-                                {
-                                    <input type="text" class="form-control mt-2" 
-                                           placeholder="New value for @field.DisplayName"
-                                           @bind="_bulkUpdateFields[field.Name]">
-                                }
-                            </div>
-                        }
-                    }
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Comments</label>
-                        <textarea class="form-control" rows="3" @bind="_bulkUpdateComments" placeholder="Optional comments about this bulk update..."></textarea>
+<Modal @ref="bulkUpdateModal" Title="Bulk Update Records" Size="ModalSize.Large">
+    <BodyTemplate>
+        <p>You are about to update <strong>@_selectedRecords.Count</strong> records.</p>
+        <p>Choose the fields to update:</p>
+        
+        @if (_formDefinition != null)
+        {
+            @foreach (var field in _formDefinition.Fields.Where(f => f.IsVisible && !f.IsReadOnly))
+            {
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" 
+                               @onchange="@((e) => ToggleFieldForUpdate(field.Name, e.Value))"
+                               id="update-@field.Name">
+                        <label class="form-check-label" for="update-@field.Name">
+                            @field.DisplayName
+                        </label>
                     </div>
+                    @if (_bulkUpdateFields.ContainsKey(field.Name))
+                    {
+                        <input type="text" class="form-control mt-2" 
+                               placeholder="New value for @field.DisplayName"
+                               @bind="_bulkUpdateFields[field.Name]">
+                    }
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="() => _showBulkUpdateModal = false">Cancel</button>
-                    <button type="button" class="btn btn-warning" @onclick="PerformBulkUpdate" disabled="@(!_bulkUpdateFields.Any() || _isProcessing)">
-                        @if (_isProcessing)
-                        {
-                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                        }
-                        Create Bulk Update Request
-                    </button>
-                </div>
-            </div>
+            }
+        }
+        
+        <div class="mb-3">
+            <label class="form-label">Comments</label>
+            <textarea class="form-control" rows="3" @bind="_bulkUpdateComments" placeholder="Optional comments about this bulk update..."></textarea>
         </div>
-    </div>
-    <div class="modal-backdrop fade show"></div>
-}
+    </BodyTemplate>
+    <FooterTemplate>
+        <Button Color="ButtonColor.Secondary" @onclick="HideBulkUpdateModal">Cancel</Button>
+        <Button Color="ButtonColor.Warning" @onclick="PerformBulkUpdate" Disabled="@(!_bulkUpdateFields.Any() || _isProcessing)">
+            @if (_isProcessing)
+            {
+                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+            }
+            Create Bulk Update Request
+        </Button>
+    </FooterTemplate>
+</Modal>
 
 <!-- Bulk Delete Modal -->
-@if (_showBulkDeleteModal)
-{
-    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
-        <div class="modal-dialog" role="document">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Bulk Delete Records</h5>
-                    <button type="button" class="btn-close" @onclick="() => _showBulkDeleteModal = false"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="alert alert-warning">
-                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        <strong>Warning!</strong> You are about to create a bulk delete request for <strong>@_selectedRecords.Count</strong> records.
-                    </div>
-                    <p>This action will create a request to delete the selected records. The request will need to be approved before the records are actually deleted.</p>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Comments</label>
-                        <textarea class="form-control" rows="3" @bind="_bulkDeleteComments" placeholder="Optional comments about this bulk delete..."></textarea>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="() => _showBulkDeleteModal = false">Cancel</button>
-                    <button type="button" class="btn btn-danger" @onclick="PerformBulkDelete" disabled="@_isProcessing">
+<Modal @ref="bulkDeleteModal" Title="Bulk Delete Records">
+    <BodyTemplate>
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <strong>Warning!</strong> You are about to create a bulk delete request for <strong>@_selectedRecords.Count</strong> records.
+        </div>
+        <p>This action will create a request to delete the selected records. The request will need to be approved before the records are actually deleted.</p>
+        
+        <div class="mb-3">
+            <label class="form-label">Comments</label>
+            <textarea class="form-control" rows="3" @bind="_bulkDeleteComments" placeholder="Optional comments about this bulk delete..."></textarea>
+        </div>
+    </BodyTemplate>
+    <FooterTemplate>
+        <Button Color="ButtonColor.Secondary" @onclick="HideBulkDeleteModal">Cancel</Button>
+        <Button Color="ButtonColor.Danger" @onclick="PerformBulkDelete" Disabled="@_isProcessing">
+            @if (_isProcessing)
+            {
+                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+            }
+            Create Bulk Delete Request
+        </Button>
+    </FooterTemplate>
+</Modal>
+
+<!-- CSV Upload Modal -->
+<Modal @ref="csvUploadModal" Title="Upload CSV File" Size="ModalSize.Large">
+    <BodyTemplate>
+        @if (_csvUploadResult == null)
+        {
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle me-2"></i>
+                <strong>CSV Format Guidelines:</strong>
+                <ul class="mb-0 mt-2">
+                    <li>First row must contain column headers</li>
+                    <li>Column names must match form field names exactly</li>
+                    <li>All required fields must be included</li>
+                    <li>Date format: YYYY-MM-DD or MM/DD/YYYY</li>
+                    <li>Boolean values: true/false, yes/no, 1/0</li>
+                </ul>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">Select CSV File</label>
+                <InputFile OnChange="HandleCsvFileSelected" class="form-control" accept=".csv" />
+                @if (!string.IsNullOrEmpty(_csvFileName))
+                {
+                    <small class="text-muted mt-1 d-block">Selected: @_csvFileName</small>
+                }
+            </div>
+            
+            @if (_csvFile != null)
+            {
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-primary" @onclick="ValidateCsvFile" disabled="@_isProcessing">
                         @if (_isProcessing)
                         {
                             <span class="spinner-border spinner-border-sm me-2" role="status"></span>
                         }
-                        Create Bulk Delete Request
+                        <i class="bi bi-check-circle me-2"></i>
+                        Validate CSV
+                    </button>
+                    <button type="button" class="btn btn-secondary" @onclick="ClearCsvFile">
+                        <i class="bi bi-x-circle me-2"></i>
+                        Clear
                     </button>
                 </div>
-            </div>
-        </div>
-    </div>
-    <div class="modal-backdrop fade show"></div>
-}
-
-<!-- CSV Upload Modal -->
-@if (_showCsvUploadModal)
-{
-    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
-        <div class="modal-dialog modal-lg" role="document">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">
-                        <i class="bi bi-upload me-2"></i>
-                        Upload CSV File
-                    </h5>
-                    <button type="button" class="btn-close" @onclick="CloseCsvUploadModal"></button>
+            }
+        }
+        else
+        {
+            <!-- Validation Results -->
+            <div class="alert @(_csvUploadResult.IsValid ? "alert-success" : "alert-warning")">
+                <h6 class="alert-heading">
+                    <i class="bi @(_csvUploadResult.IsValid ? "bi-check-circle" : "bi-exclamation-triangle") me-2"></i>
+                    Validation Results
+                </h6>
+                <div class="row">
+                    <div class="col-md-4">
+                        <strong>Total Rows:</strong> @_csvUploadResult.TotalRows
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Valid Rows:</strong> <span class="text-success">@_csvUploadResult.ValidRows</span>
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Invalid Rows:</strong> <span class="text-danger">@_csvUploadResult.InvalidRows</span>
+                    </div>
                 </div>
-                <div class="modal-body">
-                    @if (_csvUploadResult == null)
-                    {
-                        <div class="alert alert-info">
-                            <i class="bi bi-info-circle me-2"></i>
-                            <strong>CSV Format Guidelines:</strong>
-                            <ul class="mb-0 mt-2">
-                                <li>First row must contain column headers</li>
-                                <li>Column names must match form field names exactly</li>
-                                <li>All required fields must be included</li>
-                                <li>Date format: YYYY-MM-DD or MM/DD/YYYY</li>
-                                <li>Boolean values: true/false, yes/no, 1/0</li>
-                            </ul>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label">Select CSV File</label>
-                            <InputFile OnChange="HandleCsvFileSelected" class="form-control" accept=".csv" />
-                            @if (!string.IsNullOrEmpty(_csvFileName))
-                            {
-                                <small class="text-muted mt-1 d-block">Selected: @_csvFileName</small>
-                            }
-                        </div>
-                        
-                        @if (_csvFile != null)
+            </div>
+            
+            @if (_csvUploadResult.Errors.Any())
+            {
+                <div class="alert alert-danger">
+                    <h6>File Errors:</h6>
+                    <ul class="mb-0">
+                        @foreach (var error in _csvUploadResult.Errors)
                         {
-                            <div class="d-flex gap-2">
-                                <button type="button" class="btn btn-primary" @onclick="ValidateCsvFile" disabled="@_isProcessing">
-                                    @if (_isProcessing)
-                                    {
-                                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                                    }
-                                    <i class="bi bi-check-circle me-2"></i>
-                                    Validate CSV
-                                </button>
-                                <button type="button" class="btn btn-secondary" @onclick="ClearCsvFile">
-                                    <i class="bi bi-x-circle me-2"></i>
-                                    Clear
-                                </button>
-                            </div>
+                            <li>@error</li>
                         }
-                    }
-                    else
-                    {
-                        <!-- Validation Results -->
-                        <div class="alert @(_csvUploadResult.IsValid ? "alert-success" : "alert-warning")">
-                            <h6 class="alert-heading">
-                                <i class="bi @(_csvUploadResult.IsValid ? "bi-check-circle" : "bi-exclamation-triangle") me-2"></i>
-                                Validation Results
-                            </h6>
-                            <div class="row">
-                                <div class="col-md-4">
-                                    <strong>Total Rows:</strong> @_csvUploadResult.TotalRows
-                                </div>
-                                <div class="col-md-4">
-                                    <strong>Valid Rows:</strong> <span class="text-success">@_csvUploadResult.ValidRows</span>
-                                </div>
-                                <div class="col-md-4">
-                                    <strong>Invalid Rows:</strong> <span class="text-danger">@_csvUploadResult.InvalidRows</span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        @if (_csvUploadResult.Errors.Any())
+                    </ul>
+                </div>
+            }
+            
+            @if (_csvUploadResult.ValidationResults.Any(v => !v.IsValid))
+            {
+                <div class="mb-3">
+                    <h6>Row Validation Issues:</h6>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        @foreach (var validation in _csvUploadResult.ValidationResults.Where(v => !v.IsValid))
                         {
-                            <div class="alert alert-danger">
-                                <h6>File Errors:</h6>
-                                <ul class="mb-0">
-                                    @foreach (var error in _csvUploadResult.Errors)
+                            <div class="alert alert-warning py-2 mb-2">
+                                <strong>Row @validation.RowNumber:</strong>
+                                <ul class="mb-0 mt-1">
+                                    @foreach (var error in validation.Errors)
                                     {
-                                        <li>@error</li>
+                                        <li><small>@error</small></li>
                                     }
                                 </ul>
                             </div>
                         }
-                        
-                        @if (_csvUploadResult.ValidationResults.Any(v => !v.IsValid))
-                        {
-                            <div class="mb-3">
-                                <h6>Row Validation Issues:</h6>
-                                <div style="max-height: 300px; overflow-y: auto;">
-                                    @foreach (var validation in _csvUploadResult.ValidationResults.Where(v => !v.IsValid))
-                                    {
-                                        <div class="alert alert-warning py-2 mb-2">
-                                            <strong>Row @validation.RowNumber:</strong>
-                                            <ul class="mb-0 mt-1">
-                                                @foreach (var error in validation.Errors)
-                                                {
-                                                    <li><small>@error</small></li>
-                                                }
-                                            </ul>
-                                        </div>
-                                    }
-                                </div>
-                            </div>
-                        }
-                        
-                        @if (_csvUploadResult.ValidRows > 0)
-                        {
-                            <div class="mb-3">
-                                <label class="form-label">Comments</label>
-                                <textarea class="form-control" rows="3" @bind="_csvUploadComments" 
-                                         placeholder="Optional comments about this CSV upload..."></textarea>
-                            </div>
-                        }
-                    }
+                    </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseCsvUploadModal">Cancel</button>
-                    @if (_csvUploadResult == null)
-                    {
-                        <!-- No action buttons until validation is done -->
-                    }
-                    else if (_csvUploadResult.ValidRows > 0)
-                    {
-                        <button type="button" class="btn btn-success" @onclick="ProcessCsvUpload" disabled="@_isProcessing">
-                            @if (_isProcessing)
-                            {
-                                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                            }
-                            Create Bulk Request (@_csvUploadResult.ValidRows rows)
-                        </button>
-                    }
-                    @if (_csvUploadResult != null)
-                    {
-                        <button type="button" class="btn btn-outline-primary" @onclick="ResetCsvUpload">
-                            <i class="bi bi-arrow-left me-2"></i>
-                            Choose Different File
-                        </button>
-                    }
+            }
+            
+            @if (_csvUploadResult.ValidRows > 0)
+            {
+                <div class="mb-3">
+                    <label class="form-label">Comments</label>
+                    <textarea class="form-control" rows="3" @bind="_csvUploadComments" 
+                             placeholder="Optional comments about this CSV upload..."></textarea>
                 </div>
-            </div>
-        </div>
-    </div>
-    <div class="modal-backdrop fade show"></div>
-}
+            }
+        }
+    </BodyTemplate>
+    <FooterTemplate>
+        <Button Color="ButtonColor.Secondary" @onclick="CloseCsvUploadModal">Cancel</Button>
+        @if (_csvUploadResult == null)
+        {
+            <!-- No action buttons until validation is done -->
+        }
+        else if (_csvUploadResult.ValidRows > 0)
+        {
+            <Button Color="ButtonColor.Success" @onclick="ProcessCsvUpload" Disabled="@_isProcessing">
+                @if (_isProcessing)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                }
+                Create Bulk Request (@_csvUploadResult.ValidRows rows)
+            </Button>
+        }
+        @if (_csvUploadResult != null)
+        {
+            <Button Color="ButtonColor.Primary" @onclick="ResetCsvUpload">
+                <i class="bi bi-arrow-left me-2"></i>
+                Choose Different File
+            </Button>
+        }
+    </FooterTemplate>
+</Modal>
 
 @code {
     [Parameter] public int FormDefinitionId { get; set; }
@@ -541,10 +507,10 @@ else
     private bool _canUploadCsv = false;
     private List<string> _userRoles = new();
     
-    // Bulk operations
-    private bool _showBulkUpdateModal = false;
-    private bool _showBulkDeleteModal = false;
-    private bool _showCsvUploadModal = false;
+    // Bulk operations - Modal references
+    private Modal bulkUpdateModal = default!;
+    private Modal bulkDeleteModal = default!;
+    private Modal csvUploadModal = default!;
     private Dictionary<string, object?> _bulkUpdateFields = new();
     private string _bulkUpdateComments = string.Empty;
     private string _bulkDeleteComments = string.Empty;
@@ -755,35 +721,45 @@ else
         _selectedRecords.Clear();
     }
 
-    private void ShowBulkUpdateModal()
+    private async Task ShowBulkUpdateModal()
     {
-        _showBulkUpdateModal = true;
         _bulkUpdateFields.Clear();
         _bulkUpdateComments = string.Empty;
+        await bulkUpdateModal.ShowAsync();
     }
 
-    private void ShowBulkDeleteModal()
+    private async Task ShowBulkDeleteModal()
     {
-        _showBulkDeleteModal = true;
         _bulkDeleteComments = string.Empty;
+        await bulkDeleteModal.ShowAsync();
     }
 
-    private void ShowCsvUploadModal()
+    private async Task HideBulkUpdateModal()
     {
-        _showCsvUploadModal = true;
+        await bulkUpdateModal.HideAsync();
+    }
+
+    private async Task HideBulkDeleteModal()
+    {
+        await bulkDeleteModal.HideAsync();
+    }
+
+    private async Task ShowCsvUploadModal()
+    {
         _csvUploadResult = null;
         _csvFile = null;
         _csvFileName = string.Empty;
         _csvUploadComments = string.Empty;
+        await csvUploadModal.ShowAsync();
     }
 
-    private void CloseCsvUploadModal()
+    private async Task CloseCsvUploadModal()
     {
-        _showCsvUploadModal = false;
         _csvUploadResult = null;
         _csvFile = null;
         _csvFileName = string.Empty;
         _csvUploadComments = string.Empty;
+        await csvUploadModal.HideAsync();
     }
 
     private void HandleCsvFileSelected(InputFileChangeEventArgs e)
@@ -905,7 +881,7 @@ else
             var bulkRequest = await BulkFormRequestService.CreateBulkFormRequestAsync(createBulkDto, currentUser, currentUserName);
 
             _successMessage = $"CSV upload successful! Bulk request created with ID: {bulkRequest.Id}";
-            CloseCsvUploadModal();
+            await CloseCsvUploadModal();
 
             // Navigate to the created bulk request
             Navigation.NavigateTo($"/bulk-requests/{bulkRequest.Id}");
@@ -961,7 +937,7 @@ else
                 _bulkUpdateComments);
 
             _successMessage = $"Bulk update request created successfully! Request ID: {bulkRequest.Id}";
-            _showBulkUpdateModal = false;
+            await bulkUpdateModal.HideAsync();
             ClearSelection();
             
             // Navigate to the created bulk request
@@ -1000,7 +976,7 @@ else
                 _bulkDeleteComments);
 
             _successMessage = $"Bulk delete request created successfully! Request ID: {bulkRequest.Id}";
-            _showBulkDeleteModal = false;
+            await bulkDeleteModal.HideAsync();
             ClearSelection();
             
             // Navigate to the created bulk request

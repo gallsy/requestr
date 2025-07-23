@@ -20,6 +20,7 @@ Tech:
 Standards
 - Store enum values as integers in the database.
 - Database migrations should be created in /src/Requestr.Migrations/Scripts/ for use with DbUp.
+- Use Blazor Bootstrap components where possible!
 
 To test whether the code works you can run: 
 ```
