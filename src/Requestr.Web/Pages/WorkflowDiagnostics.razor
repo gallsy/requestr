@@ -194,32 +194,18 @@
             }
 
             <!-- Diagnostics Modal -->
-            @if (ShowDiagnosticsModal && !string.IsNullOrEmpty(DiagnosticsText))
-            {
-                <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
-                    <div class="modal-dialog modal-lg">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">
-                                    <i class="bi bi-info-circle me-2"></i>
-                                    Request Diagnostics - #@SelectedRequestId
-                                </h5>
-                                <button type="button" class="btn-close" @onclick="CloseDiagnosticsModal"></button>
-                            </div>
-                            <div class="modal-body">
-                                <pre class="bg-light p-3 rounded" style="white-space: pre-wrap; font-family: 'Courier New', monospace;">@DiagnosticsText</pre>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" @onclick="CloseDiagnosticsModal">Close</button>
-                                <button type="button" class="btn btn-success" @onclick="() => ProcessSingleRequest(SelectedRequestId)" disabled="@IsProcessing">
-                                    <i class="bi bi-gear me-1"></i>
-                                    Fix This Request
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            }
+            <Modal @ref="diagnosticsModal" Title="@GetDiagnosticsModalTitle()" Size="ModalSize.Large">
+                <BodyTemplate>
+                    <pre class="bg-light p-3 rounded" style="white-space: pre-wrap; font-family: 'Courier New', monospace;">@DiagnosticsText</pre>
+                </BodyTemplate>
+                <FooterTemplate>
+                    <Button Color="ButtonColor.Secondary" @onclick="CloseDiagnosticsModal">Close</Button>
+                    <Button Color="ButtonColor.Success" @onclick="() => ProcessSingleRequest(SelectedRequestId)" Disabled="@IsProcessing">
+                        <i class="bi bi-gear me-1"></i>
+                        Fix This Request
+                    </Button>
+                </FooterTemplate>
+            </Modal>
         </div>
     </div>
 </div>
@@ -232,7 +218,7 @@
     private bool IsProcessing = false;
     private string? StatusMessage;
     private bool IsSuccess = false;
-    private bool ShowDiagnosticsModal = false;
+    private Modal diagnosticsModal = default!;
     private string? DiagnosticsText;
     private int SelectedRequestId = 0;
 
@@ -325,9 +311,9 @@
                 IsSuccess = true;
 
                 // Close diagnostics modal if open
-                if (ShowDiagnosticsModal && SelectedRequestId == requestId)
+                if (SelectedRequestId == requestId)
                 {
-                    CloseDiagnosticsModal();
+                    await CloseDiagnosticsModal();
                 }
 
                 // Refresh data to show updated status
@@ -358,7 +344,7 @@
         {
             SelectedRequestId = requestId;
             DiagnosticsText = await FormRequestService.GetWorkflowDiagnosticsAsync(requestId);
-            ShowDiagnosticsModal = true;
+            await diagnosticsModal.ShowAsync();
             StateHasChanged();
         }
         catch (Exception ex)
@@ -370,12 +356,17 @@
         }
     }
 
-    private void CloseDiagnosticsModal()
+    private async Task CloseDiagnosticsModal()
     {
-        ShowDiagnosticsModal = false;
+        await diagnosticsModal.HideAsync();
         DiagnosticsText = null;
         SelectedRequestId = 0;
         StateHasChanged();
+    }
+
+    private string GetDiagnosticsModalTitle()
+    {
+        return $"Request Diagnostics - #{SelectedRequestId}";
     }
 
     private void ClearStatusMessage()
