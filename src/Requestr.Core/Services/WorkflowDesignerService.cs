@@ -138,9 +138,9 @@ public class WorkflowDesignerService : IWorkflowDesignerService
         };
 
         const string sql = @"
-            INSERT INTO WorkflowSteps (WorkflowDefinitionId, StepId, StepType, Name, Description, AssignedRoles, PositionX, PositionY, Configuration, IsRequired, CreatedAt)
+            INSERT INTO WorkflowSteps (WorkflowDefinitionId, StepId, StepType, Name, Description, AssignedRoles, PositionX, PositionY, Configuration, IsRequired, NotificationEmail, CreatedAt)
             OUTPUT INSERTED.Id
-            VALUES (@WorkflowDefinitionId, @StepId, @StepType, @Name, @Description, @AssignedRoles, @PositionX, @PositionY, @Configuration, @IsRequired, @CreatedAt)";
+            VALUES (@WorkflowDefinitionId, @StepId, @StepType, @Name, @Description, @AssignedRoles, @PositionX, @PositionY, @Configuration, @IsRequired, @NotificationEmail, @CreatedAt)";
 
         var id = await connection.QuerySingleAsync<int>(sql, new
         {
@@ -154,6 +154,7 @@ public class WorkflowDesignerService : IWorkflowDesignerService
             step.PositionY,
             Configuration = JsonSerializer.Serialize(step.Configuration),
             step.IsRequired,
+            step.NotificationEmail,
             CreatedAt = DateTime.UtcNow
         });
 
@@ -171,7 +172,8 @@ public class WorkflowDesignerService : IWorkflowDesignerService
         const string sql = @"
             UPDATE WorkflowSteps 
             SET Name = @Name, Description = @Description, AssignedRoles = @AssignedRoles, 
-                PositionX = @PositionX, PositionY = @PositionY, Configuration = @Configuration, IsRequired = @IsRequired
+                PositionX = @PositionX, PositionY = @PositionY, Configuration = @Configuration, IsRequired = @IsRequired,
+                NotificationEmail = @NotificationEmail
             WHERE Id = @Id";
 
         await connection.ExecuteAsync(sql, new
@@ -183,6 +185,7 @@ public class WorkflowDesignerService : IWorkflowDesignerService
             stepData.PositionY,
             Configuration = JsonSerializer.Serialize(stepData.Configuration),
             stepData.IsRequired,
+            stepData.NotificationEmail,
             Id = stepId
         });
 

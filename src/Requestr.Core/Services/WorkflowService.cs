@@ -37,6 +37,7 @@ internal class WorkflowStepDb : BaseEntity
     public int PositionY { get; set; }
     public string? Configuration { get; set; } // JSON string from database
     public bool IsRequired { get; set; } = true;
+    public string? NotificationEmail { get; set; } // Email for step-specific notifications
     
     // Convert to domain model
     public WorkflowStep ToDomainModel()
@@ -51,7 +52,8 @@ internal class WorkflowStepDb : BaseEntity
             Description = this.Description,
             PositionX = this.PositionX,
             PositionY = this.PositionY,
-            IsRequired = this.IsRequired
+            IsRequired = this.IsRequired,
+            NotificationEmail = this.NotificationEmail
         };
         
         // Deserialize JSON properties
