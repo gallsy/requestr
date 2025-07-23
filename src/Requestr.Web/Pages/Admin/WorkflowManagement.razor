@@ -2,12 +2,10 @@
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Models
 @using Requestr.Core.Models.DTOs
-@using Microsoft.JSInterop
 @inject IWorkflowService WorkflowService
 @inject IWorkflowDesignerService WorkflowDesignerService
 @inject IFormDefinitionService FormDefinitionService
 @inject NavigationManager Navigation
-@inject IJSRuntime JSRuntime
 @attribute [Authorize(Roles = "Admin,FormAdmin")]
 
 <PageTitle>Workflow Management | Requestr Admin</PageTitle>
@@ -95,45 +93,37 @@
 </div>
 
 <!-- Create Workflow Modal -->
-<div class="modal fade" id="createWorkflowModal" tabindex="-1" @ref="createWorkflowModalElement">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Create New Workflow</h5>
-                <button type="button" class="btn-close" @onclick="HideCreateWorkflowModal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Workflow Name</label>
-                    <input type="text" class="form-control" @bind="createWorkflowRequest.Name" placeholder="Enter workflow name" />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Description</label>
-                    <textarea class="form-control" rows="3" @bind="createWorkflowRequest.Description" placeholder="Enter workflow description"></textarea>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" @onclick="HideCreateWorkflowModal" disabled="@isCreating">Cancel</button>
-                <button type="button" class="btn btn-primary" @onclick="CreateWorkflow" 
-                        disabled="@(isCreating || string.IsNullOrWhiteSpace(createWorkflowRequest.Name))">>
-                    @if (isCreating)
-                    {
-                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                        <span>Creating...</span>
-                    }
-                    else
-                    {
-                        <span>Create Workflow</span>
-                    }
-                </button>
-            </div>
+<Modal @ref="createWorkflowModal" Title="Create New Workflow">
+    <BodyTemplate>
+        <div class="mb-3">
+            <label class="form-label">Workflow Name</label>
+            <input type="text" class="form-control" @bind="createWorkflowRequest.Name" placeholder="Enter workflow name" />
         </div>
-    </div>
-</div>
+        <div class="mb-3">
+            <label class="form-label">Description</label>
+            <textarea class="form-control" rows="3" @bind="createWorkflowRequest.Description" placeholder="Enter workflow description"></textarea>
+        </div>
+    </BodyTemplate>
+    <FooterTemplate>
+        <Button Color="ButtonColor.Secondary" @onclick="HideCreateWorkflowModal" Disabled="@isCreating">Cancel</Button>
+        <Button Color="ButtonColor.Primary" @onclick="CreateWorkflow" 
+                Disabled="@(isCreating || string.IsNullOrWhiteSpace(createWorkflowRequest.Name))">
+            @if (isCreating)
+            {
+                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                <span>Creating...</span>
+            }
+            else
+            {
+                <span>Create Workflow</span>
+            }
+        </Button>
+    </FooterTemplate>
+</Modal>
 
 @code {
     private List<WorkflowDefinition>? workflows;
-    private ElementReference createWorkflowModalElement;
+    private Modal createWorkflowModal = default!;
     private CreateWorkflowRequest createWorkflowRequest = new();
     private string? errorMessage;
     private bool isCreating = false;
@@ -167,7 +157,7 @@
             createWorkflowRequest = new CreateWorkflowRequest();
             errorMessage = null;
             Console.WriteLine("Opening create workflow modal");
-            await JSRuntime.InvokeVoidAsync("showModal", createWorkflowModalElement);
+            await createWorkflowModal.ShowAsync();
         }
         catch (Exception ex)
         {
@@ -181,7 +171,7 @@
         try
         {
             Console.WriteLine("Hiding create workflow modal");
-            await JSRuntime.InvokeVoidAsync("hideModal", createWorkflowModalElement);
+            await createWorkflowModal.HideAsync();
         }
         catch (Exception ex)
         {
@@ -223,9 +213,6 @@
         {
             errorMessage = $"Failed to create workflow: {ex.Message}";
             Console.WriteLine($"Detailed error creating workflow: {ex}");
-            
-            // Show error message to user
-            await JSRuntime.InvokeVoidAsync("alert", errorMessage);
         }
         finally
         {
