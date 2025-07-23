@@ -118,7 +118,7 @@
                                 <tbody>
                                     @foreach (var request in FilteredRequests)
                                     {
-                                        <tr class="@(SelectedRequestId == request.Id ? "table-active" : "")">
+                                        <tr>
                                             <td>
                                                 <div class="fw-medium">@request.FormDefinition?.Name</div>
                                                 <small class="text-muted">@request.FormDefinition?.Description</small>
@@ -140,25 +140,11 @@
                                                 <small class="text-muted">@request.RequestedAt.ToString("HH:mm")</small>
                                             </td>
                                             <td>
-                                                <div class="btn-group" role="group">
-                                                    <button class="btn btn-sm btn-outline-primary" 
-                                                            @onclick="() => ViewRequest(request.Id)">
-                                                        <i class="bi bi-eye me-1"></i>
-                                                        View
-                                                    </button>
-                                                    <button class="btn btn-sm btn-success" 
-                                                            @onclick="() => ShowApprovalModal(request.Id, GetApproveAction())"
-                                                            disabled="@IsProcessing">
-                                                        <i class="bi bi-check-lg me-1"></i>
-                                                        Approve
-                                                    </button>
-                                                    <button class="btn btn-sm btn-danger" 
-                                                            @onclick="() => ShowApprovalModal(request.Id, GetRejectAction())"
-                                                            disabled="@IsProcessing">
-                                                        <i class="bi bi-x-lg me-1"></i>
-                                                        Reject
-                                                    </button>
-                                                </div>
+                                                <button class="btn btn-sm btn-outline-primary" 
+                                                        @onclick="() => ViewRequest(request.Id)">
+                                                    <i class="bi bi-eye me-1"></i>
+                                                    View Request
+                                                </button>
                                             </td>
                                         </tr>
                                     }
@@ -172,99 +158,11 @@
     </div>
 </div>
 
-<!-- Approval Modal -->
-@if (ShowModal)
-{
-    <div class="modal d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">
-                        @if (ActionType == "approve")
-                        {
-                            <i class="bi bi-check-circle text-success me-2"></i>
-                            <text>Approve Request</text>
-                        }
-                        else
-                        {
-                            <i class="bi bi-x-circle text-danger me-2"></i>
-                            <text>Reject Request</text>
-                        }
-                    </h5>
-                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
-                </div>
-                <div class="modal-body">
-                    @if (SelectedRequest != null)
-                    {
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <h6>Form Information</h6>
-                                <p class="mb-1"><strong>Form:</strong> @SelectedRequest.FormDefinition?.Name</p>
-                                <p class="mb-1"><strong>Type:</strong> @SelectedRequest.RequestType</p>
-                                <p class="mb-0"><strong>Requested By:</strong> @SelectedRequest.RequestedByName</p>
-                            </div>
-                            <div class="col-md-6">
-                                <h6>Workflow Information</h6>
-                                @if (WorkflowSteps.TryGetValue(SelectedRequest.Id, out var step) && step != null)
-                                {
-                                    <p class="mb-1"><strong>Current Step:</strong> @step.StepId</p>
-                                    <p class="mb-0"><strong>Status:</strong> @step.Status</p>
-                                }
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <h6>Field Values</h6>
-                            <div class="table-responsive">
-                                <table class="table table-sm">
-                                    @foreach (var field in SelectedRequest.FieldValues)
-                                    {
-                                        <tr>
-                                            <td class="fw-medium">@field.Key</td>
-                                            <td>@field.Value</td>
-                                        </tr>
-                                    }
-                                </table>
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Comments</label>
-                            <textarea class="form-control" @bind="Comments" rows="3" 
-                                      placeholder="Enter comments for this action..."></textarea>
-                        </div>
-                    }
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
-                    <button type="button" class="btn btn-@(ActionType == "approve" ? "success" : "danger")" 
-                            @onclick="ProcessWorkflowAction" disabled="@IsProcessing">
-                        @if (IsProcessing)
-                        {
-                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                        }
-                        @(ActionType == "approve" ? "Approve" : "Reject")
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
-
 @code {
-    private const string ApproveAction = "approve";
-    private const string RejectAction = "reject";
-    
     private List<FormRequest>? AllRequests;
     private List<FormRequest>? FilteredRequests;
     private Dictionary<int, WorkflowStepInstance?> WorkflowSteps = new();
     private bool IsLoading = true;
-    private bool IsProcessing = false;
-    private bool ShowModal = false;
-    private FormRequest? SelectedRequest;
-    private int SelectedRequestId;
-    private string ActionType = "";
-    private string Comments = "";
     private string SelectedFormFilter = "";
     private string SelectedStatusFilter = "";
     private string SortOrder = "newest";
@@ -409,64 +307,6 @@
         return Task.CompletedTask;
     }
 
-    private void ShowApprovalModal(int requestId, string actionType)
-    {
-        SelectedRequestId = requestId;
-        SelectedRequest = AllRequests?.FirstOrDefault(r => r.Id == requestId);
-        ActionType = actionType;
-        Comments = "";
-        ShowModal = true;
-        StateHasChanged();
-    }
-
-    private void CloseModal()
-    {
-        ShowModal = false;
-        SelectedRequest = null;
-        SelectedRequestId = 0;
-        ActionType = "";
-        Comments = "";
-        StateHasChanged();
-    }
-
-    private async Task ProcessWorkflowAction()
-    {
-        if (SelectedRequest == null) return;
-
-        try
-        {
-            IsProcessing = true;
-            ClearMessages();
-
-            var userId = User?.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
-            var success = await FormRequestService.ProcessWorkflowActionAsync(
-                SelectedRequest.Id, 
-                ActionType, 
-                userId, 
-                Comments);
-
-            if (success)
-            {
-                SuccessMessage = $"Request {ActionType}d successfully.";
-                CloseModal();
-                await LoadData();
-            }
-            else
-            {
-                ErrorMessage = $"Failed to {ActionType} request.";
-            }
-        }
-        catch (Exception ex)
-        {
-            ErrorMessage = $"Error processing workflow action: {ex.Message}";
-        }
-        finally
-        {
-            IsProcessing = false;
-            StateHasChanged();
-        }
-    }
-
     private void ViewRequest(int requestId)
     {
         try
@@ -526,7 +366,4 @@
         SuccessMessage = null;
         ErrorMessage = null;
     }
-
-    private string GetApproveAction() => "approve";
-    private string GetRejectAction() => "reject";
 }

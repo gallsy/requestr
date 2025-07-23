@@ -8,6 +8,7 @@
 @using Requestr.Core.Models
 @using Requestr.Core.Services
 @using System.Text.Json
+@using BlazorBootstrap
 @inject IFormDefinitionService FormDefinitionService
 @inject IDatabaseService DatabaseService
 @inject IDataService DataService
@@ -1234,19 +1235,13 @@
 </div>
 
 <!-- Field Configuration Modal -->
-@if (_selectedField != null)
-{
-    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.3);">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Configure Field: @_selectedField.DisplayName</h5>
-                    <button type="button" class="btn-close" @onclick="CloseFieldConfig" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row mb-2">
-                        <div class="col-md-6">
-                            <label class="form-label">Field Name</label>
+<Modal @ref="fieldConfigModal" Title="@GetFieldConfigModalTitle()" Size="ModalSize.Large">
+    <BodyTemplate>
+        @if (_selectedField != null)
+        {
+            <div class="row mb-2">
+                <div class="col-md-6">
+                    <label class="form-label">Field Name</label>
                             <input type="text" class="form-control" @bind="_selectedField.DisplayName" />
                         </div>
                         <div class="col-md-6">
@@ -1322,15 +1317,12 @@
                             </div>
                         </div>
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseFieldConfig">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="modal-backdrop fade show"></div>
-}
+        }
+    </BodyTemplate>
+    <FooterTemplate>
+        <Button Color="ButtonColor.Secondary" @onclick="CloseFieldConfig">Close</Button>
+    </FooterTemplate>
+</Modal>
 
 @code {
     [Parameter] public int? FormId { get; set; }
@@ -1361,6 +1353,7 @@
     // Section-related drag and drop fields
     private FormSection? _dragTargetSection;
     private FormField? _selectedField;
+    private Modal fieldConfigModal = default!;
 
     // Permission-related fields
     private bool _isLoadingPermissions = false;
@@ -2709,17 +2702,21 @@
         StateHasChanged();
     }
 
-    private void ConfigureField(FormField field)
+    private async Task ConfigureField(FormField field)
     {
         _selectedField = field;
-        // This could open a modal or expand an accordion for detailed field configuration
-        StateHasChanged();
+        await fieldConfigModal.ShowAsync();
     }
 
-    private void CloseFieldConfig()
+    private async Task CloseFieldConfig()
     {
         _selectedField = null;
-        StateHasChanged();
+        await fieldConfigModal.HideAsync();
+    }
+
+    private string GetFieldConfigModalTitle()
+    {
+        return _selectedField != null ? $"Configure Field: {_selectedField.DisplayName}" : "Configure Field";
     }
 
     private void MigrateLegacyFields()
