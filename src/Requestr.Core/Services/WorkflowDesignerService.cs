@@ -383,9 +383,9 @@ public class WorkflowDesignerService : IWorkflowDesignerService
         using var connection = new SqlConnection(_connectionString);
 
         const string sql = "SELECT * FROM WorkflowStepFieldConfigurations WHERE WorkflowStepId = @WorkflowStepId";
-        var configurations = await connection.QueryAsync<WorkflowStepFieldConfiguration>(sql, new { WorkflowStepId = workflowStepId });
+        var dbConfigurations = await connection.QueryAsync<WorkflowStepFieldConfigurationEntity>(sql, new { WorkflowStepId = workflowStepId });
 
-        return configurations.ToList();
+        return dbConfigurations.Select(db => db.ToDomainModel()).ToList();
     }
 
     #endregion
@@ -538,4 +538,43 @@ public class WorkflowDesignerService : IWorkflowDesignerService
     }
 
     #endregion
+}
+
+internal class WorkflowStepFieldConfigurationEntity : BaseEntity
+{
+    public int WorkflowStepId { get; set; }
+    public string FieldName { get; set; } = string.Empty;
+    public bool IsVisible { get; set; } = true;
+    public bool IsReadOnly { get; set; } = false;
+    public bool IsRequired { get; set; } = false;
+    public string? ValidationRules { get; set; } // JSON string from database
+    
+    // Convert to domain model
+    public WorkflowStepFieldConfiguration ToDomainModel()
+    {
+        var config = new WorkflowStepFieldConfiguration
+        {
+            Id = this.Id,
+            WorkflowStepId = this.WorkflowStepId,
+            FieldName = this.FieldName,
+            IsVisible = this.IsVisible,
+            IsReadOnly = this.IsReadOnly,
+            IsRequired = this.IsRequired
+        };
+        
+        // Deserialize JSON properties
+        if (!string.IsNullOrEmpty(this.ValidationRules))
+        {
+            try
+            {
+                config.ValidationRules = JsonSerializer.Deserialize<List<FieldValidationRule>>(this.ValidationRules) ?? new();
+            }
+            catch (JsonException)
+            {
+                config.ValidationRules = new();
+            }
+        }
+        
+        return config;
+    }
 }

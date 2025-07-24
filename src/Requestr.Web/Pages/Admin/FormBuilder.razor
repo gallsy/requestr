@@ -975,7 +975,7 @@
                                             <div class="row">
                                                 <div class="col-12">
                                                     <h6>Field Configuration</h6>
-                                                    <p class="text-muted small">Configure field visibility, read-only status, and requirements for this step.</p>
+                                                    <p class="text-muted small">Configure field visibility, editability, and requirements for this step.</p>
                                                     
                                                     @if (_formDefinition?.Fields?.Any() == true)
                                                     {
@@ -986,8 +986,8 @@
                                                                         <th>Field Name</th>
                                                                         <th>Display Name</th>
                                                                         <th>Visible</th>
-                                                                        <th>Read Only</th>
-                                                                        <th>Required</th>
+                                                                        <th>Editable</th>
+                                                                        <th>Make Required</th>
                                                                     </tr>
                                                                 </thead>
                                                                 <tbody>
@@ -1007,8 +1007,8 @@
                                                                             <td>
                                                                                 <div class="form-check">
                                                                                     <input class="form-check-input" type="checkbox" 
-                                                                                           checked="@fieldConfig.IsReadOnly" 
-                                                                                           @onchange="(e) => { fieldConfig.IsReadOnly = (bool)e.Value!; }" />
+                                                                                           checked="@(!fieldConfig.IsReadOnly)" 
+                                                                                           @onchange="(e) => { fieldConfig.IsReadOnly = !(bool)e.Value!; }" />
                                                                                 </div>
                                                                             </td>
                                                                             <td>
@@ -2346,6 +2346,26 @@
                         var config = new ApprovalStepConfiguration();
 
                         await FormWorkflowConfigurationService.UpdateStepConfigurationAsync(FormId.Value, _selectedWorkflowId!.Value, stepConfig.StepIdString, config, currentUser);
+                        
+                        // Save field configurations for approval steps
+                        if (stepConfig.FieldConfigurations?.Any() == true)
+                        {
+                            Logger.LogInformation("Saving {Count} field configurations for step {StepId}", 
+                                stepConfig.FieldConfigurations.Count, stepConfig.StepId);
+                                
+                            foreach (var fieldConfig in stepConfig.FieldConfigurations.Values)
+                            {
+                                Logger.LogInformation("Configuring field {FieldName}: Visible={IsVisible}, ReadOnly={IsReadOnly}, Required={IsRequired}", 
+                                    fieldConfig.FieldName, fieldConfig.IsVisible, fieldConfig.IsReadOnly, fieldConfig.IsRequired);
+                                    
+                                await WorkflowDesignerService.ConfigureStepFieldAsync(
+                                    stepConfig.StepId, 
+                                    fieldConfig.FieldName, 
+                                    fieldConfig.IsVisible, 
+                                    fieldConfig.IsReadOnly, 
+                                    fieldConfig.IsRequired);
+                            }
+                        }
                     }
                     else if (stepConfig.StepType == "parallel")
                     {
