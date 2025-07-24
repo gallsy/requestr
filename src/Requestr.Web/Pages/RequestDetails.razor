@@ -8,6 +8,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.JSInterop
 @using System.Security.Claims
+@using BlazorBootstrap
 @inject IFormRequestService FormRequestService
 @inject IFormDefinitionService FormDefinitionService
 @inject IWorkflowService WorkflowService
@@ -20,56 +21,44 @@
 
 @if (_isLoading)
 {
-    <div class="text-center p-5">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
-        </div>
-        <p class="mt-2">Loading request details...</p>
-    </div>
+    <LoadingSpinner Message="Loading request details..." />
 }
 else if (_request == null)
 {
-    <div class="card">
-        <div class="card-body">
-            <div class="text-center p-5">
-                <i class="bi bi-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
-                <h4 class="mt-3">Request Not Found</h4>
-                <p class="text-muted">The requested form request could not be found or you don't have permission to access it.</p>
-                <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">
-                    Go Home
-                </button>
-            </div>
-        </div>
-    </div>
+    <EmptyState IconName=IconName.ExclamationTriangle 
+                Title="Request Not Found" 
+                Description="The requested form request could not be found or you don't have permission to access it.">
+        <Action>
+            <Button Color="ButtonColor.Primary" @onclick="@(() => Navigation.NavigateTo("/"))">
+                Go Home
+            </Button>
+        </Action>
+    </EmptyState>
 }
 else
 {
+    <PageHeader Title="Request Details" 
+                Description="@($"Request #{RequestId} - {_request.FormDefinition?.Name}")"
+                Icon=IconName.FileText>
+        <Actions>
+            @if (_request.Status == RequestStatus.Pending && CanEditRequest())
+            {
+                <Button Color="ButtonColor.Primary" Outline="true" 
+                        @onclick="@(() => Navigation.NavigateTo($"/forms/{_request.FormDefinitionId}/edit/{RequestId}"))">
+                    <Icon Name="IconName.Pencil" class="me-1" />
+                    Edit Request
+                </Button>
+            }
+            <Button Color="ButtonColor.Secondary" @onclick="GoBack">
+                <Icon Name="IconName.ArrowLeft" class="me-1" />
+                Back
+            </Button>
+        </Actions>
+    </PageHeader>
+
     <div class="container">
         <div class="row">
             <div class="col-lg-12">
-                <div class="d-flex justify-content-between align-items-center mb-4">
-                    <div>
-                        <h2>Request Details</h2>
-                        <nav aria-label="breadcrumb">
-                            <ol class="breadcrumb">
-                                <li class="breadcrumb-item"><a href="/">Home</a></li>
-                                <li class="breadcrumb-item"><a href="/approval">Requests</a></li>
-                                <li class="breadcrumb-item active" aria-current="page">Request #@RequestId</li>
-                            </ol>
-                        </nav>
-                    </div>
-                    <div>
-                        @if (_request.Status == RequestStatus.Pending && CanEditRequest())
-                        {
-                            <a href="/forms/@_request.FormDefinitionId/edit/@RequestId" class="btn btn-outline-primary me-2">
-                                <i class="bi bi-pencil"></i> Edit Request
-                            </a>
-                        }
-                        <button class="btn btn-secondary" @onclick="GoBack">
-                            <i class="bi bi-arrow-left"></i> Back
-                        </button>
-                    </div>
-                </div>
 
                 <div class="row">
                     <div class="col-lg-8">
@@ -300,9 +289,11 @@ else
                                                                     }
                                                                     catch (Exception ex)
                                                                     {
-                                                                        <div class="alert alert-warning">
+                                                                        <StandardAlert AlertColor="AlertColor.Warning" 
+                                                                                     IconName=IconName.ExclamationTriangle
+                                                                                     Dismissable="false">
                                                                             <small>Unable to parse field changes: @ex.Message</small>
-                                                                        </div>
+                                                                        </StandardAlert>
                                                                     }
                                                                 </div>
                                                             </div>
@@ -346,11 +337,12 @@ else
                                     else if (_request.Status == RequestStatus.Failed && CanRetryRequest())
                                     {
                                         <div class="d-grid gap-2">
-                                            <div class="alert alert-warning mb-3">
-                                                <i class="bi bi-exclamation-triangle"></i>
-                                                <strong>Application Failed</strong>
-                                                <p class="mb-0 mt-1 small">@_request.FailureMessage</p>
-                                            </div>
+                                            <StandardAlert AlertColor="AlertColor.Warning" 
+                                                         IconName=IconName.ExclamationTriangle
+                                                         Title="Application Failed"
+                                                         Dismissable="false">
+                                                <small>@_request.FailureMessage</small>
+                                            </StandardAlert>
                                             <button class="btn btn-warning" @onclick="RetryFailedRequest" disabled="@_isProcessing">
                                                 @if (_isProcessing)
                                                 {
@@ -362,10 +354,11 @@ else
                                     }
                                     else
                                     {
-                                        <div class="alert alert-info mb-0">
-                                            <i class="bi bi-info-circle"></i>
+                                        <StandardAlert AlertColor="AlertColor.Info" 
+                                                     IconName=IconName.InfoCircle
+                                                     Dismissable="false">
                                             This request has already been @_request.Status.ToString().ToLower().
-                                        </div>
+                                        </StandardAlert>
                                     }
                                 </div>
                             </div>
@@ -444,17 +437,21 @@ else
                         </p>
                         @if (_isApproval)
                         {
-                            <div class="alert alert-warning">
-                                <i class="bi bi-exclamation-triangle me-2"></i>
-                                <strong>Admin Action:</strong> This will force apply the request and stop any active workflows.
-                            </div>
+                            <StandardAlert AlertColor="AlertColor.Warning" 
+                                         IconName=IconName.ExclamationTriangle
+                                         Title="Admin Action:"
+                                         Dismissable="false">
+                                This will force apply the request and stop any active workflows.
+                            </StandardAlert>
                         }
                         else
                         {
-                            <div class="alert alert-warning">
-                                <i class="bi bi-exclamation-triangle me-2"></i>
-                                <strong>Admin Action:</strong> This will cancel the request and stop any active workflows.
-                            </div>
+                            <StandardAlert AlertColor="AlertColor.Warning" 
+                                         IconName=IconName.ExclamationTriangle
+                                         Title="Admin Action:"
+                                         Dismissable="false">
+                                This will cancel the request and stop any active workflows.
+                            </StandardAlert>
                         }
                         @if (!_isApproval)
                         {

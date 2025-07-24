@@ -1,0 +1,68 @@
+@* Standardized alert component using Blazor Bootstrap *@
+@using BlazorBootstrap
+
+<Alert Color="@AlertColor" Dismissable="@Dismissable" @ref="alertRef">
+    <div class="d-flex align-items-center">
+        @if (IconName.HasValue)
+        {
+            <Icon Name="IconName.Value" class="me-2" />
+        }
+        <div class="flex-grow-1">
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <strong>@Title</strong>
+                @if (!string.IsNullOrEmpty(Message))
+                {
+                    <br />
+                }
+            }
+            @if (!string.IsNullOrEmpty(Message))
+            {
+                @Message
+            }
+            @ChildContent
+        </div>
+    </div>
+</Alert>
+
+@code {
+    private Alert alertRef = default!;
+
+    /// <summary>
+    /// Alert color/type
+    /// </summary>
+    [Parameter] public AlertColor AlertColor { get; set; } = AlertColor.Primary;
+
+    /// <summary>
+    /// Whether the alert can be dismissed
+    /// </summary>
+    [Parameter] public bool Dismissable { get; set; } = true;
+
+    /// <summary>
+    /// Bootstrap icon name
+    /// </summary>
+    [Parameter] public IconName? IconName { get; set; }
+
+    /// <summary>
+    /// Alert title (optional)
+    /// </summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>
+    /// Alert message (optional)
+    /// </summary>
+    [Parameter] public string? Message { get; set; }
+
+    /// <summary>
+    /// Custom content for the alert
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Programmatically close the alert
+    /// </summary>
+    public async Task CloseAsync()
+    {
+        await alertRef.CloseAsync();
+    }
+}

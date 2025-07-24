@@ -45,11 +45,9 @@
 
             @if (!string.IsNullOrEmpty(StatusMessage))
             {
-                <div class="alert @GetAlertClass() alert-dismissible fade show" role="alert">
-                    <i class="bi @GetAlertIcon() me-2"></i>
-                    @StatusMessage
-                    <button type="button" class="btn-close" @onclick="ClearStatusMessage"></button>
-                </div>
+                <StandardAlert AlertColor="@(IsSuccess ? AlertColor.Success : AlertColor.Danger)" 
+                             IconName="@(IsSuccess ? IconName.CheckCircleFill : IconName.ExclamationTriangleFill)"
+                             Message="@StatusMessage" />
             }
 
             <!-- Summary Cards -->

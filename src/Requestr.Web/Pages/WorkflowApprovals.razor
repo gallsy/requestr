@@ -5,6 +5,7 @@
 @using Requestr.Core.Interfaces
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
+@using BlazorBootstrap
 @inject IFormRequestService FormRequestService
 @inject IWorkflowService WorkflowService
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -26,51 +27,91 @@
                     </h1>
                     <p class="lead">Review and process form requests awaiting approval</p>
                 </div>
-                <div class="d-flex gap-2">
-                    <select class="form-select form-select-sm" @bind="SelectedFormFilter" @bind:after="ApplyFilters">
-                        <option value="">All Forms</option>
-                        @if (AllRequests?.Any() == true)
-                        {
-                            @foreach (var form in AllRequests.Where(r => r.FormDefinition != null)
-                                .Select(r => r.FormDefinition!).DistinctBy(f => f.Id))
-                            {
-                                <option value="@form.Id">@form.Name</option>
-                            }
-                        }
-                    </select>
-                    <select class="form-select form-select-sm" @bind="SelectedStatusFilter" @bind:after="ApplyFilters" title="Filter by workflow step status">
-                        <option value="">All Statuses</option>
-                        <option value="Pending">Pending</option>
-                        <option value="InProgress">In Progress</option>
-                        <option value="Completed">Completed</option>
-                        <option value="Skipped">Skipped</option>
-                        <option value="Failed">Failed</option>
-                    </select>
-                    <select class="form-select form-select-sm" @bind="SortOrder" @bind:after="ApplyFilters">
-                        <option value="newest">Newest First</option>
-                        <option value="oldest">Oldest First</option>
-                    </select>
-                    <button class="btn btn-sm btn-outline-primary" @onclick="RefreshData">
-                        <i class="bi bi-arrow-clockwise me-1"></i>
-                        Refresh
-                    </button>
+            </div>
+
+            <!-- Advanced Filters -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="bi bi-funnel me-2"></i>
+                        Filters
+                        <button class="btn btn-sm btn-link p-0 ms-2" @onclick="ToggleAdvancedFilters">
+                            <i class="bi bi-@(_showAdvancedFilters ? "chevron-up" : "chevron-down")"></i>
+                        </button>
+                    </h6>
+                </div>
+                <div class="card-body @(_showAdvancedFilters ? "" : "d-none")">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Form</label>
+                            <select class="form-select form-select-sm" @bind="SelectedFormFilter" @bind:after="ApplyFilters">
+                                <option value="">All Forms</option>
+                                @if (AllRequests?.Any() == true)
+                                {
+                                    @foreach (var form in AllRequests.Where(r => r.FormDefinition != null)
+                                        .Select(r => r.FormDefinition!).DistinctBy(f => f.Id))
+                                    {
+                                        <option value="@form.Id">@form.Name</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Status</label>
+                            <select class="form-select form-select-sm" @bind="SelectedStatusFilter" @bind:after="ApplyFilters">
+                                <option value="">All Statuses</option>
+                                <option value="Pending">Pending</option>
+                                <option value="InProgress">In Progress</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Skipped">Skipped</option>
+                                <option value="Failed">Failed</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Sort Order</label>
+                            <select class="form-select form-select-sm" @bind="SortOrder" @bind:after="ApplyFilters">
+                                <option value="newest">Newest First</option>
+                                <option value="oldest">Oldest First</option>
+                            </select>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted">
+                                    @if (FilteredRequests?.Any() == true)
+                                    {
+                                        <text>Showing @FilteredRequests.Count() of @AllRequests?.Count() requests</text>
+                                    }
+                                    else if (AllRequests?.Any() == true)
+                                    {
+                                        <text>No requests match your current filters (@AllRequests.Count() total)</text>
+                                    }
+                                    else
+                                    {
+                                        <text>No requests found</text>
+                                    }
+                                </small>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="RefreshData">
+                                    <i class="bi bi-arrow-clockwise me-1"></i>
+                                    Refresh
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             @if (!string.IsNullOrEmpty(SuccessMessage))
             {
-                <div class="alert alert-success alert-dismissible fade show" role="alert">
-                    @SuccessMessage
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
+                <StandardAlert AlertColor="AlertColor.Success" 
+                             IconName="IconName.CheckCircle"
+                             Message="@SuccessMessage" />
             }
 
             @if (!string.IsNullOrEmpty(ErrorMessage))
             {
-                <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                    @ErrorMessage
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
+                <StandardAlert AlertColor="AlertColor.Danger" 
+                             IconName="IconName.ExclamationTriangle"
+                             Message="@ErrorMessage" />
             }
 
             <div class="card">
@@ -163,6 +204,7 @@
     private List<FormRequest>? FilteredRequests;
     private Dictionary<int, WorkflowStepInstance?> WorkflowSteps = new();
     private bool IsLoading = true;
+    private bool _showAdvancedFilters = true;
     private string SelectedFormFilter = "";
     private string SelectedStatusFilter = "";
     private string SortOrder = "newest";
@@ -365,5 +407,10 @@
     {
         SuccessMessage = null;
         ErrorMessage = null;
+    }
+
+    private void ToggleAdvancedFilters()
+    {
+        _showAdvancedFilters = !_showAdvancedFilters;
     }
 }

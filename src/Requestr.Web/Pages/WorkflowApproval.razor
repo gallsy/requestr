@@ -17,58 +17,47 @@
 
 @if (_isLoading)
 {
-    <div class="text-center p-5">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
-        </div>
-        <p class="mt-2">Loading workflow step...</p>
-    </div>
+    <LoadingSpinner Message="Loading workflow step..." />
 }
 else if (_workflowInstance == null || _currentStep == null || _formRequest == null)
 {
-    <div class="card">
-        <div class="card-body">
-            <div class="text-center p-5">
-                <i class="bi bi-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
-                <h4 class="mt-3">Workflow Step Not Found</h4>
-                <p class="text-muted">The requested workflow step could not be found or you don't have permission to access it.</p>
-                <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">
-                    Go Home
-                </button>
-            </div>
-        </div>
-    </div>
+    <EmptyState IconName=IconName.ExclamationTriangle 
+                Title="Workflow Step Not Found" 
+                Description="The requested workflow step could not be found or you don't have permission to access it.">
+        <Action>
+            <Button Color="ButtonColor.Primary" @onclick="@(() => Navigation.NavigateTo("/"))">
+                Go Home
+            </Button>
+        </Action>
+    </EmptyState>
 }
 else
 {
+    <PageHeader Title="@(_workflowDefinition?.Name ?? "Workflow Review")" 
+                Description="@(_formRequest.FormDefinition?.Name + " Request")"
+                Icon="IconName.Diagram3">
+        <Actions>
+            <span class="badge bg-info fs-6">
+                Step @(_currentStepIndex + 1) of @_totalSteps
+            </span>
+        </Actions>
+    </PageHeader>
+
     <div class="container">
         <div class="row justify-content-center">
             <div class="col-lg-10">
-                <!-- Workflow Progress Header -->
+                <!-- Progress Indicator -->
                 <div class="card mb-4">
                     <div class="card-body">
-                        <div class="row align-items-center">
-                            <div class="col-md-8">
-                                <h4 class="mb-1">@_workflowDefinition?.Name</h4>
-                                <p class="text-muted mb-2">@_formRequest.FormDefinition?.Name Request</p>
-                                <small class="text-muted">
-                                    Requested by @_formRequest.RequestedByName on @_formRequest.RequestedAt.ToString("MMM dd, yyyy HH:mm")
-                                </small>
-                            </div>
-                            <div class="col-md-4 text-md-end">
-                                <span class="badge bg-info fs-6">
-                                    Step @(_currentStepIndex + 1) of @_totalSteps
-                                </span>
-                            </div>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <small class="text-muted">
+                                Requested by @_formRequest.RequestedByName on @_formRequest.RequestedAt.ToString("MMM dd, yyyy HH:mm")
+                            </small>
                         </div>
-                        
-                        <!-- Progress Bar -->
-                        <div class="mt-3">
-                            <div class="progress" style="height: 8px;">
-                                <div class="progress-bar bg-info" 
-                                     style="width: @((_currentStepIndex / (double)_totalSteps) * 100)%"
-                                     role="progressbar">
-                                </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-info" 
+                                 style="width: @((_currentStepIndex / (double)_totalSteps) * 100)%"
+                                 role="progressbar">
                             </div>
                         </div>
                     </div>
@@ -93,18 +82,16 @@ else
                     <div class="card-body">
                         @if (!string.IsNullOrEmpty(_errorMessage))
                         {
-                            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                                @_errorMessage
-                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                            </div>
+                            <StandardAlert AlertColor="AlertColor.Danger" 
+                                         IconName=IconName.ExclamationTriangle
+                                         Message="@_errorMessage" />
                         }
                         
                         @if (!string.IsNullOrEmpty(_successMessage))
                         {
-                            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                @_successMessage
-                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                            </div>
+                            <StandardAlert AlertColor="AlertColor.Success" 
+                                         IconName=IconName.CheckCircle
+                                         Message="@_successMessage" />
                         }
 
                         <!-- Request Summary -->
@@ -223,11 +210,12 @@ else
                             }
                             else
                             {
-                                <div class="alert alert-warning">
-                                    <i class="bi bi-exclamation-triangle me-2"></i>
+                                <StandardAlert AlertColor="AlertColor.Warning" 
+                                             IconName=IconName.ExclamationTriangle
+                                             Dismissable="false">
                                     You do not have permission to approve this step. This step is assigned to: 
                                     <strong>@string.Join(", ", _currentStepDefinition?.AssignedRoles ?? new List<string>())</strong>
-                                </div>
+                                </StandardAlert>
                             }
                         }
                         else
@@ -310,12 +298,12 @@ else
         // Load current step instance
         var allStepInstances = await WorkflowService.GetStepInstancesAsync(WorkflowInstanceId);
         Logger.LogInformation("LoadWorkflowDataAsync: Found {Count} step instances", allStepInstances?.Count ?? 0);
-        _currentStep = allStepInstances.FirstOrDefault(s => s.StepId == StepId);
+        _currentStep = allStepInstances?.FirstOrDefault(s => s.StepId == StepId);
         Logger.LogInformation("LoadWorkflowDataAsync: CurrentStep for StepId '{StepId}' found: {Found}", StepId, _currentStep != null);
         if (_currentStep == null) return;
 
         // Load step definition
-        _currentStepDefinition = _workflowDefinition.Steps.FirstOrDefault(s => s.StepId == StepId);
+        _currentStepDefinition = _workflowDefinition?.Steps?.FirstOrDefault(s => s.StepId == StepId);
         Logger.LogInformation("LoadWorkflowDataAsync: CurrentStepDefinition found: {Found}", _currentStepDefinition != null);
 
         // Load field configurations for this step
@@ -325,8 +313,8 @@ else
         }
 
         // Calculate progress
-        _totalSteps = _workflowDefinition.Steps.Count(s => s.StepType != WorkflowStepType.Start && s.StepType != WorkflowStepType.End);
-        _currentStepIndex = allStepInstances.Count(s => s.Status == WorkflowStepInstanceStatus.Completed);
+        _totalSteps = _workflowDefinition?.Steps?.Count(s => s.StepType != WorkflowStepType.Start && s.StepType != WorkflowStepType.End) ?? 0;
+        _currentStepIndex = allStepInstances?.Count(s => s.Status == WorkflowStepInstanceStatus.Completed) ?? 0;
 
         Logger.LogInformation("LoadWorkflowDataAsync: Completed successfully");
     }

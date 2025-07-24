@@ -28,36 +28,30 @@
 
             @if (!string.IsNullOrEmpty(errorMessage))
             {
-                <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                    <i class="bi bi-exclamation-triangle me-2"></i>
+                <StandardAlert AlertColor="AlertColor.Danger" 
+                               IconName="IconName.ExclamationTriangleFill"
+                               IsDismissible="true"
+                               OnDismiss="() => errorMessage = null">
                     @errorMessage
-                    <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
-                </div>
+                </StandardAlert>
             }
 
             @if (workflows == null)
             {
-                <div class="text-center p-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-2">Loading workflows...</p>
-                </div>
+                <LoadingSpinner Message="Loading workflows..." />
             }
             else if (!workflows.Any())
             {
-                <div class="card">
-                    <div class="card-body">
-                        <div class="text-center py-5">
-                            <i class="bi bi-diagram-2 display-1 text-muted mb-3"></i>
-                            <h3>No workflows yet</h3>
-                            <p class="text-muted">Create your first workflow to get started with approval processes.</p>
-                            <button class="btn btn-primary" @onclick="ShowCreateWorkflowModal">
-                                <i class="bi bi-plus-lg"></i> Create Workflow
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <EmptyState IconName=IconName.Diagram2 
+                            Title="No workflows yet" 
+                            Description="Create your first workflow to get started with approval processes.">
+                    <Action>
+                        <Button Color="ButtonColor.Primary" @onclick="ShowCreateWorkflowModal">
+                            <Icon Name="IconName.Plus" class="me-2" />
+                            Create Workflow
+                        </Button>
+                    </Action>
+                </EmptyState>
             }
             else
             {

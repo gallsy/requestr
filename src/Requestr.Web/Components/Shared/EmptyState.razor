@@ -1,0 +1,39 @@
+@* Standardized empty state component *@
+@using BlazorBootstrap
+
+<div class="text-center py-5">
+    <Icon Name="@IconName" class="text-muted mb-3" style="font-size: 4rem;" />
+    <h3 class="text-muted">@Title</h3>
+    @if (!string.IsNullOrEmpty(Description))
+    {
+        <p class="text-muted">@Description</p>
+    }
+    @if (Action != null)
+    {
+        <div class="mt-3">
+            @Action
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Bootstrap icon to display
+    /// </summary>
+    [Parameter] public IconName IconName { get; set; } = IconName.ExclamationTriangle;
+
+    /// <summary>
+    /// Title for the empty state
+    /// </summary>
+    [Parameter] public string Title { get; set; } = "No Items Found";
+
+    /// <summary>
+    /// Optional description for the empty state
+    /// </summary>
+    [Parameter] public string? Description { get; set; }
+
+    /// <summary>
+    /// Optional action button or link
+    /// </summary>
+    [Parameter] public RenderFragment? Action { get; set; }
+}

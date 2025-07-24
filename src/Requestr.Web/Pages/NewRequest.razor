@@ -9,37 +9,26 @@
 
 <PageTitle>Create New Request | Requestr</PageTitle>
 
-<div class="page-header slide-up">
-    <h1 class="display-5">
-        <i class="bi bi-plus-circle me-3"></i>
-        New Request
-    </h1>
-    <p class="lead">Choose a form below to submit a new request.</p>
-</div>
+<PageHeader Title="New Request" 
+            Description="Choose a form below to submit a new request."
+            Icon="IconName.PlusCircle" />
 
 @if (_isLoading)
 {
-    <div class="d-flex justify-content-center p-5">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
-        </div>
-    </div>
+    <LoadingSpinner />
 }
 else if (_forms == null || !_forms.Any())
 {
-    <div class="card">
-        <div class="card-body">
-            <div class="text-center p-5">
-                <i class="bi bi-inbox display-1 text-muted mb-3"></i>
-                <h5>No Forms Available</h5>
-                <p class="text-muted">There are no active forms available for you to submit.</p>
-                <a href="/" class="btn btn-primary">
-                    <i class="bi bi-house me-2"></i>
-                    Return Home
-                </a>
-            </div>
-        </div>
-    </div>
+    <EmptyState IconName="IconName.Inbox" 
+                Title="No Forms Available" 
+                Description="There are no active forms available for you to submit.">
+        <Action>
+            <Button Color="ButtonColor.Primary" @onclick="@(() => NavigationManager.NavigateTo("/"))">
+                <Icon Name="IconName.House" class="me-2" />
+                Return Home
+            </Button>
+        </Action>
+    </EmptyState>
 }
 else
 {
@@ -144,12 +133,13 @@ else
                                 <DynamicAuthorizeView FormDefinitionId="@form.Id" 
                                                       AnyPermissions="new[] { FormPermissionType.CreateRequest, FormPermissionType.BulkUploadCsv, FormPermissionType.ViewData }">
                                     <NotAuthorized>
-                                        <div class="alert alert-warning mt-2 mb-0">
+                                        <StandardAlert AlertColor="AlertColor.Warning" 
+                                                     IconName="IconName.Lock"
+                                                     Dismissable="false">
                                             <small class="text-muted">
-                                                <i class="bi bi-lock me-1"></i>
                                                 You don't have permissions to access this form. Contact your administrator.
                                             </small>
-                                        </div>
+                                        </StandardAlert>
                                     </NotAuthorized>
                                 </DynamicAuthorizeView>
                             </div>

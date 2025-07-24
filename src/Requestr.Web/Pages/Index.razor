@@ -12,13 +12,9 @@
 
 <PageTitle>Dashboard | Requestr</PageTitle>
 
-<div class="page-header slide-up">
-    <h1 class="display-4">
-        <i class="bi bi-house-door-fill me-3"></i>
-        Welcome to Requestr
-    </h1>
-    <p class="lead">Manage your data requests and approvals.</p>
-</div>
+<PageHeader Title="Welcome to Requestr" 
+            Description="Manage your data requests and approvals."
+            Icon="IconName.HouseDoorFill" />
 
 <div class="row gy-4">
     <!-- Available Forms -->
@@ -33,19 +29,13 @@
             <div class="card-body">
                 @if (AvailableForms == null)
                 {
-                    <div class="d-flex justify-content-center py-5">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                    </div>
+                    <LoadingSpinner />
                 }
                 else if (!AvailableForms.Any())
                 {
-                    <div class="text-center py-5">
-                        <i class="bi bi-inbox display-1 text-muted mb-3"></i>
-                        <h6 class="text-muted">No forms available</h6>
-                        <p class="text-muted small">Check back later or contact your administrator.</p>
-                    </div>
+                    <EmptyState IconName="IconName.Inbox" 
+                                Title="No forms available" 
+                                Description="Check back later or contact your administrator." />
                 }
                 else
                 {
@@ -110,19 +100,13 @@
             <div class="card-body">
                 @if (PendingRequests == null)
                 {
-                    <div class="d-flex justify-content-center py-5">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                    </div>
+                    <LoadingSpinner />
                 }
                 else if (!PendingRequests.Any())
                 {
-                    <div class="text-center py-5">
-                        <i class="bi bi-check-circle display-1 text-success mb-3"></i>
-                        <h6 class="text-muted">No pending requests</h6>
-                        <p class="text-muted small">All caught up! Great work.</p>
-                    </div>
+                    <EmptyState IconName="IconName.CheckCircle" 
+                                Title="No pending requests" 
+                                Description="All caught up! Great work." />
                 }
                 else
                 {
@@ -184,19 +168,13 @@
                 <div class="card-body">
                     @if (PendingWorkflowSteps == null)
                     {
-                        <div class="d-flex justify-content-center py-5">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                        </div>
+                        <LoadingSpinner />
                     }
                     else if (!PendingWorkflowSteps.Any())
                     {
-                        <div class="text-center py-5">
-                            <i class="bi bi-check-circle display-1 text-success mb-3"></i>
-                            <h6 class="text-muted">No workflow steps pending</h6>
-                            <p class="text-muted small">You have no workflow steps requiring your action at this time.</p>
-                        </div>
+                        <EmptyState IconName="IconName.CheckCircle" 
+                                    Title="No workflow steps pending" 
+                                    Description="You have no workflow steps requiring your action at this time." />
                     }
                     else
                     {
