@@ -104,3 +104,10 @@ public enum BranchOperator
     IsEmpty,
     IsNotEmpty
 }
+
+public enum FormDisplayMode
+{
+    Edit,           // Full editing capability (current FormSubmission behavior)
+    ReadOnly,       // All fields visible but read-only
+    Approval        // Fields configured per workflow step field configurations
+}

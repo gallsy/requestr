@@ -1072,9 +1072,9 @@ public class WorkflowService : IWorkflowService
         using var connection = new SqlConnection(_connectionString);
         
         const string sql = "SELECT * FROM WorkflowStepFieldConfigurations WHERE WorkflowStepId = @WorkflowStepId";
-        var configurations = await connection.QueryAsync<WorkflowStepFieldConfiguration>(sql, new { WorkflowStepId = workflowStepId });
+        var configurationsDb = await connection.QueryAsync<WorkflowStepFieldConfigurationDb>(sql, new { WorkflowStepId = workflowStepId });
         
-        return configurations.ToList();
+        return configurationsDb.Select(c => c.ToDomainModel()).ToList();
     }
 
     public async Task<Dictionary<string, object>> GetEffectiveFieldConfigurationAsync(int workflowInstanceId, string stepId)
@@ -1087,15 +1087,16 @@ public class WorkflowService : IWorkflowService
             INNER JOIN WorkflowInstances wi ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId
             WHERE wi.Id = @WorkflowInstanceId AND ws.StepId = @StepId";
 
-        var configurations = await connection.QueryAsync<WorkflowStepFieldConfiguration>(sql, new 
+        var configurationsDb = await connection.QueryAsync<WorkflowStepFieldConfigurationDb>(sql, new 
         { 
             WorkflowInstanceId = workflowInstanceId, 
             StepId = stepId 
         });
 
         var result = new Dictionary<string, object>();
-        foreach (var config in configurations)
+        foreach (var configDb in configurationsDb)
         {
+            var config = configDb.ToDomainModel();
             result[config.FieldName] = new
             {
                 config.IsVisible,

@@ -1,7 +1,10 @@
 @page "/approve/{RequestId:int}"
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
+@using Requestr.Web.Components
 @inject IFormRequestService FormRequestService
+@inject IWorkflowService WorkflowService
+@inject IWorkflowDesignerService WorkflowDesignerService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -92,54 +95,26 @@ else
                             </div>
                         }
 
-                        <!-- Field Values -->
+                        <!-- Form Display with Field Configurations -->
                         <div class="mb-4">
-                            <h5>Requested Changes</h5>
-                            <div class="table-responsive">
-                                <table class="table table-striped">
-                                    <thead>
-                                        <tr>
-                                            <th>Field</th>
-                                            @if (_request.RequestType != RequestType.Insert)
-                                            {
-                                                <th>Original Value</th>
-                                            }
-                                            <th>New Value</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var fieldValue in _request.FieldValues)
-                                        {
-                                            <tr>
-                                                <td><strong>@fieldValue.Key</strong></td>
-                                                @if (_request.RequestType != RequestType.Insert)
-                                                {
-                                                    <td>
-                                                        @if (_request.OriginalValues.ContainsKey(fieldValue.Key))
-                                                        {
-                                                            <span class="text-muted">@_request.OriginalValues[fieldValue.Key]</span>
-                                                        }
-                                                        else
-                                                        {
-                                                            <span class="text-muted">-</span>
-                                                        }
-                                                    </td>
-                                                }
-                                                <td>
-                                                    @if (_request.RequestType == RequestType.Delete)
-                                                    {
-                                                        <span class="text-danger">[DELETE]</span>
-                                                    }
-                                                    else
-                                                    {
-                                                        <strong>@fieldValue.Value</strong>
-                                                    }
-                                                </td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            </div>
+                            <h5>Request Details</h5>
+                            @if (_request.FormDefinition != null)
+                            {
+                                <div class="border rounded p-3">
+                                    <FormRenderer FormDefinition="_request.FormDefinition"
+                                                  FieldValues="_approvalFieldValues"
+                                                  DisplayMode="FormDisplayMode.Approval"
+                                                  WorkflowStepId="_currentWorkflowStepId"
+                                                  OnFieldValueChanged="OnApprovalFieldChanged" />
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="alert alert-warning">
+                                    <Icon Name="IconName.ExclamationTriangle" Class="me-2" />
+                                    Form definition not available for this request.
+                                </div>
+                            }
                         </div>
 
                         @if (_request.Status == RequestStatus.Pending)
@@ -205,6 +180,10 @@ else
     private bool _isLoading = true;
     private bool _isProcessing = false;
     private string _actionType = "";
+    
+    // Form renderer properties
+    private Dictionary<string, object?> _approvalFieldValues = new();
+    private int? _currentWorkflowStepId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -215,6 +194,28 @@ else
             if (_request == null)
             {
                 return;
+            }
+
+            // Initialize approval field values with the request's field values
+            _approvalFieldValues = new Dictionary<string, object?>(_request.FieldValues);
+
+            // Load workflow step information for field configurations
+            if (_request.WorkflowInstanceId.HasValue)
+            {
+                try
+                {
+                    var currentStepInstance = await WorkflowService.GetCurrentStepInstanceAsync(_request.WorkflowInstanceId.Value);
+                    if (currentStepInstance != null)
+                    {
+                        // Get the workflow step ID from the step instance
+                        _currentWorkflowStepId = await GetWorkflowStepIdAsync(_request.WorkflowInstanceId.Value, currentStepInstance.StepId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log error but don't fail the entire page load
+                    Console.WriteLine($"Warning: Could not load workflow step information: {ex.Message}");
+                }
             }
 
             // Check if user has permission to approve this request
@@ -340,5 +341,33 @@ else
                user.FindFirst("upn")?.Value ??
                user.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")?.Value ??
                user.Identity?.Name ?? "Unknown User";
+    }
+    
+    private async Task<int?> GetWorkflowStepIdAsync(int workflowInstanceId, string stepId)
+    {
+        try
+        {
+            // Get the workflow instance to find the workflow definition
+            var workflowInstance = await WorkflowService.GetWorkflowInstanceAsync(workflowInstanceId);
+            if (workflowInstance?.WorkflowDefinition?.Steps == null)
+                return null;
+
+            // Find the step by stepId in the workflow definition
+            var step = workflowInstance.WorkflowDefinition.Steps.FirstOrDefault(s => s.StepId == stepId);
+            return step?.Id;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error getting workflow step ID: {ex.Message}");
+            return null;
+        }
+    }
+    
+    private async Task OnApprovalFieldChanged((string FieldName, object? Value) change)
+    {
+        _approvalFieldValues[change.FieldName] = change.Value;
+        
+        // You could add validation or other logic here
+        await Task.CompletedTask;
     }
 }

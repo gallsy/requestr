@@ -1,0 +1,492 @@
+@using Requestr.Core.Models
+@using Requestr.Core.Interfaces
+@using System.Text.Json
+@inject IWorkflowDesignerService WorkflowDesignerService
+@inject ILogger<FormRenderer> Logger
+
+@* FormRenderer Component - Renders forms in different modes (Edit, ReadOnly, Approval) *@
+
+@if (FormDefinition == null)
+{
+    <div class="text-center p-3">
+        <span class="text-muted">No form definition provided</span>
+    </div>
+}
+else
+{
+    @* Render form sections with grid layout *@
+    @if (FormDefinition.Sections?.Any() == true)
+    {
+        @foreach (var formSection in FormDefinition.Sections.OrderBy(s => s.DisplayOrder))
+        {
+            <div class="form-section mb-4">
+                @if (!string.IsNullOrEmpty(formSection.Name))
+                {
+                    <h5 class="section-title border-bottom pb-2 mb-3">
+                        @formSection.Name
+                    </h5>
+                }
+                @if (!string.IsNullOrEmpty(formSection.Description))
+                {
+                    <p class="text-muted small mb-3">@formSection.Description</p>
+                }
+                
+                @* Grid layout for form fields *@
+                <div class="form-grid" style="display: grid; grid-template-columns: repeat(@formSection.MaxColumns, 1fr); gap: 1rem; margin-bottom: 1rem;">
+                    @{
+                        var sectionFields = GetVisibleFields(formSection.Fields).ToList();
+                        var maxRow = sectionFields.Any() ? sectionFields.Max(f => f.GridRow) : 0;
+                    }
+                    @for (int row = 1; row <= maxRow; row++)
+                    {
+                        @foreach (var field in sectionFields
+                            .Where(f => f.GridRow == row)
+                            .OrderBy(f => f.GridColumn))
+                        {
+                            <div class="form-field-container" 
+                                 style="grid-row: @row; grid-column: @field.GridColumn / span @field.GridColumnSpan;">
+                                
+                                <label class="form-label">
+                                    @field.DisplayName
+                                    @if (IsFieldRequired(field))
+                                    {
+                                        <span class="text-danger">*</span>
+                                    }
+                                </label>
+                                
+                                @{
+                                    var dataType = field.DataType?.ToLower() ?? "text";
+                                    var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : DetermineControlType(dataType);
+                                    var isReadOnly = IsFieldReadOnly(field);
+                                }
+                                
+                                @* Render the appropriate control type *@
+                                @if (controlType == "textarea")
+                                {
+                                    <textarea class="form-control" 
+                                             rows="3"
+                                             value="@GetFieldStringValue(field.Name)"
+                                             @onchange="@((e) => HandleFieldValueChange(field.Name, e.Value))"
+                                             disabled="@isReadOnly"
+                                             placeholder="@field.DefaultValue">
+                                    </textarea>
+                                }
+                                else if (controlType == "checkbox")
+                                {
+                                    <div class="form-check">
+                                        <input class="form-check-input" 
+                                               type="checkbox" 
+                                               checked="@GetCheckboxValue(field.Name)"
+                                               @onchange="@((e) => HandleCheckboxChange(field.Name, e.Value))"
+                                               disabled="@isReadOnly" />
+                                        <label class="form-check-label">
+                                            @field.DisplayName
+                                        </label>
+                                    </div>
+                                }
+                                else if (controlType == "select")
+                                {
+                                    <select class="form-select" 
+                                            value="@GetFieldStringValue(field.Name)"
+                                            @onchange="@((e) => HandleFieldValueChange(field.Name, e.Value))"
+                                            disabled="@isReadOnly">
+                                        <option value="">Select an option</option>
+                                        @if (!string.IsNullOrEmpty(field.DropdownOptions))
+                                        {
+                                            @foreach (var option in GetDropdownOptions(field.DropdownOptions))
+                                            {
+                                                <option value="@option.Value">@option.Text</option>
+                                            }
+                                        }
+                                    </select>
+                                }
+                                else if (controlType == "date")
+                                {
+                                    <input type="date" 
+                                           class="form-control"
+                                           value="@GetDateValue(field.Name)"
+                                           @onchange="@((e) => HandleFieldValueChange(field.Name, e.Value))"
+                                           disabled="@isReadOnly" />
+                                }
+                                else if (controlType == "datetime-local")
+                                {
+                                    <input type="datetime-local" 
+                                           class="form-control"
+                                           value="@GetDateTimeValue(field.Name)"
+                                           @onchange="@((e) => HandleFieldValueChange(field.Name, e.Value))"
+                                           disabled="@isReadOnly" />
+                                }
+                                else if (controlType == "time")
+                                {
+                                    <input type="time" 
+                                           class="form-control"
+                                           value="@GetTimeValue(field.Name)"
+                                           @onchange="@((e) => HandleFieldValueChange(field.Name, e.Value))"
+                                           disabled="@isReadOnly" />
+                                }
+                                else
+                                {
+                                    var inputType = GetInputType(dataType);
+                                    <input type="@inputType" 
+                                           class="form-control"
+                                           value="@GetFieldStringValue(field.Name)"
+                                           @onchange="@((e) => HandleFieldValueChange(field.Name, e.Value))"
+                                           disabled="@isReadOnly"
+                                           placeholder="@field.DefaultValue"
+                                           step="@(inputType == "number" ? "any" : null)"
+                                           maxlength="@(inputType == "text" && field.MaxLength > 0 ? field.MaxLength.ToString() : null)" />
+                                }
+                                
+                                @if (!string.IsNullOrEmpty(field.ValidationMessage))
+                                {
+                                    <small class="form-text text-muted">@field.ValidationMessage</small>
+                                }
+                                
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        }
+    }
+    else if (FormDefinition.Fields?.Any() == true)
+    {
+        @* Fallback: Render fields without form sections using legacy layout *@
+        <div class="row">
+            @foreach (var field in GetVisibleFields(FormDefinition.Fields).OrderBy(f => f.DisplayOrder))
+            {
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">
+                        @field.DisplayName
+                        @if (IsFieldRequired(field))
+                        {
+                            <span class="text-danger">*</span>
+                        }
+                    </label>
+                    
+                    @{
+                        var dataType = field.DataType?.ToLower() ?? "text";
+                        var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : DetermineControlType(dataType);
+                        var isReadOnly = IsFieldReadOnly(field);
+                    }
+                    
+                    @* Same control rendering logic as above *@
+                    @if (controlType == "textarea")
+                    {
+                        <textarea class="form-control" 
+                                 rows="3"
+                                 value="@GetFieldStringValue(field.Name)"
+                                 @onchange="@((e) => HandleFieldValueChange(field.Name, e.Value))"
+                                 disabled="@isReadOnly"
+                                 placeholder="@field.DefaultValue">
+                        </textarea>
+                    }
+                    else if (controlType == "checkbox")
+                    {
+                        <div class="form-check">
+                            <input class="form-check-input" 
+                                   type="checkbox" 
+                                   checked="@GetCheckboxValue(field.Name)"
+                                   @onchange="@((e) => HandleCheckboxChange(field.Name, e.Value))"
+                                   disabled="@isReadOnly" />
+                            <label class="form-check-label">
+                                @field.DisplayName
+                            </label>
+                        </div>
+                    }
+                    else if (controlType == "select")
+                    {
+                        <select class="form-select" 
+                                value="@GetFieldStringValue(field.Name)"
+                                @onchange="@((e) => HandleFieldValueChange(field.Name, e.Value))"
+                                disabled="@isReadOnly">
+                            <option value="">Select an option</option>
+                            @if (!string.IsNullOrEmpty(field.DropdownOptions))
+                            {
+                                @foreach (var option in GetDropdownOptions(field.DropdownOptions))
+                                {
+                                    <option value="@option.Value">@option.Text</option>
+                                }
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        var inputType = GetInputType(dataType);
+                        <input type="@inputType" 
+                               class="form-control"
+                               value="@GetFieldStringValue(field.Name)"
+                               @onchange="@((e) => HandleFieldValueChange(field.Name, e.Value))"
+                               disabled="@isReadOnly"
+                               placeholder="@field.DefaultValue"
+                               step="@(inputType == "number" ? "any" : null)"
+                               maxlength="@(inputType == "text" && field.MaxLength > 0 ? field.MaxLength.ToString() : null)" />
+                    }
+                    
+                    @if (!string.IsNullOrEmpty(field.ValidationMessage))
+                    {
+                        <small class="form-text text-muted">@field.ValidationMessage</small>
+                    }
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="text-center p-3">
+            <span class="text-muted">No fields defined in this form</span>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public FormDefinition? FormDefinition { get; set; }
+    [Parameter] public Dictionary<string, object?> FieldValues { get; set; } = new();
+    [Parameter] public Dictionary<string, bool> CheckboxValues { get; set; } = new();
+    [Parameter] public FormDisplayMode DisplayMode { get; set; } = FormDisplayMode.Edit;
+    [Parameter] public int? WorkflowStepId { get; set; } // For approval mode
+    [Parameter] public EventCallback<(string FieldName, object? Value)> OnFieldValueChanged { get; set; }
+    
+    // Field configurations for approval mode
+    private Dictionary<string, WorkflowStepFieldConfiguration> _fieldConfigurations = new();
+    
+    protected override async Task OnParametersSetAsync()
+    {
+        if (DisplayMode == FormDisplayMode.Approval && WorkflowStepId.HasValue)
+        {
+            await LoadFieldConfigurations();
+        }
+    }
+    
+    private async Task LoadFieldConfigurations()
+    {
+        if (!WorkflowStepId.HasValue) return;
+        
+        try
+        {
+            var configurations = await WorkflowDesignerService.GetStepFieldConfigurationsAsync(WorkflowStepId.Value);
+            _fieldConfigurations = configurations.ToDictionary(c => c.FieldName, c => c);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load field configurations for workflow step {StepId}", WorkflowStepId);
+        }
+    }
+    
+    private IEnumerable<FormField> GetVisibleFields(IEnumerable<FormField> fields)
+    {
+        return fields.Where(field =>
+        {
+            if (DisplayMode == FormDisplayMode.Approval && _fieldConfigurations.ContainsKey(field.Name))
+            {
+                return _fieldConfigurations[field.Name].IsVisible;
+            }
+            return field.IsVisible;
+        });
+    }
+    
+    private bool IsFieldReadOnly(FormField field)
+    {
+        if (DisplayMode == FormDisplayMode.ReadOnly)
+            return true;
+            
+        if (DisplayMode == FormDisplayMode.Approval && _fieldConfigurations.ContainsKey(field.Name))
+        {
+            return _fieldConfigurations[field.Name].IsReadOnly;
+        }
+        
+        return field.IsReadOnly;
+    }
+    
+    private bool IsFieldRequired(FormField field)
+    {
+        if (DisplayMode == FormDisplayMode.Approval && _fieldConfigurations.ContainsKey(field.Name))
+        {
+            return _fieldConfigurations[field.Name].IsRequired;
+        }
+        
+        return field.IsRequired;
+    }
+    
+    private async Task HandleFieldValueChange(string fieldName, object? value)
+    {
+        FieldValues[fieldName] = value;
+        if (OnFieldValueChanged.HasDelegate)
+        {
+            await OnFieldValueChanged.InvokeAsync((fieldName, value));
+        }
+    }
+    
+    private async Task HandleCheckboxChange(string fieldName, object? value)
+    {
+        var boolValue = value?.ToString()?.ToLower() == "true";
+        CheckboxValues[fieldName] = boolValue;
+        FieldValues[fieldName] = boolValue;
+        
+        if (OnFieldValueChanged.HasDelegate)
+        {
+            await OnFieldValueChanged.InvokeAsync((fieldName, boolValue));
+        }
+    }
+    
+    private string GetFieldStringValue(string fieldName)
+    {
+        return FieldValues.ContainsKey(fieldName) ? FieldValues[fieldName]?.ToString() ?? "" : "";
+    }
+    
+    private bool GetCheckboxValue(string fieldName)
+    {
+        if (CheckboxValues.ContainsKey(fieldName))
+            return CheckboxValues[fieldName];
+            
+        if (FieldValues.ContainsKey(fieldName))
+        {
+            var value = FieldValues[fieldName];
+            if (value is bool boolValue)
+                return boolValue;
+            if (bool.TryParse(value?.ToString(), out bool parsedValue))
+                return parsedValue;
+        }
+        
+        return false;
+    }
+    
+    private string GetInputType(string dataType)
+    {
+        var lowerType = dataType.ToLower();
+        
+        return lowerType switch
+        {
+            "bit" => "checkbox",
+            "tinyint" or "smallint" or "int" or "bigint" => "number",
+            "decimal" or "numeric" or "float" or "real" or "money" or "smallmoney" => "number",
+            "date" => "date",
+            "datetime" or "datetime2" or "smalldatetime" => "datetime-local",
+            "time" => "time",
+            "varchar" or "nvarchar" or "char" or "nchar" => "text",
+            "text" or "ntext" => "text",
+            "uniqueidentifier" => "text",
+            _ => "text"
+        };
+    }
+
+    private string DetermineControlType(string dataType)
+    {
+        var lowerType = dataType.ToLower();
+        
+        return lowerType switch
+        {
+            "bit" => "checkbox",
+            "date" => "date",
+            "datetime" or "datetime2" or "smalldatetime" => "datetime-local",
+            "time" => "time",
+            "text" or "ntext" => "textarea",
+            _ => "input"
+        };
+    }
+
+    private List<(string Value, string Text)> GetDropdownOptions(string dropdownOptionsJson)
+    {
+        if (string.IsNullOrEmpty(dropdownOptionsJson))
+            return new List<(string Value, string Text)>();
+
+        try
+        {
+            // Try to parse as simple array of strings (JSON format)
+            var simpleOptions = JsonSerializer.Deserialize<string[]>(dropdownOptionsJson);
+            if (simpleOptions != null)
+            {
+                return simpleOptions.Select(opt => (Value: opt, Text: opt)).ToList();
+            }
+        }
+        catch
+        {
+            try
+            {
+                // Try to parse as array of objects with Value and Text properties (JSON format)
+                var complexOptions = JsonSerializer.Deserialize<DropdownOption[]>(dropdownOptionsJson);
+                if (complexOptions != null)
+                {
+                    return complexOptions.Select(opt => (Value: opt.Value, Text: opt.Text)).ToList();
+                }
+            }
+            catch
+            {
+                // Check if it's line-separated format from Form Builder
+                if (dropdownOptionsJson.Contains('\n') || dropdownOptionsJson.Contains('\r'))
+                {
+                    var lines = dropdownOptionsJson.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                    return lines.Select(line => (Value: line.Trim(), Text: line.Trim())).ToList();
+                }
+                
+                // If all else fails, treat as single option
+                return new List<(string Value, string Text)> { (Value: dropdownOptionsJson, Text: dropdownOptionsJson) };
+            }
+        }
+
+        return new List<(string Value, string Text)>();
+    }
+
+    private string GetDateValue(string fieldName)
+    {
+        if (!FieldValues.ContainsKey(fieldName))
+            return "";
+
+        var value = FieldValues[fieldName];
+        if (value == null)
+            return "";
+
+        if (DateTime.TryParse(value.ToString(), out DateTime dateValue))
+        {
+            return dateValue.ToString("yyyy-MM-dd");
+        }
+
+        return value.ToString() ?? "";
+    }
+
+    private string GetDateTimeValue(string fieldName)
+    {
+        if (!FieldValues.ContainsKey(fieldName))
+            return "";
+
+        var value = FieldValues[fieldName];
+        if (value == null)
+            return "";
+
+        if (DateTime.TryParse(value.ToString(), out DateTime dateValue))
+        {
+            return dateValue.ToString("yyyy-MM-ddTHH:mm");
+        }
+
+        return value.ToString() ?? "";
+    }
+
+    private string GetTimeValue(string fieldName)
+    {
+        if (!FieldValues.ContainsKey(fieldName))
+            return "";
+
+        var value = FieldValues[fieldName];
+        if (value == null)
+            return "";
+
+        if (TimeSpan.TryParse(value.ToString(), out TimeSpan timeValue))
+        {
+            return timeValue.ToString(@"hh\:mm");
+        }
+
+        if (DateTime.TryParse(value.ToString(), out DateTime dateValue))
+        {
+            return dateValue.ToString("HH:mm");
+        }
+
+        return value.ToString() ?? "";
+    }
+
+    // Helper class for dropdown options
+    public class DropdownOption
+    {
+        public string Value { get; set; } = "";
+        public string Text { get; set; } = "";
+    }
+}

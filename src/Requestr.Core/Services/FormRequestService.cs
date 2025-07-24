@@ -68,6 +68,7 @@ public class FormRequestService : IFormRequestService
             AppliedRecordKey = (string?)row.AppliedRecordKey,
             FailureMessage = (string?)row.FailureMessage,
             WorkflowInstanceId = (int?)row.WorkflowInstanceId,
+            BulkFormRequestId = (int?)row.BulkFormRequestId, // Add missing BulkFormRequestId
             FormDefinition = new FormDefinition { Name = (string)row.FormName, Description = (string)row.FormDescription },
             FieldValues = JsonSerializer.Deserialize<Dictionary<string, object?>>((string)(row.FieldValuesJson ?? "{}")) ?? new Dictionary<string, object?>(),
             OriginalValues = JsonSerializer.Deserialize<Dictionary<string, object?>>((string)(row.OriginalValuesJson ?? "{}")) ?? new Dictionary<string, object?>()
@@ -207,7 +208,7 @@ public class FormRequestService : IFormRequestService
                 SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
                        fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
                        fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                       fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
+                       fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
                        fd.Name as FormName, fd.Description as FormDescription
                 FROM FormRequests fr
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
@@ -218,6 +219,12 @@ public class FormRequestService : IFormRequestService
             if (row == null) return null;
 
             var request = CreateFormRequestFromRow(row);
+
+            // Load the complete FormDefinition with Fields and Sections
+            if (request.FormDefinitionId > 0)
+            {
+                request.FormDefinition = await _formDefinitionService.GetByIdAsync(request.FormDefinitionId);
+            }
 
             return request;
         }
