@@ -1001,21 +1001,21 @@
                                                                                 <div class="form-check">
                                                                                     <input class="form-check-input" type="checkbox" 
                                                                                            checked="@fieldConfig.IsVisible" 
-                                                                                           @onchange="(e) => { fieldConfig.IsVisible = (bool)e.Value!; _ = UpdateFieldConfiguration(stepConfig, fieldConfig); }" />
+                                                                                           @onchange="(e) => { fieldConfig.IsVisible = (bool)e.Value!; }" />
                                                                                 </div>
                                                                             </td>
                                                                             <td>
                                                                                 <div class="form-check">
                                                                                     <input class="form-check-input" type="checkbox" 
                                                                                            checked="@fieldConfig.IsReadOnly" 
-                                                                                           @onchange="(e) => { fieldConfig.IsReadOnly = (bool)e.Value!; _ = UpdateFieldConfiguration(stepConfig, fieldConfig); }" />
+                                                                                           @onchange="(e) => { fieldConfig.IsReadOnly = (bool)e.Value!; }" />
                                                                                 </div>
                                                                             </td>
                                                                             <td>
                                                                                 <div class="form-check">
                                                                                     <input class="form-check-input" type="checkbox" 
                                                                                            checked="@fieldConfig.IsRequired" 
-                                                                                           @onchange="(e) => { fieldConfig.IsRequired = (bool)e.Value!; _ = UpdateFieldConfiguration(stepConfig, fieldConfig); }" />
+                                                                                           @onchange="(e) => { fieldConfig.IsRequired = (bool)e.Value!; }" />
                                                                                 </div>
                                                                             </td>
                                                                         </tr>
@@ -1041,7 +1041,7 @@
                                                                     <div class="form-check">
                                                                         <input class="form-check-input" type="checkbox" 
                                                                                checked="@(stepConfig.RequiredRoles.Contains(role))"
-                                                                               @onchange="@((e) => ToggleRequiredRole(stepConfig, role, e.Value?.ToString() == "true"))">
+                                                                               @onchange="@((e) => ToggleRequiredRoleLocal(stepConfig, role, e.Value?.ToString() == "true"))">
                                                                         <label class="form-check-label">@role</label>
                                                                     </div>
                                                                 }
@@ -1971,6 +1971,8 @@
         return false;
     }
 
+   
+
     private string? GetDefaultValueForSqlType(string sqlDataType, bool isNullable, string? existingDefault)
     {
         // If there's already a default value from the database, use it
@@ -2199,11 +2201,7 @@
                 _workflowStepConfigs = new List<WorkflowStepConfigModel>();
             }
 
-            // Auto-save the form when workflow changes
-            if (FormId.HasValue)
-            {
-                await SaveWorkflowConfiguration();
-            }
+            // No auto-save - user must click Save Configuration button
         }
         catch (Exception ex)
         {
@@ -2369,7 +2367,7 @@
         }
     }
 
-    private async Task ToggleRequiredRole(WorkflowStepConfigModel stepConfig, string role, bool isRequired)
+    private void ToggleRequiredRoleLocal(WorkflowStepConfigModel stepConfig, string role, bool isRequired)
     {
         try
         {
@@ -2384,11 +2382,6 @@
             {
                 stepConfig.RequiredRoles.Remove(role);
             }
-
-            if (FormId.HasValue)
-            {
-                await SaveWorkflowConfiguration();
-            }
         }
         catch (Exception ex)
         {
@@ -2402,10 +2395,7 @@
         {
             stepConfig.RequireAllApprovals = requireAll;
 
-            if (FormId.HasValue)
-            {
-                await SaveWorkflowConfiguration();
-            }
+            // No auto-save - user must click Save Configuration button
         }
         catch (Exception ex)
         {
@@ -2885,17 +2875,14 @@
                 
                 // Check if current span fits in the new position, adjust if necessary
                 var maxAllowedSpan = section.MaxColumns - targetCol.Value + 1;
-                if (_draggedField.GridColumnSpan > maxAllowedSpan)
-                {
-                    _draggedField.GridColumnSpan = Math.Max(1, maxAllowedSpan);
-                }
+                var newColumnSpan = Math.Max(1, Math.Min(maxAllowedSpan, originalSpan));
                 
-                // Also check for collisions with other fields and adjust span if needed
+                // Check for collisions with other fields and adjust span if needed
                 var fieldsInSection = _formDefinition.Fields.Where(f => f.FormSectionId == section.Id && f != _draggedField).ToList();
                 
                 // Find the maximum span that fits without collision
-                var maxSpanWithoutCollision = _draggedField.GridColumnSpan;
-                for (int span = 1; span <= _draggedField.GridColumnSpan; span++)
+                var maxSpanWithoutCollision = newColumnSpan;
+                for (int span = 1; span <= newColumnSpan; span++)
                 {
                     bool hasCollision = false;
                     
