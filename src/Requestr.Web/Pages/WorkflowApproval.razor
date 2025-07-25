@@ -35,14 +35,9 @@ else if (_workflowInstance == null || _currentStep == null || _formRequest == nu
 }
 else
 {
-    <PageHeader Title="@(_workflowDefinition?.Name ?? "Workflow Review")" 
+    <PageHeader Title="Approve a request" 
                 Description="@(_formRequest.FormDefinition?.Name + " Request")"
                 Icon="IconName.Diagram3">
-        <Actions>
-            <span class="badge bg-info fs-6">
-                Step @(_currentStepIndex + 1) of @_totalSteps
-            </span>
-        </Actions>
     </PageHeader>
 
     <div class="container">
@@ -55,6 +50,9 @@ else
                             <small class="text-muted">
                                 Requested by @_formRequest.RequestedByName on @_formRequest.RequestedAt.ToString("MMM dd, yyyy HH:mm")
                             </small>
+                            <span class="badge bg-info fs-6">
+                                Step @(_currentStepIndex) of @_totalSteps
+                            </span>
                         </div>
                         <div class="progress" style="height: 8px;">
                             <div class="progress-bar bg-info" 
@@ -156,7 +154,7 @@ else
                                                 {
                                                     @foreach (var (item, index) in _bulkFormRequest.Items.OrderBy(i => i.RowNumber).Select((item, index) => (item, index)))
                                                     {
-                                                        <tr class="@GetRowStatusCssClass(item.Status) @(index % 2 == 1 ? "table-secondary" : "")">
+                                                        <tr>
                                                             @foreach (var field in GetVisibleFieldsForBulk())
                                                             {
                                                                 <td>
@@ -493,7 +491,7 @@ else
 
         // Calculate progress
         _totalSteps = _workflowDefinition?.Steps?.Count(s => s.StepType != WorkflowStepType.Start && s.StepType != WorkflowStepType.End) ?? 0;
-        _currentStepIndex = allStepInstances?.Count(s => s.Status == WorkflowStepInstanceStatus.Completed) ?? 0;
+        _currentStepIndex = allStepInstances?.Count(s => s.StepId.ToLower() != "start" && s.StepId.ToLower() != "end" && s.Status == WorkflowStepInstanceStatus.Completed) ?? 0;
 
         // Initialize field values for FormRenderer
         if (_formRequest != null)

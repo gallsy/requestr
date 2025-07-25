@@ -1079,6 +1079,10 @@ button.nav-link:focus {
     transition: all 0.2s ease;
 }
 
+[data-theme="dark"] .table-hover tbody tr:hover {
+    background-color: var(--primary-dark);
+}
+
 .table th {
     background-color: transparent;
     border-bottom: 1px solid var(--border-color);
@@ -1116,7 +1120,7 @@ button.nav-link:focus {
     --bs-table-active-color: var(--text-color);
     --bs-table-active-bg: rgba(0, 0, 0, 0.1);
     --bs-table-hover-color: var(--text-color);
-    --bs-table-hover-bg: rgba(0, 0, 0, 0.075);
+    /* --bs-table-hover-bg: rgba(0, 0, 0, 0.075); */
 }
 
 /* Bootstrap table color overrides */
