@@ -94,6 +94,19 @@ else
                                          Message="@_successMessage" />
                         }
 
+                        @if (IsStepCompleted)
+                        {
+                            <StandardAlert AlertColor="AlertColor.Info" 
+                                         IconName=IconName.InfoCircle
+                                         Dismissable="false">
+                                <strong>Read-Only View:</strong> This approval step has been completed and cannot be modified.
+                                @if (!string.IsNullOrEmpty(_currentStep.CompletedByName))
+                                {
+                                    <br><small>Completed by @_currentStep.CompletedByName on @_currentStep.CompletedAt?.ToString("MMM dd, yyyy HH:mm")</small>
+                                }
+                            </StandardAlert>
+                        }
+
                         <!-- Request Summary -->
                         <div class="row mb-4">
                             <div class="col-md-6">
@@ -204,6 +217,7 @@ else
                                                                                     <input type="@(field.DataType == "text" ? "text" : field.DataType)" 
                                                                                            class="form-control form-control-sm @(validationError != null ? "is-invalid" : "")"
                                                                                            value="@currentValue"
+                                                                                           disabled="@IsStepCompleted"
                                                                                            @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))"
                                                                                            placeholder="@field.DisplayName" />
                                                                                 }
@@ -212,12 +226,14 @@ else
                                                                                     <input type="number" 
                                                                                            class="form-control form-control-sm @(validationError != null ? "is-invalid" : "")"
                                                                                            value="@currentValue"
+                                                                                           disabled="@IsStepCompleted"
                                                                                            @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))"
                                                                                            placeholder="@field.DisplayName" />
                                                                                 }
                                                                                 else if (field.ControlType == "select" && !string.IsNullOrWhiteSpace(field.DropdownOptions))
                                                                                 {
                                                                                     <select class="form-select form-select-sm @(validationError != null ? "is-invalid" : "")"
+                                                                                            disabled="@IsStepCompleted"
                                                                                             @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))">
                                                                                         <option value="">-- Select --</option>
                                                                                         @{
@@ -252,6 +268,7 @@ else
                                                                                 {
                                                                                     <textarea class="form-control form-control-sm @(validationError != null ? "is-invalid" : "")"
                                                                                               rows="2"
+                                                                                              disabled="@IsStepCompleted"
                                                                                               placeholder="@field.DisplayName"
                                                                                               @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))">@currentValue</textarea>
                                                                                 }
@@ -260,6 +277,7 @@ else
                                                                                     <input type="date" 
                                                                                            class="form-control form-control-sm @(validationError != null ? "is-invalid" : "")"
                                                                                            value="@FormatDateValue(currentValue)"
+                                                                                           disabled="@IsStepCompleted"
                                                                                            @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))" />
                                                                                 }
                                                                                 else if (field.ControlType == "checkbox")
@@ -267,7 +285,8 @@ else
                                                                                     <div class="form-check">
                                                                                         <input type="checkbox" 
                                                                                                class="form-check-input @(validationError != null ? "is-invalid" : "")"
-                                                                                               checked="@(Convert.ToBoolean(currentValue))"
+                                                                                               checked="@(ConvertToBoolean(currentValue))"
+                                                                                               disabled="@IsStepCompleted"
                                                                                                @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))" />
                                                                                     </div>
                                                                                 }
@@ -277,6 +296,7 @@ else
                                                                                     <input type="text" 
                                                                                            class="form-control form-control-sm @(validationError != null ? "is-invalid" : "")"
                                                                                            value="@currentValue"
+                                                                                           disabled="@IsStepCompleted"
                                                                                            @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))"
                                                                                            placeholder="@field.DisplayName" />
                                                                                 }
@@ -300,7 +320,7 @@ else
                                     </div>
                                     
                                     <!-- Summary of Changes -->
-                                    @if (HasPendingBulkChanges())
+                                    @if (HasPendingBulkChanges() && !IsStepCompleted)
                                     {
                                         <Alert Color="AlertColor.Info" Class="mt-3">
                                             <Icon Name="IconName.InfoCircle" class="me-2" />
@@ -333,7 +353,7 @@ else
                                     <div class="border rounded p-3">
                                         <FormRenderer FormDefinition="_formRequest.FormDefinition"
                                                       FieldValues="_workflowFieldValues"
-                                                      DisplayMode="FormDisplayMode.Approval"
+                                                      DisplayMode="@(IsStepCompleted ? FormDisplayMode.ReadOnly : FormDisplayMode.Approval)"
                                                       WorkflowStepId="_currentStepDefinition.Id"
                                                       OnFieldValueChanged="OnWorkflowFieldChanged" />
                                     </div>
@@ -436,6 +456,7 @@ else
 
     // Helper properties
     private bool IsBulkRequest => _formRequest?.BulkFormRequestId.HasValue == true;
+    private bool IsStepCompleted => _currentStep?.Status == WorkflowStepInstanceStatus.Completed;
     
     // Bulk request editing state
     private Dictionary<string, Dictionary<string, object?>> _bulkItemChanges = new(); // [itemId][fieldName] = newValue

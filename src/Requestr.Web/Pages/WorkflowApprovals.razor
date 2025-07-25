@@ -349,33 +349,85 @@
         return Task.CompletedTask;
     }
 
-    private void ViewRequest(int requestId)
+    private async Task ViewRequest(int requestId)
     {
         try
         {
             Logger.LogInformation("ViewRequest called for requestId: {RequestId}", requestId);
             
-            // Get the workflow instance ID and current step for this request
-            var workflowStep = WorkflowSteps.TryGetValue(requestId, out var step) ? step : null;
             var request = AllRequests?.FirstOrDefault(r => r.Id == requestId);
             
-            Logger.LogInformation("WorkflowSteps dictionary contains {Count} entries", WorkflowSteps.Count);
-            Logger.LogInformation("WorkflowSteps dictionary keys: {Keys}", string.Join(", ", WorkflowSteps.Keys));
             Logger.LogInformation("Found request: {RequestFound}, WorkflowInstanceId: {WorkflowInstanceId}", request != null, request?.WorkflowInstanceId);
-            Logger.LogInformation("Found workflow step: {StepFound}, StepId: {StepId}", workflowStep != null, workflowStep?.StepId);
             
-            if (request?.WorkflowInstanceId != null && workflowStep?.StepId != null)
+            if (request?.WorkflowInstanceId != null)
             {
-                var workflowUrl = $"/workflow/{request.WorkflowInstanceId}/step/{workflowStep.StepId}";
-                Logger.LogInformation("Navigating to workflow URL: {WorkflowUrl}", workflowUrl);
-                // Navigate to the workflow approval page with proper parameters
-                Navigation.NavigateTo(workflowUrl);
+                // Get all step instances for this workflow
+                var allStepInstances = await WorkflowService.GetStepInstancesAsync(request.WorkflowInstanceId.Value);
+                Logger.LogInformation("Found {StepCount} step instances for workflow {WorkflowInstanceId}", allStepInstances?.Count ?? 0, request.WorkflowInstanceId.Value);
+                
+                // Get the workflow definition to understand step roles
+                var workflowInstance = await WorkflowService.GetWorkflowInstanceAsync(request.WorkflowInstanceId.Value);
+                WorkflowDefinition? workflowDefinition = null;
+                if (workflowInstance != null)
+                {
+                    workflowDefinition = await WorkflowService.GetWorkflowDefinitionAsync(workflowInstance.WorkflowDefinitionId);
+                }
+                
+                // Find approval steps that this user has permission for
+                WorkflowStepInstance? targetStepInstance = null;
+                string? targetStepId = null;
+                
+                if (allStepInstances != null && workflowDefinition?.Steps != null)
+                {
+                    foreach (var stepInstance in allStepInstances)
+                    {
+                        var stepDefinition = workflowDefinition.Steps.FirstOrDefault(s => s.StepId == stepInstance.StepId);
+                        
+                        if (stepDefinition?.StepType == WorkflowStepType.Approval && stepDefinition.AssignedRoles != null)
+                        {
+                            // Check if user has permission for this approval step
+                            var userCanApprove = stepDefinition.AssignedRoles.Any(role => UserRoles.Contains(role)) || UserRoles.Contains("Admin");
+                            
+                            if (userCanApprove)
+                            {
+                                // For pending/in-progress steps, take the user to the first one they can approve
+                                if (stepInstance.Status == WorkflowStepInstanceStatus.Pending || stepInstance.Status == WorkflowStepInstanceStatus.InProgress)
+                                {
+                                    targetStepInstance = stepInstance;
+                                    targetStepId = stepInstance.StepId;
+                                    Logger.LogInformation("Found pending/in-progress approval step: {StepId} with status {Status}", stepInstance.StepId, stepInstance.Status);
+                                    break;
+                                }
+                                // For historical approvals, remember the last completed one they could have approved
+                                else if (stepInstance.Status == WorkflowStepInstanceStatus.Completed && targetStepInstance == null)
+                                {
+                                    targetStepInstance = stepInstance;
+                                    targetStepId = stepInstance.StepId;
+                                    Logger.LogInformation("Found completed approval step: {StepId} with status {Status}", stepInstance.StepId, stepInstance.Status);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (targetStepId != null)
+                {
+                    var workflowUrl = $"/workflow/{request.WorkflowInstanceId}/step/{targetStepId}";
+                    Logger.LogInformation("Navigating to approval step URL: {WorkflowUrl}", workflowUrl);
+                    Navigation.NavigateTo(workflowUrl);
+                }
+                else
+                {
+                    Logger.LogWarning("No appropriate approval step found for user with roles: {UserRoles}", string.Join(", ", UserRoles));
+                    var fallbackUrl = $"/requests/{requestId}";
+                    Logger.LogInformation("Using fallback URL: {FallbackUrl}", fallbackUrl);
+                    Navigation.NavigateTo(fallbackUrl);
+                }
             }
             else
             {
                 var fallbackUrl = $"/requests/{requestId}";
-                Logger.LogInformation("Using fallback URL: {FallbackUrl}", fallbackUrl);
-                // Fallback to the general request view
+                Logger.LogInformation("No workflow instance, using fallback URL: {FallbackUrl}", fallbackUrl);
                 Navigation.NavigateTo(fallbackUrl);
             }
         }
