@@ -158,116 +158,138 @@ else
                                                             @foreach (var field in GetVisibleFieldsForBulk())
                                                             {
                                                                 <td>
-                                                                    @if (_formRequest.RequestType != RequestType.Insert && item.OriginalValues.ContainsKey(field.Name))
+                                                                    @if (_formRequest.RequestType == RequestType.Delete)
                                                                     {
-                                                                        <div>
-                                                                            <small class="text-muted">Original:</small> 
-                                                                            <span class="text-muted">@item.OriginalValues[field.Name]</span>
-                                                                        </div>
-                                                                    }
-                                                                    <div class="@(HasBulkItemChanged(item.Id, field.Name) ? "border rounded p-1" : "")" 
-                                                                         style="@(HasBulkItemChanged(item.Id, field.Name) ? "background-color: var(--bs-warning-bg-subtle); border-color: var(--bs-warning-border-subtle) !important;" : "")">
-                                                                        @if (IsFieldReadOnlyByConfiguration(field.Name))
+                                                                        <!-- For delete requests, only show the original value -->
+                                                                        @if (item.OriginalValues.ContainsKey(field.Name))
                                                                         {
-                                                                            <!-- Read-only field - show as text -->
-                                                                            @if (item.FieldValues.ContainsKey(field.Name))
-                                                                            {
-                                                                                <strong>@GetDisplayValue(item.FieldValues[field.Name], field)</strong>
-                                                                            }
-                                                                            else
-                                                                            {
-                                                                                <span class="text-muted">-</span>
-                                                                            }
+                                                                            <span>@GetDisplayValue(item.OriginalValues[field.Name], field)</span>
                                                                         }
                                                                         else
                                                                         {
-                                                                            <!-- Editable field - show as form control -->
-                                                                            var currentValue = GetCurrentBulkValue(item.Id, field.Name, item.FieldValues);
-                                                                            var validationError = GetBulkValidationError(item.Id, field.Name);
-                                                                            
-                                                                            @if (field.ControlType == "input" && (field.DataType == "text" || field.DataType == "email" || field.DataType == "url"))
+                                                                            <span class="text-muted">-</span>
+                                                                        }
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        @if (_formRequest.RequestType != RequestType.Insert && item.OriginalValues.ContainsKey(field.Name))
+                                                                        {
+                                                                            <div>
+                                                                                <small class="text-muted">Original:</small> 
+                                                                                <span class="text-muted">@item.OriginalValues[field.Name]</span>
+                                                                            </div>
+                                                                        }
+                                                                        <div class="@(HasBulkItemChanged(item.Id, field.Name) ? "border rounded p-1" : "")" 
+                                                                             style="@(HasBulkItemChanged(item.Id, field.Name) ? "background-color: var(--bs-warning-bg-subtle); border-color: var(--bs-warning-border-subtle) !important;" : "")">
+                                                                            @if (IsFieldReadOnlyByConfiguration(field.Name))
                                                                             {
-                                                                                <input type="@(field.DataType == "text" ? "text" : field.DataType)" 
-                                                                                       class="form-control form-control-sm @(validationError != null ? "is-invalid" : "")"
-                                                                                       value="@currentValue"
-                                                                                       @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))"
-                                                                                       placeholder="@field.DisplayName" />
-                                                                            }
-                                                                            else if (field.ControlType == "input" && (field.DataType == "number" || field.DataType == "int" || field.DataType == "decimal"))
-                                                                            {
-                                                                                <input type="number" 
-                                                                                       class="form-control form-control-sm @(validationError != null ? "is-invalid" : "")"
-                                                                                       value="@currentValue"
-                                                                                       @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))"
-                                                                                       placeholder="@field.DisplayName" />
-                                                                            }
-                                                                            else if (field.ControlType == "select" && !string.IsNullOrWhiteSpace(field.DropdownOptions))
-                                                                            {
-                                                                                <select class="form-select form-select-sm @(validationError != null ? "is-invalid" : "")"
-                                                                                        @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))">
-                                                                                    <option value="">-- Select --</option>
-                                                                                    @{
-                                                                                        try
-                                                                                        {
-                                                                                            var options = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, string>>>(field.DropdownOptions) ?? new List<Dictionary<string, string>>();
-                                                                                            foreach (var option in options)
-                                                                                            {
-                                                                                                var value = option.GetValueOrDefault("value", "");
-                                                                                                var label = option.GetValueOrDefault("label", value);
-                                                                                                <option value="@value" selected="@(currentValue?.ToString() == value)">
-                                                                                                    @label
-                                                                                                </option>
-                                                                                            }
-                                                                                        }
-                                                                                        catch
-                                                                                        {
-                                                                                            // Invalid JSON - show error
-                                                                                            <option value="">Invalid options</option>
-                                                                                        }
-                                                                                    }
-                                                                                </select>
-                                                                            }
-                                                                            else if (field.ControlType == "textarea")
-                                                                            {
-                                                                                <textarea class="form-control form-control-sm @(validationError != null ? "is-invalid" : "")"
-                                                                                          rows="2"
-                                                                                          placeholder="@field.DisplayName"
-                                                                                          @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))">@currentValue</textarea>
-                                                                            }
-                                                                            else if (field.ControlType == "date")
-                                                                            {
-                                                                                <input type="date" 
-                                                                                       class="form-control form-control-sm @(validationError != null ? "is-invalid" : "")"
-                                                                                       value="@FormatDateValue(currentValue)"
-                                                                                       @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))" />
-                                                                            }
-                                                                            else if (field.ControlType == "checkbox")
-                                                                            {
-                                                                                <div class="form-check">
-                                                                                    <input type="checkbox" 
-                                                                                           class="form-check-input @(validationError != null ? "is-invalid" : "")"
-                                                                                           checked="@(Convert.ToBoolean(currentValue))"
-                                                                                           @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))" />
-                                                                                </div>
+                                                                                <!-- Read-only field - show as text -->
+                                                                                @if (item.FieldValues.ContainsKey(field.Name))
+                                                                                {
+                                                                                    <strong>@GetDisplayValue(item.FieldValues[field.Name], field)</strong>
+                                                                                }
+                                                                                else
+                                                                                {
+                                                                                    <span class="text-muted">-</span>
+                                                                                }
                                                                             }
                                                                             else
                                                                             {
-                                                                                <!-- Fallback to text input for unknown field types -->
-                                                                                <input type="text" 
-                                                                                       class="form-control form-control-sm @(validationError != null ? "is-invalid" : "")"
-                                                                                       value="@currentValue"
-                                                                                       @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))"
-                                                                                       placeholder="@field.DisplayName" />
+                                                                                <!-- Editable field - show as form control -->
+                                                                                var currentValue = GetCurrentBulkValue(item.Id, field.Name, item.FieldValues);
+                                                                                var validationError = GetBulkValidationError(item.Id, field.Name);
+                                                                                
+                                                                                @if (field.ControlType == "input" && (field.DataType == "text" || field.DataType == "email" || field.DataType == "url"))
+                                                                                {
+                                                                                    <input type="@(field.DataType == "text" ? "text" : field.DataType)" 
+                                                                                           class="form-control form-control-sm @(validationError != null ? "is-invalid" : "")"
+                                                                                           value="@currentValue"
+                                                                                           @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))"
+                                                                                           placeholder="@field.DisplayName" />
+                                                                                }
+                                                                                else if (field.ControlType == "input" && (field.DataType == "number" || field.DataType == "int" || field.DataType == "decimal"))
+                                                                                {
+                                                                                    <input type="number" 
+                                                                                           class="form-control form-control-sm @(validationError != null ? "is-invalid" : "")"
+                                                                                           value="@currentValue"
+                                                                                           @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))"
+                                                                                           placeholder="@field.DisplayName" />
+                                                                                }
+                                                                                else if (field.ControlType == "select" && !string.IsNullOrWhiteSpace(field.DropdownOptions))
+                                                                                {
+                                                                                    <select class="form-select form-select-sm @(validationError != null ? "is-invalid" : "")"
+                                                                                            @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))">
+                                                                                        <option value="">-- Select --</option>
+                                                                                        @{
+                                                                                            try
+                                                                                            {
+                                                                                                var options = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, string>>>(field.DropdownOptions) ?? new List<Dictionary<string, string>>();
+                                                                                                foreach (var option in options)
+                                                                                                {
+                                                                                                    var value = option.GetValueOrDefault("value", "");
+                                                                                                    var label = option.GetValueOrDefault("label", value);
+                                                                                                    <option value="@value" selected="@(currentValue?.ToString() == value)">
+                                                                                                        @label
+                                                                                                    </option>
+                                                                                                }
+                                                                                            }
+                                                                                            catch
+                                                                                            {
+                                                                                                <!-- Fallback for invalid JSON -->
+                                                                                                var options = field.DropdownOptions.Split(',');
+                                                                                                foreach (var option in options)
+                                                                                                {
+                                                                                                    var trimmedOption = option.Trim();
+                                                                                                    <option value="@trimmedOption" selected="@(currentValue?.ToString() == trimmedOption)">
+                                                                                                        @trimmedOption
+                                                                                                    </option>
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                    </select>
+                                                                                }
+                                                                                else if (field.ControlType == "textarea")
+                                                                                {
+                                                                                    <textarea class="form-control form-control-sm @(validationError != null ? "is-invalid" : "")"
+                                                                                              rows="2"
+                                                                                              placeholder="@field.DisplayName"
+                                                                                              @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))">@currentValue</textarea>
+                                                                                }
+                                                                                else if (field.ControlType == "date")
+                                                                                {
+                                                                                    <input type="date" 
+                                                                                           class="form-control form-control-sm @(validationError != null ? "is-invalid" : "")"
+                                                                                           value="@FormatDateValue(currentValue)"
+                                                                                           @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))" />
+                                                                                }
+                                                                                else if (field.ControlType == "checkbox")
+                                                                                {
+                                                                                    <div class="form-check">
+                                                                                        <input type="checkbox" 
+                                                                                               class="form-check-input @(validationError != null ? "is-invalid" : "")"
+                                                                                               checked="@(Convert.ToBoolean(currentValue))"
+                                                                                               @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))" />
+                                                                                    </div>
+                                                                                }
+                                                                                else
+                                                                                {
+                                                                                    <!-- Fallback to text input for unknown field types -->
+                                                                                    <input type="text" 
+                                                                                           class="form-control form-control-sm @(validationError != null ? "is-invalid" : "")"
+                                                                                           value="@currentValue"
+                                                                                           @onchange="@((e) => OnBulkFieldChanged(item.Id, field.Name, e.Value, field))"
+                                                                                           placeholder="@field.DisplayName" />
+                                                                                }
+                                                                                
+                                                                                @if (validationError != null)
+                                                                                {
+                                                                                    <div class="invalid-feedback">
+                                                                                        @validationError
+                                                                                    </div>
+                                                                                }
                                                                             }
-                                                                            
-                                                                            @if (validationError != null)
-                                                                            {
-                                                                                <div class="invalid-feedback">
-                                                                                    @validationError
-                                                                                </div>
-                                                                            }
-                                                                        }
-                                                                    </div>
+                                                                        </div>
+                                                                    }
                                                                 </td>
                                                             }
                                                         </tr>
@@ -817,9 +839,44 @@ else
         return field.ControlType.ToLower() switch
         {
             "date" => FormatDateValue(value),
-            "checkbox" => Convert.ToBoolean(value) ? "Yes" : "No",
+            "checkbox" => ConvertToBoolean(value) ? "Yes" : "No",
             _ => value.ToString() ?? "-"
         };
+    }
+    
+    private bool ConvertToBoolean(object? value)
+    {
+        if (value == null) return false;
+        
+        // Handle JsonElement specifically
+        if (value is System.Text.Json.JsonElement jsonElement)
+        {
+            return jsonElement.ValueKind == System.Text.Json.JsonValueKind.True ||
+                   (jsonElement.ValueKind == System.Text.Json.JsonValueKind.String && 
+                    bool.TryParse(jsonElement.GetString(), out var boolResult) && boolResult);
+        }
+        
+        // Handle string values
+        if (value is string stringValue)
+        {
+            return bool.TryParse(stringValue, out var result) && result;
+        }
+        
+        // Handle numeric values (1 = true, 0 = false)
+        if (value is int intValue)
+        {
+            return intValue != 0;
+        }
+        
+        // Try standard conversion as fallback
+        try
+        {
+            return Convert.ToBoolean(value);
+        }
+        catch
+        {
+            return false;
+        }
     }
     
     private string FormatDateValue(object? value)
