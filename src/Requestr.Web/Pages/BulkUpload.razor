@@ -4,6 +4,7 @@
 @using Requestr.Core.Interfaces
 @inject IFormDefinitionService FormDefinitionService
 @inject IBulkFormRequestService BulkFormRequestService
+@inject IDataService DataService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -457,19 +458,99 @@ else
                         authState.User.Identity?.Name ?? "";
             var userName = authState.User.Identity?.Name ?? "";
 
+            // For Update/Delete operations, we need to get primary key columns to lookup original values
+            List<string> primaryKeyColumns = new();
+            if (_selectedRequestType == RequestType.Update || _selectedRequestType == RequestType.Delete)
+            {
+                try
+                {
+                    primaryKeyColumns = await DataService.GetPrimaryKeyColumnsAsync(
+                        _formDefinition.DatabaseConnectionName,
+                        _formDefinition.TableName,
+                        _formDefinition.Schema);
+                        
+                    if (!primaryKeyColumns.Any())
+                    {
+                        await JSRuntime.InvokeVoidAsync("alert", 
+                            $"Cannot perform {_selectedRequestType} operations: Table '{_formDefinition.TableName}' has no primary key defined.");
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", $"Error checking primary keys: {ex.Message}");
+                    return;
+                }
+            }
+
+            var formRequestDtos = new List<CreateFormRequestDto>();
+
+            foreach (var rowIndex in _selectedRows)
+            {
+                var parsedData = _uploadResult.ValidationResults[rowIndex].ParsedData;
+                var originalValues = new Dictionary<string, object?>();
+
+                // For Update/Delete operations, lookup the original values from the database
+                if (_selectedRequestType == RequestType.Update || _selectedRequestType == RequestType.Delete)
+                {
+                    try
+                    {
+                        // Build WHERE conditions using primary key columns from the CSV data
+                        var whereConditions = new Dictionary<string, object?>();
+                        foreach (var pkColumn in primaryKeyColumns)
+                        {
+                            if (parsedData.ContainsKey(pkColumn))
+                            {
+                                whereConditions[pkColumn] = parsedData[pkColumn];
+                            }
+                            else
+                            {
+                                throw new InvalidOperationException($"Primary key column '{pkColumn}' not found in CSV data. Required for {_selectedRequestType} operations.");
+                            }
+                        }
+
+                        // Query the database to get the current record
+                        var existingRecords = await DataService.QueryDataAsync(
+                            _formDefinition.DatabaseConnectionName,
+                            _formDefinition.TableName,
+                            _formDefinition.Schema,
+                            whereConditions);
+
+                        if (existingRecords.Count == 0)
+                        {
+                            throw new InvalidOperationException($"No record found with primary key values: {string.Join(", ", whereConditions.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
+                        }
+                        else if (existingRecords.Count > 1)
+                        {
+                            throw new InvalidOperationException($"Multiple records found with primary key values: {string.Join(", ", whereConditions.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
+                        }
+
+                        // Use the existing record values as original values
+                        originalValues = existingRecords.First();
+                    }
+                    catch (Exception ex)
+                    {
+                        await JSRuntime.InvokeVoidAsync("alert", $"Error looking up original values for row {rowIndex + 1}: {ex.Message}");
+                        return;
+                    }
+                }
+
+                formRequestDtos.Add(new CreateFormRequestDto
+                {
+                    FormDefinitionId = FormId,
+                    RequestType = _selectedRequestType,
+                    FieldValues = parsedData,
+                    OriginalValues = originalValues
+                });
+            }
+
             var createDto = new CreateBulkFormRequestDto
             {
                 FormDefinitionId = FormId,
                 RequestType = _selectedRequestType,
                 FileName = _selectedFileName,
                 Comments = _comments,
-                FormRequests = _selectedRows.Select(rowIndex => new CreateFormRequestDto
-                {
-                    FormDefinitionId = FormId,
-                    RequestType = _selectedRequestType,
-                    FieldValues = _uploadResult.ValidationResults[rowIndex].ParsedData,
-                    OriginalValues = new Dictionary<string, object?>()
-                }).ToList()
+                FormRequests = formRequestDtos
             };
 
             var bulkRequest = await BulkFormRequestService.CreateBulkFormRequestAsync(createDto, userId, userName);

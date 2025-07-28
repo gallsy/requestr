@@ -4,11 +4,13 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.JSInterop
+@using System.Text.Json
 @inject IWorkflowService WorkflowService
 @inject IFormRequestService FormRequestService
 @inject IFormDefinitionService FormDefinitionService
 @inject IWorkflowDesignerService WorkflowDesignerService
 @inject IBulkFormRequestService BulkFormRequestService
+@inject IDataService DataService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -103,6 +105,19 @@ else
                                 @if (!string.IsNullOrEmpty(_currentStep.CompletedByName))
                                 {
                                     <br><small>Completed by @_currentStep.CompletedByName on @_currentStep.CompletedAt?.ToString("MMM dd, yyyy HH:mm")</small>
+                                }
+                            </StandardAlert>
+                        }
+
+                        @if (_hasConflicts)
+                        {
+                            <StandardAlert AlertColor="AlertColor.Warning" 
+                                         IconName=IconName.ExclamationTriangle
+                                         Dismissable="false">
+                                <strong>Data Conflict Detected!</strong>
+                                @foreach (var message in _conflictMessages)
+                                {
+                                    <br>@message
                                 }
                             </StandardAlert>
                         }
@@ -461,6 +476,10 @@ else
     // Bulk request editing state
     private Dictionary<string, Dictionary<string, object?>> _bulkItemChanges = new(); // [itemId][fieldName] = newValue
     private Dictionary<string, Dictionary<string, string>> _bulkItemValidationErrors = new(); // [itemId][fieldName] = errorMessage
+    
+    // Conflict detection
+    private bool _hasConflicts = false;
+    private List<string> _conflictMessages = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -541,6 +560,9 @@ else
         {
             _workflowFieldValues = new Dictionary<string, object?>(_formRequest.FieldValues);
         }
+
+        // Check for conflicts between stored original values and current database values
+        await CheckForConflictsAsync();
 
         Logger.LogInformation("LoadWorkflowDataAsync: Completed successfully");
     }
@@ -912,6 +934,26 @@ else
         return value.ToString() ?? "";
     }
     
+    private object? ConvertJsonElementToValue(object? value)
+    {
+        if (value == null) return null;
+        
+        // If it's already not a JsonElement, return as-is
+        if (value is not JsonElement jsonElement)
+            return value;
+            
+        // Convert JsonElement to appropriate type
+        return jsonElement.ValueKind switch
+        {
+            JsonValueKind.String => jsonElement.GetString(),
+            JsonValueKind.Number => jsonElement.TryGetInt32(out var intVal) ? intVal : jsonElement.GetDouble(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null => null,
+            _ => jsonElement.ToString()
+        };
+    }
+    
     // Bulk changes summary methods
     private bool HasPendingBulkChanges()
     {
@@ -948,5 +990,129 @@ else
             RequestStatus.Applied => "table-success",
             _ => ""
         };
+    }
+
+    private async Task CheckForConflictsAsync()
+    {
+        _hasConflicts = false;
+        _conflictMessages.Clear();
+
+        if (_formRequest == null || _formRequest.FormDefinition == null) return;
+
+        // Only check conflicts for Update and Delete operations that have original values
+        if (_formRequest.RequestType != RequestType.Update && _formRequest.RequestType != RequestType.Delete)
+            return;
+
+        if (!_formRequest.OriginalValues.Any())
+            return;
+
+        try
+        {
+            var formDefinition = _formRequest.FormDefinition;
+            
+            // Get primary key columns
+            var primaryKeyColumns = await DataService.GetPrimaryKeyColumnsAsync(
+                formDefinition.DatabaseConnectionName,
+                formDefinition.TableName,
+                formDefinition.Schema);
+
+            if (!primaryKeyColumns.Any())
+            {
+                // Can't check conflicts without primary keys
+                return;
+            }
+
+            // Build WHERE conditions using primary key values from original values
+            var whereConditions = new Dictionary<string, object?>();
+            foreach (var pkColumn in primaryKeyColumns)
+            {
+                if (_formRequest.OriginalValues.ContainsKey(pkColumn))
+                {
+                    var originalValue = _formRequest.OriginalValues[pkColumn];
+                    
+                    // Convert JsonElement to proper type for Dapper
+                    var convertedValue = ConvertJsonElementToValue(originalValue);
+                    whereConditions[pkColumn] = convertedValue;
+                }
+                else
+                {
+                    // Missing primary key in original values - can't check conflicts
+                    return;
+                }
+            }
+
+            // Query current database values
+            var currentRecords = await DataService.QueryDataAsync(
+                formDefinition.DatabaseConnectionName,
+                formDefinition.TableName,
+                formDefinition.Schema,
+                whereConditions);
+
+            if (currentRecords.Count == 0)
+            {
+                _hasConflicts = true;
+                _conflictMessages.Add("The record no longer exists in the database. It may have been deleted by another user.");
+                return;
+            }
+
+            if (currentRecords.Count > 1)
+            {
+                _hasConflicts = true;
+                _conflictMessages.Add("Multiple records found with the same primary key. Database integrity issue detected.");
+                return;
+            }
+
+            var currentRecord = currentRecords.First();
+
+            // Compare stored original values with current database values
+            var conflictFields = new List<string>();
+            foreach (var originalValue in _formRequest.OriginalValues)
+            {
+                var fieldName = originalValue.Key;
+                var storedOriginalValue = originalValue.Value;
+                
+                if (currentRecord.ContainsKey(fieldName))
+                {
+                    var currentValue = currentRecord[fieldName];
+                    
+                    // Compare values (handle nulls and type differences)
+                    if (!AreValuesEqual(storedOriginalValue, currentValue))
+                    {
+                        conflictFields.Add(fieldName);
+                    }
+                }
+            }
+
+            if (conflictFields.Any())
+            {
+                _hasConflicts = true;
+                _conflictMessages.Add($"The following fields have been modified by another user since this request was created: {string.Join(", ", conflictFields)}");
+                _conflictMessages.Add("Please review the changes carefully before approving.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error checking for conflicts in request {RequestId}", _formRequest.Id);
+            // Don't show conflicts if we can't check them - fail gracefully
+        }
+    }
+
+    private bool AreValuesEqual(object? value1, object? value2)
+    {
+        // Handle nulls
+        if (value1 == null && value2 == null) return true;
+        if (value1 == null || value2 == null) return false;
+
+        // Handle DBNull
+        if (value1 == DBNull.Value) value1 = null;
+        if (value2 == DBNull.Value) value2 = null;
+        if (value1 == null && value2 == null) return true;
+        if (value1 == null || value2 == null) return false;
+
+        // Convert to strings for comparison to handle type differences
+        var str1 = value1.ToString()?.Trim();
+        var str2 = value2.ToString()?.Trim();
+
+        return string.Equals(str1, str2, StringComparison.OrdinalIgnoreCase);
     }
 }

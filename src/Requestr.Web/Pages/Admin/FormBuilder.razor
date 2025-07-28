@@ -213,7 +213,24 @@
                                         <strong>Database:</strong> @_selectedConnectionString <br/>
                                         <strong>Table:</strong> @_formDefinition.TableName <br/>
                                         <strong>Schema:</strong> @_formDefinition.Schema
+                                        @if (_primaryKeyColumns.Any())
+                                        {
+                                            <br/><strong>Primary Key(s):</strong> @string.Join(", ", _primaryKeyColumns)
+                                        }
                                     </div>
+                                    
+                                    @if (_hasNoPrimaryKey)
+                                    {
+                                        <div class="alert alert-warning">
+                                            <i class="bi bi-exclamation-triangle me-2"></i>
+                                            <strong>Warning:</strong> This table has no primary key defined.
+                                            <ul class="mb-0 mt-2">
+                                                <li><strong>Insert operations:</strong> ✅ Will work normally</li>
+                                                <li><strong>Update/Delete operations:</strong> ❌ Will fail - cannot uniquely identify records</li>
+                                            </ul>
+                                            <small class="text-muted">Consider adding a primary key to the table if you need Update/Delete functionality.</small>
+                                        </div>
+                                    }
                                 }
                             </div>
                         </div>
@@ -1275,6 +1292,8 @@
     private List<string> _tables = new();
     private List<ColumnInfo> _tableColumns = new();
     private List<ColumnInfo> _filteredColumns = new();
+    private List<string> _primaryKeyColumns = new();
+    private bool _hasNoPrimaryKey = false;
     private string _selectedConnectionString = "";
     private bool _isLoading = true;
     private ColumnInfo? _draggedColumn;
@@ -1739,6 +1758,23 @@
         {
             _tableColumns = await DatabaseService.GetTableColumnsAsync(_selectedConnectionString, _formDefinition.TableName);
             _filteredColumns = _tableColumns.ToList();
+            
+            // Check for primary keys
+            try
+            {
+                _primaryKeyColumns = await DataService.GetPrimaryKeyColumnsAsync(
+                    _selectedConnectionString, 
+                    _formDefinition.TableName, 
+                    _formDefinition.Schema);
+                _hasNoPrimaryKey = !_primaryKeyColumns.Any();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error checking primary keys for table {TableName}", _formDefinition.TableName);
+                _hasNoPrimaryKey = true;
+                _primaryKeyColumns.Clear();
+            }
+            
             StateHasChanged();
         }
     }
