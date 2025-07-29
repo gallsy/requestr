@@ -372,7 +372,7 @@
                                authState.User.Identity.Name;
 
                 // Get user roles from claims
-                UserRoles = GetUserRoles(authState.User);
+                UserRoles = ClaimsHelper.GetUserRoles(authState.User);
                 _isAdmin = UserRoles.Contains("Admin");
 
                 Logger.LogInformation("User {UserId} loading all requests. Roles: {Roles}, IsAdmin: {IsAdmin}", 
@@ -596,19 +596,6 @@
         {
             IsLoading = false;
         }
-    }
-
-    private static List<string> GetUserRoles(ClaimsPrincipal user)
-    {
-        var roles = new List<string>();
-
-        // Get roles from standard role claims
-        roles.AddRange(user.FindAll(ClaimTypes.Role).Select(c => c.Value));
-        
-        // Get roles from Entra ID app role claims (these come in as "roles" claim type)
-        roles.AddRange(user.FindAll("roles").Select(c => c.Value));
-
-        return roles.Distinct().ToList();
     }
 
     private string GetStatusBadgeClass(RequestStatus status) => status switch

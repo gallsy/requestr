@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
+using Requestr.Core.Utilities;
 
 namespace Requestr.Web.Authorization;
 
@@ -30,25 +31,19 @@ public interface IFormAuthorizationService
     /// </summary>
     Task<List<FormPermissionType>> GetUserPermissionsAsync(ClaimsPrincipal user, int formDefinitionId);
     
-    /// <summary>
-    /// Check authorization using the ASP.NET Core authorization service
-    /// </summary>
-    Task<bool> AuthorizeAsync(ClaimsPrincipal user, int formDefinitionId, FormPermissionType permission);
+
 }
 
 public class FormAuthorizationService : IFormAuthorizationService
 {
     private readonly IFormPermissionService _formPermissionService;
-    private readonly Microsoft.AspNetCore.Authorization.IAuthorizationService _authorizationService;
     private readonly ILogger<FormAuthorizationService> _logger;
 
     public FormAuthorizationService(
         IFormPermissionService formPermissionService,
-        Microsoft.AspNetCore.Authorization.IAuthorizationService authorizationService,
         ILogger<FormAuthorizationService> logger)
     {
         _formPermissionService = formPermissionService;
-        _authorizationService = authorizationService;
         _logger = logger;
     }
 
@@ -59,7 +54,7 @@ public class FormAuthorizationService : IFormAuthorizationService
             if (!user.Identity?.IsAuthenticated ?? true)
                 return false;
 
-            var userRoles = GetUserRoles(user);
+            var userRoles = ClaimsHelper.GetUserRoles(user);
             
             foreach (var role in userRoles)
             {
@@ -107,7 +102,7 @@ public class FormAuthorizationService : IFormAuthorizationService
             if (!user.Identity?.IsAuthenticated ?? true)
                 return new List<FormPermissionType>();
 
-            var userRoles = GetUserRoles(user);
+            var userRoles = ClaimsHelper.GetUserRoles(user);
             
             foreach (var role in userRoles)
             {
@@ -125,33 +120,5 @@ public class FormAuthorizationService : IFormAuthorizationService
         }
         
         return permissions.ToList();
-    }
-
-    public async Task<bool> AuthorizeAsync(ClaimsPrincipal user, int formDefinitionId, FormPermissionType permission)
-    {
-        var resource = new FormPermissionResource(formDefinitionId, permission);
-        var requirement = new FormPermissionRequirement(permission);
-        
-        var result = await _authorizationService.AuthorizeAsync(user, resource, requirement);
-        return result.Succeeded;
-    }
-
-    /// <summary>
-    /// Extract user roles from claims. Works with Entra ID app roles.
-    /// </summary>
-    private static List<string> GetUserRoles(ClaimsPrincipal user)
-    {
-        var roles = new List<string>();
-
-        // Get roles from standard role claims
-        roles.AddRange(user.FindAll(ClaimTypes.Role).Select(c => c.Value));
-        
-        // Get roles from Entra ID app role claims (these come in as "roles" claim type)
-        roles.AddRange(user.FindAll("roles").Select(c => c.Value));
-        
-        // Also check for "role" claim (singular)
-        roles.AddRange(user.FindAll("role").Select(c => c.Value));
-
-        return roles.Distinct().ToList();
     }
 }

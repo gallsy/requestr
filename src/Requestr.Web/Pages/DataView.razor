@@ -557,7 +557,7 @@ else
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
-            _userRoles = GetUserRoles(user);
+            _userRoles = ClaimsHelper.GetUserRoles(user);
             
             Logger.LogInformation("Checking permissions for user {UserId} on form {FormDefinitionId}. User roles: {Roles}", 
                 user.Identity?.Name, FormDefinitionId, string.Join(", ", _userRoles));
@@ -575,14 +575,6 @@ else
             Logger.LogError(ex, "Error checking permissions for form {FormDefinitionId}", FormDefinitionId);
             _errorMessage = $"Error checking permissions: {ex.Message}";
         }
-    }
-
-    private List<string> GetUserRoles(ClaimsPrincipal user)
-    {
-        return user.Claims
-            .Where(c => c.Type == ClaimTypes.Role)
-            .Select(c => c.Value)
-            .ToList();
     }
 
     private async Task LoadFormDefinition()

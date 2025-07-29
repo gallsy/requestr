@@ -11,14 +11,6 @@ public static class Constants
         public const string User = "User";
     }
 
-    public static class Policies
-    {
-        public const string AdminOnly = "AdminOnly";
-        public const string CanApprove = "CanApprove";
-        public const string CanCreateForms = "CanCreateForms";
-        public const string CanManageUsers = "CanManageUsers";
-    }
-
     public static class RequestTypes
     {
         public const string Insert = "INSERT";

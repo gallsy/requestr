@@ -36,9 +36,6 @@ builder.Services.AddRequestrCore();
 
 // Add custom authorization services
 builder.Services.AddScoped<IFormAuthorizationService, FormAuthorizationService>();
-builder.Services.AddScoped<IDynamicAuthorizationPolicyProvider, DynamicAuthorizationPolicyProvider>();
-builder.Services.AddScoped<IAuthorizationHandler, FormPermissionHandler>();
-builder.Services.AddScoped<IAuthorizationHandler, FormPermissionPolicyHandler>();
 
 // Configure authorization
 builder.Services.AddAuthorization(options =>
@@ -53,17 +50,6 @@ builder.Services.AddAuthorization(options =>
     // Approver policy for approving requests
     options.AddPolicy("CanApprove", policy =>
         policy.RequireRole("Admin", "FormAdmin", "DataAdmin", "ReferenceDataApprover"));
-    
-    // Example form-specific policies (can be dynamically created)
-    // These show how to create policies for specific forms and permissions
-    options.AddPolicy("CanCreateRequest", policy =>
-        policy.Requirements.Add(new FormPermissionRequirement(FormPermissionType.CreateRequest)));
-        
-    options.AddPolicy("CanViewData", policy =>
-        policy.Requirements.Add(new FormPermissionRequirement(FormPermissionType.ViewData)));
-        
-    options.AddPolicy("CanBulkUpload", policy =>
-        policy.Requirements.Add(new FormPermissionRequirement(FormPermissionType.BulkUploadCsv)));
 });
 
 var app = builder.Build();
