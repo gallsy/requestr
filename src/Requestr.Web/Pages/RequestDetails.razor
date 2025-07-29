@@ -12,6 +12,7 @@
 @inject IFormRequestService FormRequestService
 @inject IFormDefinitionService FormDefinitionService
 @inject IWorkflowService WorkflowService
+@inject IConflictDetectionService ConflictDetectionService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -59,6 +60,15 @@ else
     <div class="container">
         <div class="row">
             <div class="col-lg-12">
+
+                @if (!string.IsNullOrEmpty(_conflictWarning))
+                {
+                    <StandardAlert AlertColor="AlertColor.Warning" 
+                                 IconName=IconName.ExclamationTriangle
+                                 Title="Data Conflicts Detected">
+                        <div style="white-space: pre-line;">@_conflictWarning</div>
+                    </StandardAlert>
+                }
 
                 <div class="row">
                     <div class="col-lg-8">
@@ -500,6 +510,7 @@ else
     private bool _showApprovalModal = false;
     private string _approvalComments = "";
     private List<string> _userRoles = new();
+    private string _conflictWarning = "";
     
     // Workflow-related fields
     private WorkflowStepInstance? _currentWorkflowStep;
@@ -538,6 +549,12 @@ else
                 {
                     await LoadWorkflowInformation();
                 }
+
+                // Check for conflicts if the request is pending or in workflow
+                if (_request.Status == RequestStatus.Pending || _request.WorkflowInstanceId.HasValue)
+                {
+                    await CheckForConflictsAsync();
+                }
             }
         }
         catch (Exception)
@@ -563,6 +580,26 @@ else
         catch (Exception)
         {
             // Log error - workflow information will remain null
+        }
+    }
+
+    private async Task CheckForConflictsAsync()
+    {
+        try
+        {
+            if (_request?.Id > 0)
+            {
+                var conflictResult = await ConflictDetectionService.CheckForConflictsAsync(_request.Id);
+                if (conflictResult.HasConflicts)
+                {
+                    _conflictWarning = string.Join("\n", conflictResult.ConflictMessages);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log the error but don't show it to the user since conflict detection is supplementary
+            Console.WriteLine($"Conflict detection error: {ex.Message}");
         }
     }
 

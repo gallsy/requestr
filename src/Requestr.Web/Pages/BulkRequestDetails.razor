@@ -6,6 +6,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using BlazorBootstrap
 @inject IBulkFormRequestService BulkFormRequestService
+@inject IConflictDetectionService ConflictDetectionService
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @attribute [Authorize]
@@ -60,6 +61,17 @@ else
                     <StandardAlert AlertColor="AlertColor.Danger" 
                                  IconName=IconName.ExclamationTriangleFill
                                  Message="@_errorMessage" />
+                }
+
+                @if (!string.IsNullOrEmpty(_conflictWarning))
+                {
+                    <div class="mb-4">
+                        <StandardAlert AlertColor="AlertColor.Warning" 
+                                     IconName=IconName.ExclamationTriangle
+                                     Title="Data Conflicts Detected">
+                            <div style="white-space: pre-line;">@_conflictWarning</div>
+                        </StandardAlert>
+                    </div>
                 }
 
                 <!-- Summary Card -->
@@ -275,6 +287,7 @@ else
     private bool _isFromApprovals;
     private string _errorMessage = "";
     private string _successMessage = "";
+    private string _conflictWarning = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -291,6 +304,12 @@ else
                 _errorMessage = "Bulk request not found.";
                 return;
             }
+
+            // Check for conflicts if the request is pending or in workflow
+            if (_bulkRequest.Status == RequestStatus.Pending || _bulkRequest.WorkflowFormRequestId.HasValue)
+            {
+                await CheckForConflictsAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -299,6 +318,26 @@ else
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    private async Task CheckForConflictsAsync()
+    {
+        try
+        {
+            if (_bulkRequest?.Id > 0)
+            {
+                var conflictResult = await ConflictDetectionService.CheckBulkRequestConflictsAsync(_bulkRequest.Id);
+                if (conflictResult.HasConflicts)
+                {
+                    _conflictWarning = string.Join("\n", conflictResult.ConflictMessages);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log the error but don't show it to the user since conflict detection is supplementary
+            Console.WriteLine($"Conflict detection error: {ex.Message}");
         }
     }
 

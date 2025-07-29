@@ -35,6 +35,9 @@ public static class ServiceCollectionExtensions
         // services.AddScoped<INotificationService, NotificationService>();
         // services.AddScoped<IAuditService, AuditService>();
         
+        // Conflict Detection Services
+        services.AddScoped<IConflictDetectionService, ConflictDetectionService>();
+        
         // UI Services
         services.AddSingleton<ThemeService>();
 
