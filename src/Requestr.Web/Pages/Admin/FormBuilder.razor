@@ -16,6 +16,7 @@
 @inject IWorkflowService WorkflowService
 @inject IWorkflowDesignerService WorkflowDesignerService
 @inject IFormWorkflowConfigurationService FormWorkflowConfigurationService
+@inject IToastNotificationService toastService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -1536,7 +1537,7 @@
     {
         if (!FormId.HasValue)
         {
-            await JSRuntime.InvokeVoidAsync("alert", "Please save the form first before configuring permissions.");
+            toastService.ShowWarning("Please save the form first before configuring permissions.");
             return;
         }
         
@@ -1552,16 +1553,16 @@
             
             if (result.IsSuccess)
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Permissions saved successfully!");
+                toastService.ShowSuccess("Permissions saved successfully!");
             }
             else
             {
-                await JSRuntime.InvokeVoidAsync("alert", $"Error saving permissions: {result.ErrorMessage}");
+                toastService.ShowError($"Error saving permissions: {result.ErrorMessage}");
             }
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error saving permissions: {ex.Message}");
+            toastService.ShowError($"Error saving permissions: {ex.Message}");
         }
         finally
         {
@@ -1677,12 +1678,12 @@
             }
             else
             {
-                await JSRuntime.InvokeVoidAsync("alert", $"Error adding role: {result.ErrorMessage}");
+                toastService.ShowError($"Error adding role: {result.ErrorMessage}");
             }
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error adding role: {ex.Message}");
+            toastService.ShowError($"Error adding role: {ex.Message}");
         }
     }
     
@@ -1704,7 +1705,7 @@
     {
         if (!CanDeleteRole(roleName))
         {
-            await JSRuntime.InvokeVoidAsync("alert", "Cannot delete system roles (Admin, FormAdmin, DataAdmin).");
+            toastService.ShowWarning("Cannot delete system roles (Admin, FormAdmin, DataAdmin).");
             return;
         }
         
@@ -1741,12 +1742,12 @@
             }
             else
             {
-                await JSRuntime.InvokeVoidAsync("alert", $"Error removing role: {result.ErrorMessage}");
+                toastService.ShowError($"Error removing role: {result.ErrorMessage}");
             }
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error removing role: {ex.Message}");
+            toastService.ShowError($"Error removing role: {ex.Message}");
         }
     }
     
@@ -1889,25 +1890,25 @@
             // Validate form
             if (string.IsNullOrWhiteSpace(_formDefinition.Name))
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Please enter a form name.");
+                toastService.ShowWarning("Please enter a form name.");
                 return;
             }
             
             if (string.IsNullOrWhiteSpace(_selectedConnectionString))
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Please select a database connection.");
+                toastService.ShowWarning("Please select a database connection.");
                 return;
             }
             
             if (string.IsNullOrWhiteSpace(_formDefinition.TableName))
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Please select a table.");
+                toastService.ShowWarning("Please select a table.");
                 return;
             }
             
             if (!_formDefinition.Fields.Any())
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Please add at least one field to the form.");
+                toastService.ShowWarning("Please add at least one field to the form.");
                 return;
             }
             
@@ -1974,12 +1975,12 @@
             {
                 await JSRuntime.InvokeVoidAsync("console.error", $"Error saving form: {ex.Message}");
                 // Still show user-friendly message, but catch any JS errors
-                await JSRuntime.InvokeVoidAsync("alert", $"Error saving form: {ex.Message}");
+                toastService.ShowError($"Error saving form: {ex.Message}");
             }
             catch
             {
                 // If JS interop fails, at least log to server console
-                Console.WriteLine($"Error saving form: {ex.Message}");
+                Logger.LogError(ex, "Error saving form (JS interop failed)");
             }
         }
         finally
@@ -2971,7 +2972,8 @@
                 // Log span adjustment for debugging
                 if (originalSpan != maxSpanWithoutCollision)
                 {
-                    Console.WriteLine($"Adjusted field '{_draggedField.Name}' span from {originalSpan} to {maxSpanWithoutCollision} at position {targetRow.Value},{targetCol.Value}");
+                    Logger.LogDebug("Adjusted field '{FieldName}' span from {OriginalSpan} to {NewSpan} at position {Row},{Col}", 
+                        _draggedField.Name, originalSpan, maxSpanWithoutCollision, targetRow.Value, targetCol.Value);
                 }
                 
                 _draggedField.GridColumnSpan = maxSpanWithoutCollision;

@@ -5,6 +5,7 @@
 @inject IWorkflowService WorkflowService
 @inject IWorkflowDesignerService WorkflowDesignerService
 @inject IFormDefinitionService FormDefinitionService
+@inject ILogger<WorkflowManagement> Logger
 @inject NavigationManager Navigation
 @attribute [Authorize(Roles = "Admin,FormAdmin")]
 
@@ -132,15 +133,15 @@
         try
         {
             errorMessage = null;
-            Console.WriteLine("Starting to load workflow data...");
+            Logger.LogDebug("Starting to load workflow data");
             
             workflows = await WorkflowService.GetWorkflowDefinitionsAsync();
-            Console.WriteLine($"Loaded {workflows?.Count ?? 0} workflows");
+            Logger.LogDebug("Loaded {WorkflowCount} workflows", workflows?.Count ?? 0);
         }
         catch (Exception ex)
         {
             errorMessage = $"Error loading data: {ex.Message}";
-            Console.WriteLine($"Error loading workflow data: {ex}");
+            Logger.LogError(ex, "Error loading workflow data");
         }
     }
 
@@ -150,12 +151,12 @@
         {
             createWorkflowRequest = new CreateWorkflowRequest();
             errorMessage = null;
-            Console.WriteLine("Opening create workflow modal");
+            Logger.LogDebug("Opening create workflow modal");
             await createWorkflowModal.ShowAsync();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error showing modal: {ex}");
+            Logger.LogError(ex, "Error showing modal");
             errorMessage = $"Error opening modal: {ex.Message}";
         }
     }
@@ -164,12 +165,12 @@
     {
         try
         {
-            Console.WriteLine("Hiding create workflow modal");
+            Logger.LogDebug("Hiding create workflow modal");
             await createWorkflowModal.HideAsync();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error hiding modal: {ex}");
+            Logger.LogError(ex, "Error hiding modal");
         }
     }
 
@@ -182,7 +183,7 @@
             isCreating = true;
             errorMessage = null;
             
-            Console.WriteLine($"Creating workflow with name '{createWorkflowRequest.Name}'");
+            Logger.LogDebug("Creating workflow with name '{WorkflowName}'", createWorkflowRequest.Name);
             
             // Validate input before making service call
             if (string.IsNullOrWhiteSpace(createWorkflowRequest.Name))
@@ -196,7 +197,7 @@
                 createWorkflowRequest.Name,
                 createWorkflowRequest.Description);
 
-            Console.WriteLine($"Successfully created workflow with ID: {workflow.Id}");
+            Logger.LogInformation("Successfully created workflow with ID: {WorkflowId}", workflow.Id);
             
             await HideCreateWorkflowModal();
             
@@ -206,7 +207,7 @@
         catch (Exception ex)
         {
             errorMessage = $"Failed to create workflow: {ex.Message}";
-            Console.WriteLine($"Detailed error creating workflow: {ex}");
+            Logger.LogError(ex, "Error creating workflow");
         }
         finally
         {

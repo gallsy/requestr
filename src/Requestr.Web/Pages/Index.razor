@@ -8,6 +8,7 @@
 @inject IFormRequestService FormRequestService
 @inject IWorkflowService WorkflowService
 @inject IFormAuthorizationService FormAuthorizationService
+@inject ILogger<Index> Logger
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Dashboard | Requestr</PageTitle>
@@ -261,7 +262,7 @@
         catch (Exception ex)
         {
             // Log error - in production, you'd want proper error handling
-            Console.WriteLine($"Error loading dashboard data: {ex.Message}");
+            Logger.LogError(ex, "Error loading dashboard data");
         }
     }
 
@@ -314,7 +315,7 @@
         catch (Exception ex)
         {
             // Log error - in production, you'd want proper error handling
-            Console.WriteLine($"Error loading data: {ex.Message}");
+            Logger.LogError(ex, "Error loading data");
             
             // Initialize properties to prevent infinite loading spinners
             PendingWorkflowSteps ??= new List<WorkflowStepInstance>();
@@ -352,7 +353,7 @@
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error caching workflow data for instance {instanceId}: {ex.Message}");
+                Logger.LogWarning(ex, "Error caching workflow data for instance {InstanceId}", instanceId);
             }
         }
     }

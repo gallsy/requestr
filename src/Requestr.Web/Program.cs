@@ -4,6 +4,7 @@ using Microsoft.Identity.Web;
 using Microsoft.Identity.Web.UI;
 using BlazorBootstrap;
 using Requestr.Core.Extensions;
+using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using Requestr.Web.Authorization;
 using Serilog;
@@ -36,6 +37,9 @@ builder.Services.AddRequestrCore();
 
 // Add custom authorization services
 builder.Services.AddScoped<IFormAuthorizationService, FormAuthorizationService>();
+
+// Add toast notification service
+builder.Services.AddScoped<IToastNotificationService, Requestr.Web.Services.ToastNotificationService>();
 
 // Configure authorization
 builder.Services.AddAuthorization(options =>

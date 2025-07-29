@@ -6,6 +6,8 @@
 @inject IWorkflowService WorkflowService
 @inject IWorkflowDesignerService WorkflowDesignerService
 @inject IFormDefinitionService FormDefinitionService
+@inject IToastNotificationService ToastService
+@inject ILogger<WorkflowDesigner> Logger
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @attribute [Authorize(Roles = "Admin,FormAdmin")]
@@ -583,7 +585,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading workflow: {ex.Message}");
+            Logger.LogError(ex, "Error loading workflow");
         }
     }
 
@@ -636,7 +638,7 @@
             
             if (existingTransition != null)
             {
-                await JSRuntime.InvokeVoidAsync("alert", $"Connection already exists between {fromStep.Name} and {toStep.Name}");
+                ToastService.ShowWarning($"Connection already exists between {fromStep.Name} and {toStep.Name}");
                 return;
             }
 
@@ -652,13 +654,13 @@
 
             workflow.Transitions.Add(newTransition);
             
-            await JSRuntime.InvokeVoidAsync("alert", $"Connected {fromStep.Name} to {toStep.Name}");
+            ToastService.ShowSuccess($"Connected {fromStep.Name} to {toStep.Name}");
             StateHasChanged();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error creating connection: {ex.Message}");
-            await JSRuntime.InvokeVoidAsync("alert", $"Error creating connection: {ex.Message}");
+            Logger.LogError(ex, "Error creating connection");
+            ToastService.ShowError($"Error creating connection: {ex.Message}");
         }
     }
 
@@ -753,13 +755,13 @@
         try
         {
             workflow?.Transitions.Remove(transition);
-            await JSRuntime.InvokeVoidAsync("alert", $"Deleted connection");
+            ToastService.ShowSuccess("Connection deleted successfully");
             StateHasChanged();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error deleting connection: {ex.Message}");
-            await JSRuntime.InvokeVoidAsync("alert", $"Error deleting connection: {ex.Message}");
+            Logger.LogError(ex, "Error deleting connection");
+            ToastService.ShowError($"Error deleting connection: {ex.Message}");
         }
     }
 
@@ -783,8 +785,8 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error deleting step: {ex.Message}");
-            await JSRuntime.InvokeVoidAsync("alert", $"Error deleting step: {ex.Message}");
+            Logger.LogError(ex, "Error deleting step");
+            ToastService.ShowError($"Error deleting step: {ex.Message}");
         }
     }
 
@@ -808,8 +810,8 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error adding step: {ex.Message}");
-            await JSRuntime.InvokeVoidAsync("alert", $"Error adding step: {ex.Message}");
+            Logger.LogError(ex, "Error adding step");
+            ToastService.ShowError($"Error adding step: {ex.Message}");
         }
     }
 
@@ -836,8 +838,8 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error deleting step: {ex.Message}");
-            await JSRuntime.InvokeVoidAsync("alert", $"Error deleting step: {ex.Message}");
+            Logger.LogError(ex, "Error deleting step from selected step");
+            ToastService.ShowError($"Error deleting step: {ex.Message}");
         }
     }
 
@@ -901,7 +903,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error updating step: {ex.Message}");
+            Logger.LogError(ex, "Error updating step");
         }
     }
 
@@ -915,19 +917,19 @@
             
             if (validationErrors.Any())
             {
-                await JSRuntime.InvokeVoidAsync("alert", $"Validation completed with {validationErrors.Count} error(s). Check the validation panel for details.");
+                ToastService.ShowWarning($"Validation completed with {validationErrors.Count} error(s). Check the validation panel for details.");
             }
             else
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Workflow validation passed successfully!");
+                ToastService.ShowSuccess("Workflow validation passed successfully!");
             }
             
             StateHasChanged();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error validating workflow: {ex.Message}");
-            await JSRuntime.InvokeVoidAsync("alert", $"Error validating workflow: {ex.Message}");
+            Logger.LogError(ex, "Error validating workflow");
+            ToastService.ShowError($"Error validating workflow: {ex.Message}");
         }
     }
 
@@ -938,12 +940,12 @@
         try
         {
             await WorkflowService.UpdateWorkflowDefinitionAsync(workflow);
-            await JSRuntime.InvokeVoidAsync("alert", "Workflow saved successfully!");
+            ToastService.ShowSuccess("Workflow saved successfully!");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error saving workflow: {ex.Message}");
-            await JSRuntime.InvokeVoidAsync("alert", $"Error saving workflow: {ex.Message}");
+            Logger.LogError(ex, "Error saving workflow");
+            ToastService.ShowError($"Error saving workflow: {ex.Message}");
         }
     }
 

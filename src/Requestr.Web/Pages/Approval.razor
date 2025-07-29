@@ -5,6 +5,7 @@
 @inject IFormRequestService FormRequestService
 @inject IWorkflowService WorkflowService
 @inject IWorkflowDesignerService WorkflowDesignerService
+@inject ILogger<Approval> Logger
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -214,7 +215,7 @@ else
                 catch (Exception ex)
                 {
                     // Log error but don't fail the entire page load
-                    Console.WriteLine($"Warning: Could not load workflow step information: {ex.Message}");
+                    Logger.LogWarning(ex, "Could not load workflow step information for RequestId {RequestId}", RequestId);
                 }
             }
 
@@ -358,7 +359,7 @@ else
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error getting workflow step ID: {ex.Message}");
+            Logger.LogError(ex, "Error getting workflow step ID for RequestId {RequestId}", RequestId);
             return null;
         }
     }

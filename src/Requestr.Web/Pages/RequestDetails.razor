@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Components.Web
 @using System.Text.Json
 @using Requestr.Web.Components
+@using Requestr.Web.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.JSInterop
@@ -13,6 +14,8 @@
 @inject IFormDefinitionService FormDefinitionService
 @inject IWorkflowService WorkflowService
 @inject IConflictDetectionService ConflictDetectionService
+@inject IToastNotificationService toastService
+@inject ILogger<RequestDetails> Logger
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -599,7 +602,7 @@ else
         catch (Exception ex)
         {
             // Log the error but don't show it to the user since conflict detection is supplementary
-            Console.WriteLine($"Conflict detection error: {ex.Message}");
+            Logger.LogWarning(ex, "Conflict detection error for RequestId {RequestId}", RequestId);
         }
     }
 
@@ -645,19 +648,19 @@ else
             
             if (success)
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Request retry successful! The request has been reprocessed.");
+                toastService.ShowSuccess("Request retry successful! The request has been reprocessed.");
                 
                 // Reload the request to get the updated status
                 await LoadRequest();
             }
             else
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Failed to retry the request. Please check if the request is in a failed state.");
+                toastService.ShowError("Failed to retry the request. Please check if the request is in a failed state.");
             }
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error retrying request: {ex.Message}");
+            toastService.ShowError($"Error retrying request: {ex.Message}");
         }
         finally
         {

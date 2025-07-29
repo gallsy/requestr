@@ -2,6 +2,7 @@
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
 @inject IFormDefinitionService FormDefinitionService
+@inject IToastNotificationService toastService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @attribute [Authorize(Roles = "Admin")]
@@ -174,7 +175,7 @@
         catch (Exception ex)
         {
             await JSRuntime.InvokeVoidAsync("console.error", $"Error loading forms: {ex.Message}");
-            await JSRuntime.InvokeVoidAsync("alert", $"Error loading forms: {ex.Message}");
+            toastService.ShowError($"Error loading forms: {ex.Message}");
         }
         finally
         {
@@ -224,7 +225,7 @@
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error updating form status: {ex.Message}");
+            toastService.ShowError($"Error updating form status: {ex.Message}");
             // Revert the change
             form.IsActive = !form.IsActive;
             ApplyFilter(); // Refresh the filtered list
@@ -243,7 +244,7 @@
             }
             catch (Exception ex)
             {
-                await JSRuntime.InvokeVoidAsync("alert", $"Error deleting form: {ex.Message}");
+                toastService.ShowError($"Error deleting form: {ex.Message}");
             }
         }
     }

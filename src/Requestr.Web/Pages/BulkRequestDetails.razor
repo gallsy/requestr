@@ -7,6 +7,7 @@
 @using BlazorBootstrap
 @inject IBulkFormRequestService BulkFormRequestService
 @inject IConflictDetectionService ConflictDetectionService
+@inject ILogger<BulkRequestDetails> Logger
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @attribute [Authorize]
@@ -337,7 +338,7 @@ else
         catch (Exception ex)
         {
             // Log the error but don't show it to the user since conflict detection is supplementary
-            Console.WriteLine($"Conflict detection error: {ex.Message}");
+            Logger.LogWarning(ex, "Conflict detection error for BulkRequestId {BulkRequestId}", BulkRequestId);
         }
     }
 

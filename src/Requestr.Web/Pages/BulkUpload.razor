@@ -5,6 +5,8 @@
 @inject IFormDefinitionService FormDefinitionService
 @inject IBulkFormRequestService BulkFormRequestService
 @inject IDataService DataService
+@inject IToastNotificationService ToastService
+@inject ILogger<BulkUpload> Logger
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -336,7 +338,7 @@ else
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading form definition: {ex.Message}");
+            Logger.LogError(ex, "Error loading form definition for FormId {FormId}", FormId);
         }
         finally
         {
@@ -471,14 +473,13 @@ else
                         
                     if (!primaryKeyColumns.Any())
                     {
-                        await JSRuntime.InvokeVoidAsync("alert", 
-                            $"Cannot perform {_selectedRequestType} operations: Table '{_formDefinition.TableName}' has no primary key defined.");
+                        ToastService.ShowError($"Cannot perform {_selectedRequestType} operations: Table '{_formDefinition.TableName}' has no primary key defined.");
                         return;
                     }
                 }
                 catch (Exception ex)
                 {
-                    await JSRuntime.InvokeVoidAsync("alert", $"Error checking primary keys: {ex.Message}");
+                    ToastService.ShowError($"Error checking primary keys: {ex.Message}");
                     return;
                 }
             }
@@ -530,7 +531,7 @@ else
                     }
                     catch (Exception ex)
                     {
-                        await JSRuntime.InvokeVoidAsync("alert", $"Error looking up original values for row {rowIndex + 1}: {ex.Message}");
+                        ToastService.ShowError($"Error looking up original values for row {rowIndex + 1}: {ex.Message}");
                         return;
                     }
                 }
@@ -560,7 +561,7 @@ else
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error submitting request: {ex.Message}");
+            ToastService.ShowError($"Error submitting request: {ex.Message}");
         }
         finally
         {
