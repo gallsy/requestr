@@ -29,11 +29,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INotificationTemplateService, NotificationTemplateService>();
         services.AddScoped<IAdvancedNotificationService, AdvancedNotificationService>();
         
-        // Business Logic Services (to be implemented)
-        // services.AddScoped<IValidationService, ValidationService>();
-        // services.AddScoped<IAuthorizationService, AuthorizationService>();
-        // services.AddScoped<INotificationService, NotificationService>();
-        // services.AddScoped<IAuditService, AuditService>();
+        // Register INotificationService as the same implementation as IAdvancedNotificationService
+        services.AddScoped<INotificationService, AdvancedNotificationService>();
+        
+        // Remove unused interfaces - functionality is implemented elsewhere:
+        // - Validation: Distributed across components (FormRenderer, DTOs, etc.)
+        // - Authorization: Handled by existing FormPermissionService and ASP.NET Core
+        // - Audit: Comprehensive FormRequestHistory system exists
         
         // Conflict Detection Services
         services.AddScoped<IConflictDetectionService, ConflictDetectionService>();

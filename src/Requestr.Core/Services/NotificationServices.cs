@@ -943,7 +943,7 @@ public class NotificationTemplateService : INotificationTemplateService
     }
 }
 
-public class AdvancedNotificationService : IAdvancedNotificationService
+public class AdvancedNotificationService : IAdvancedNotificationService, INotificationService
 {
     private readonly IEmailConfigurationService _emailConfigurationService;
     private readonly INotificationTemplateService _templateService;
