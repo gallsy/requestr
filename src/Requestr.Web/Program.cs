@@ -39,7 +39,7 @@ builder.Services.AddRequestrCore();
 builder.Services.AddScoped<IFormAuthorizationService, FormAuthorizationService>();
 
 // Add toast notification service
-builder.Services.AddScoped<IToastNotificationService, Requestr.Web.Services.ToastNotificationService>();
+builder.Services.AddScoped<Requestr.Web.Services.IToastNotificationService, Requestr.Web.Services.ToastNotificationService>();
 
 // Configure authorization
 builder.Services.AddAuthorization(options =>

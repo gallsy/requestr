@@ -1,4 +1,4 @@
-namespace Requestr.Core.Interfaces;
+namespace Requestr.Web.Services;
 
 /// <summary>
 /// Interface for toast notification service
