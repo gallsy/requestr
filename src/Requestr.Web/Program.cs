@@ -14,9 +14,24 @@ var builder = WebApplication.CreateBuilder(args);
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
+    .Enrich.FromLogContext()
+    .Enrich.WithMachineName()
+    .Enrich.WithThreadId()
     .CreateLogger();
 
 builder.Host.UseSerilog();
+
+// Add Azure App Service logging
+if (builder.Environment.IsProduction())
+{
+    builder.Logging.AddAzureWebAppDiagnostics();
+}
+
+// Add Application Insights (if connection string is available)
+if (!string.IsNullOrEmpty(builder.Configuration.GetConnectionString("APPLICATIONINSIGHTS_CONNECTION_STRING")))
+{
+    builder.Services.AddApplicationInsightsTelemetry();
+}
 
 // Add services to the container
 builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
@@ -81,11 +96,14 @@ app.MapRazorPages();
 try
 {
     Log.Information("Starting Requestr application");
+    Log.Information("Environment: {Environment}", app.Environment.EnvironmentName);
+    Log.Information("Application started successfully");
     app.Run();
 }
 catch (Exception ex)
 {
     Log.Fatal(ex, "Application terminated unexpectedly");
+    throw;
 }
 finally
 {
