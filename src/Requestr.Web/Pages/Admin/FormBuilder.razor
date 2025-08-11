@@ -1697,7 +1697,7 @@
     private bool CanDeleteRole(string roleName)
     {
         // Prevent deletion of core system roles
-        var protectedRoles = new[] { "Admin", "FormAdmin", "DataAdmin" };
+        var protectedRoles = new[] { "Admin" };
         return !protectedRoles.Contains(roleName);
     }
     
@@ -1705,7 +1705,7 @@
     {
         if (!CanDeleteRole(roleName))
         {
-            toastService.ShowWarning("Cannot delete system roles (Admin, FormAdmin, DataAdmin).");
+            toastService.ShowWarning("Cannot delete system roles (Admin).");
             return;
         }
         

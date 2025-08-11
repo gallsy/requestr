@@ -118,7 +118,7 @@ public class FormPermissionService : IFormPermissionService
                 WHERE FormDefinitionId = @FormDefinitionId 
                     AND PermissionType = @PermissionType 
                     AND IsGranted = 1
-                    AND RoleName IN ('Admin', 'FormAdmin')"; // Simplified for now
+                    AND RoleName IN ('Admin')"; // Simplified for now
                     
             var hasPermission = await connection.QuerySingleAsync<int>(sql, 
                 new { FormDefinitionId = formDefinitionId, PermissionType = (int)permissionType });
@@ -296,8 +296,6 @@ public class FormPermissionService : IFormPermissionService
                 roleList = new List<string>
                 {
                     "Admin",
-                    "FormAdmin", 
-                    "DataAdmin",
                     "User"
                 };
             }
@@ -434,24 +432,6 @@ public class FormPermissionService : IFormPermissionService
                     [FormPermissionType.CreateRequest] = true,
                     [FormPermissionType.UpdateRequest] = true,
                     [FormPermissionType.DeleteRequest] = true,
-                    [FormPermissionType.ViewData] = true,
-                    [FormPermissionType.BulkActions] = true,
-                    [FormPermissionType.BulkUploadCsv] = true
-                },
-                ["FormAdmin"] = new()
-                {
-                    [FormPermissionType.CreateRequest] = true,
-                    [FormPermissionType.UpdateRequest] = true,
-                    [FormPermissionType.DeleteRequest] = true,
-                    [FormPermissionType.ViewData] = true,
-                    [FormPermissionType.BulkActions] = true,
-                    [FormPermissionType.BulkUploadCsv] = true
-                },
-                ["DataAdmin"] = new()
-                {
-                    [FormPermissionType.CreateRequest] = true,
-                    [FormPermissionType.UpdateRequest] = true,
-                    [FormPermissionType.DeleteRequest] = false,
                     [FormPermissionType.ViewData] = true,
                     [FormPermissionType.BulkActions] = true,
                     [FormPermissionType.BulkUploadCsv] = true

@@ -24,7 +24,7 @@ else if (_bulkRequest == null)
                 Title="Bulk Request Not Found" 
                 Description="The requested bulk request could not be found or you don't have permission to access it.">
         <Action>
-            <Button Color="ButtonColor.Primary" @onclick="@(() => Navigation.NavigateTo("/my-requests"))">
+            <Button Color="ButtonColor.Primary" @onclick="@(() => Navigation.NavigateTo("/requests"))">
                 Back to My Requests
             </Button>
         </Action>
@@ -45,7 +45,7 @@ else
             }
             else
             {
-                <Button Color="ButtonColor.Secondary" Outline="true" @onclick="@(() => Navigation.NavigateTo("/my-requests"))">
+                <Button Color="ButtonColor.Secondary" Outline="true" @onclick="@(() => Navigation.NavigateTo("/requests"))">
                     <Icon Name="IconName.ArrowLeft" class="me-2" />
                     Back to Requests
                 </Button>

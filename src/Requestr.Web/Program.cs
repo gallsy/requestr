@@ -64,11 +64,11 @@ builder.Services.AddAuthorization(options =>
     
     // Admin policy for form management
     options.AddPolicy("AdminOnly", policy =>
-        policy.RequireRole("Admin", "FormAdmin"));
+        policy.RequireRole("Admin"));
     
     // Approver policy for approving requests
     options.AddPolicy("CanApprove", policy =>
-        policy.RequireRole("Admin", "FormAdmin", "DataAdmin", "ReferenceDataApprover"));
+        policy.RequireRole("Admin"));
 });
 
 var app = builder.Build();

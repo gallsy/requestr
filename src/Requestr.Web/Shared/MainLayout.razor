@@ -30,10 +30,7 @@
             <AuthorizeView>
                 <Authorized>
                     @{
-                        var hasAdminRole = context.User.IsInRole("Admin") || 
-                                          context.User.IsInRole("FormAdmin") || 
-                                          context.User.IsInRole("DataAdmin") || 
-                                          context.User.IsInRole("ReferenceDataApprover");
+                        var hasAdminRole = context.User.IsInRole("Admin");
                     }
                     
                     @if (hasAdminRole || UserHasPendingWorkflowSteps)
