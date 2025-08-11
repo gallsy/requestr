@@ -2,7 +2,7 @@
 -- This script creates sample tables that can be managed through the Requestr application
 -- Migration: 009
 
-USE RequestrApp;
+USE Requestr;
 GO
 
 -- Countries reference table
@@ -88,8 +88,8 @@ BEGIN
     INSERT INTO DatabaseConnections (Name, Description, ConnectionString, DatabaseType, IsActive, CreatedBy)
     VALUES (
         'DefaultConnection',
-        'Default connection to the main RequestrApp database',
-        'Server=localhost,1433;Database=RequestrApp;User Id=sa;Password=YourPassword123!;TrustServerCertificate=true;MultipleActiveResultSets=true',
+        'Default connection to the main Requestr database',
+        'Server=localhost,1433;Database=Requestr;User Id=sa;Password=YourPassword123!;TrustServerCertificate=true;MultipleActiveResultSets=true',
         0, -- SqlServer
         1,
         'System Migration'

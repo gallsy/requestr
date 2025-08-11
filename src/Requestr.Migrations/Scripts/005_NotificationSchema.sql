@@ -2,7 +2,7 @@
 -- This script creates the notification and email configuration system
 -- Migration: 005
 
-USE RequestrApp;
+USE Requestr;
 GO
 
 -- Email Configuration table (single row for system-wide settings)

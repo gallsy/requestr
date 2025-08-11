@@ -2,7 +2,7 @@
 -- This script adds indexes and optimizations for better performance
 -- Migration: 006
 
-USE RequestrApp;
+USE Requestr;
 GO
 
 PRINT 'Adding performance indexes...';

@@ -2,7 +2,7 @@
 -- This script adds workflow integration to the bulk request system
 -- Migration: 004
 
-USE RequestrApp;
+USE Requestr;
 GO
 
 -- Add WorkflowInstanceId column to BulkFormRequests table

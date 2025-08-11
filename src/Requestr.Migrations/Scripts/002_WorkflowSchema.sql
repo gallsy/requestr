@@ -3,7 +3,7 @@
 -- Based on legacy workflow-schema.sql
 -- Migration: 002
 
-USE RequestrApp;
+USE Requestr;
 GO
 
 -- WorkflowDefinitions table - stores the workflow template for each form

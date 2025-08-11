@@ -2,7 +2,7 @@
 -- This script adds granular role-based access control for forms
 -- Migration: 007
 
-USE RequestrApp;
+USE Requestr;
 GO
 
 -- Create FormPermissions table for granular form-level permissions

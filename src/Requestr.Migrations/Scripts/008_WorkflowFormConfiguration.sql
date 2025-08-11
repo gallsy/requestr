@@ -2,7 +2,7 @@
 -- This script adds the form-workflow configuration system
 -- Migration: 008
 
-USE RequestrApp;
+USE Requestr;
 GO
 
 -- FormWorkflowStepConfigurations table - stores form-specific configuration for workflow steps

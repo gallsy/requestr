@@ -2,7 +2,7 @@
 -- This script adds bulk request functionality to the Requestr application
 -- Migration: 003
 
-USE RequestrApp;
+USE Requestr;
 GO
 
 -- Create BulkFormRequests table

@@ -4,13 +4,13 @@
 -- Migration: 001
 
 -- Create the database if it doesn't exist
-IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'RequestrApp')
+IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'Requestr')
 BEGIN
-    CREATE DATABASE RequestrApp;
+    CREATE DATABASE Requestr;
 END
 GO
 
-USE RequestrApp;
+USE Requestr;
 GO
 
 -- FormDefinitions table

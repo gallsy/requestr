@@ -29,7 +29,7 @@ Update the connection string in `appsettings.json`:
 ```json
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Server=localhost,1433;Database=RequestrApp;User Id=sa;Password=YourPassword123!;TrustServerCertificate=true;MultipleActiveResultSets=true"
+    "DefaultConnection": "Server=localhost,1433;Database=Requestr;User Id=sa;Password=YourPassword123!;TrustServerCertificate=true;MultipleActiveResultSets=true"
   }
 }
 ```
