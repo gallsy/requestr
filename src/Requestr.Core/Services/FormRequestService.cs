@@ -4,6 +4,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
+using Requestr.Core.Validation;
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using static Requestr.Core.Models.NotificationTemplateKeys;
 
@@ -17,6 +19,7 @@ public class FormRequestService : IFormRequestService
     private readonly IFormDefinitionService _formDefinitionService;
     private readonly IWorkflowService _workflowService;
     private readonly IAdvancedNotificationService _notificationService;
+    private readonly IInputValidationService _inputValidationService;
     private readonly string _connectionString;
 
     public FormRequestService(
@@ -25,7 +28,8 @@ public class FormRequestService : IFormRequestService
         IDataService dataService,
         IFormDefinitionService formDefinitionService,
         IWorkflowService workflowService,
-        IAdvancedNotificationService notificationService)
+        IAdvancedNotificationService notificationService,
+        IInputValidationService inputValidationService)
     {
         _configuration = configuration;
         _logger = logger;
@@ -33,6 +37,7 @@ public class FormRequestService : IFormRequestService
         _formDefinitionService = formDefinitionService;
         _workflowService = workflowService;
         _notificationService = notificationService;
+        _inputValidationService = inputValidationService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
     }
@@ -243,6 +248,26 @@ public class FormRequestService : IFormRequestService
 
         try
         {
+            // Get form definition for validation
+            var formDefinition = await _formDefinitionService.GetFormDefinitionAsync(formRequest.FormDefinitionId);
+            if (formDefinition == null)
+            {
+                throw new InvalidOperationException("Form definition not found");
+            }
+
+            // Validate and sanitize field values
+            var validationResult = await _inputValidationService.ValidateFormSubmissionAsync(formRequest.FieldValues, formDefinition.Fields);
+            if (!validationResult.IsValid)
+            {
+                throw new InvalidOperationException($"Form validation failed: {string.Join(", ", validationResult.Errors)}");
+            }
+
+            // Sanitize comments
+            if (!string.IsNullOrEmpty(formRequest.Comments))
+            {
+                formRequest.Comments = _inputValidationService.SanitizeComments(formRequest.Comments);
+            }
+
             // Check if the form has a workflow definition
             var workflowDefinition = await _workflowService.GetWorkflowDefinitionByFormAsync(formRequest.FormDefinitionId);
             
@@ -344,6 +369,49 @@ public class FormRequestService : IFormRequestService
             {
                 throw new ArgumentException($"Form request with ID {formRequest.Id} not found");
             }
+
+            // Get form definition for validation
+            var formDefinition = await _formDefinitionService.GetFormDefinitionAsync(formRequest.FormDefinitionId);
+            if (formDefinition == null)
+            {
+                throw new ArgumentException($"Form definition with ID {formRequest.FormDefinitionId} not found");
+            }
+
+            // Validate and sanitize input before updating
+            var validationResult = await _inputValidationService.ValidateFormSubmissionAsync(
+                formRequest.FieldValues,
+                formDefinition.Fields
+            );
+            
+            if (!validationResult.IsValid)
+            {
+                _logger.LogWarning("Form request update validation failed for request {RequestId}: {Errors}", 
+                    formRequest.Id, string.Join(", ", validationResult.Errors));
+                throw new ValidationException($"Form update validation failed: {string.Join(", ", validationResult.Errors)}");
+            }
+            
+            // Sanitize field values and comments
+            var sanitizedFieldValues = new Dictionary<string, object?>();
+            foreach (var field in formDefinition.Fields.Where(f => f.IsVisible))
+            {
+                if (formRequest.FieldValues.ContainsKey(field.Name))
+                {
+                    var inputValue = formRequest.FieldValues[field.Name]?.ToString();
+                    if (!string.IsNullOrEmpty(inputValue))
+                    {
+                        var sanitizedValue = InputValidator.SanitizeInput(inputValue, field);
+                        sanitizedFieldValues[field.Name] = sanitizedValue;
+                    }
+                    else
+                    {
+                        sanitizedFieldValues[field.Name] = formRequest.FieldValues[field.Name];
+                    }
+                }
+            }
+            formRequest.FieldValues = sanitizedFieldValues;
+            formRequest.Comments = _inputValidationService.SanitizeComments(formRequest.Comments);
+            
+            _logger.LogInformation("Form request {RequestId} update validation passed", formRequest.Id);
 
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();
@@ -1073,13 +1141,22 @@ public class FormRequestService : IFormRequestService
     
     public async Task<bool> ApproveAsync(int id, string approvedBy, string? comments = null)
     {
+        // Sanitize comments if provided
+        var sanitizedComments = !string.IsNullOrEmpty(comments) 
+            ? _inputValidationService.SanitizeComments(comments)
+            : comments;
+            
         return await ApproveFormRequestAsync(id, approvedBy, approvedBy);
     }
     
     public async Task<bool> RejectAsync(int id, string rejectedBy, string? comments = null)
     {
-        var reason = comments ?? "Request rejected";
-        return await RejectFormRequestAsync(id, rejectedBy, rejectedBy, reason);
+        // Sanitize rejection reason
+        var sanitizedReason = !string.IsNullOrEmpty(comments) 
+            ? _inputValidationService.SanitizeComments(comments)
+            : "Request rejected";
+            
+        return await RejectFormRequestAsync(id, rejectedBy, rejectedBy, sanitizedReason);
     }
 
     // Change tracking methods

@@ -40,6 +40,9 @@ public static class ServiceCollectionExtensions
         // Conflict Detection Services
         services.AddScoped<IConflictDetectionService, ConflictDetectionService>();
         
+        // Input Validation Services
+        services.AddScoped<Services.IInputValidationService, Services.InputValidationService>();
+        
         // UI Services
         services.AddSingleton<ThemeService>();
 

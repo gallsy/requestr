@@ -1,0 +1,206 @@
+@using System.Text.RegularExpressions
+@using System.ComponentModel.DataAnnotations
+@using System.Net.Mail
+@using Requestr.Core.Models
+@implements IDisposable
+
+@if (ShowValidationMessage && !string.IsNullOrEmpty(ValidationMessage))
+{
+    <div class="validation-message text-danger">
+        <small>@ValidationMessage</small>
+    </div>
+}
+
+@code {
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public FormField Field { get; set; } = default!;
+    [Parameter] public bool ShowValidationMessage { get; set; } = true;
+    
+    private string ValidationMessage { get; set; } = string.Empty;
+    private Timer? _validationTimer;
+
+    protected override void OnParametersSet()
+    {
+        ValidateField(Value);
+    }
+
+    private async Task OnValueChanged(string newValue)
+    {
+        Value = newValue;
+        
+        // Debounce validation to avoid excessive validation calls
+        _validationTimer?.Dispose();
+        _validationTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(() =>
+            {
+                ValidateField(newValue);
+                StateHasChanged();
+            });
+        }, null, 500, Timeout.Infinite);
+
+        await ValueChanged.InvokeAsync(newValue);
+    }
+
+    private void ValidateField(string value)
+    {
+        ValidationMessage = string.Empty;
+
+        if (Field == null) return;
+
+        // Required field validation
+        if (Field.IsRequired && string.IsNullOrWhiteSpace(value))
+        {
+            ValidationMessage = $"{Field.DisplayName} is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(value)) return;
+
+        // Security validation - check for potentially dangerous content
+        if (ContainsDangerousContent(value))
+        {
+            ValidationMessage = $"{Field.DisplayName} contains potentially dangerous content.";
+            return;
+        }
+
+        // Length validation
+        if (Field.MaxLength > 0 && value.Length > Field.MaxLength)
+        {
+            ValidationMessage = $"{Field.DisplayName} must be no longer than {Field.MaxLength} characters.";
+            return;
+        }
+
+        // Data type validation
+        switch (Field.DataType?.ToLower())
+        {
+            case "email":
+                if (!IsValidEmail(value))
+                {
+                    ValidationMessage = $"{Field.DisplayName} must be a valid email address.";
+                }
+                break;
+
+            case "url":
+                if (!IsValidUrl(value))
+                {
+                    ValidationMessage = $"{Field.DisplayName} must be a valid URL.";
+                }
+                break;
+
+            case "phone":
+            case "tel":
+                if (!IsValidPhone(value))
+                {
+                    ValidationMessage = $"{Field.DisplayName} must be a valid phone number.";
+                }
+                break;
+
+            case "int":
+            case "integer":
+                if (!int.TryParse(value, out _))
+                {
+                    ValidationMessage = $"{Field.DisplayName} must be a valid integer.";
+                }
+                break;
+
+            case "decimal":
+            case "float":
+            case "double":
+                if (!decimal.TryParse(value, out _))
+                {
+                    ValidationMessage = $"{Field.DisplayName} must be a valid number.";
+                }
+                break;
+
+            case "date":
+                if (!DateTime.TryParse(value, out _))
+                {
+                    ValidationMessage = $"{Field.DisplayName} must be a valid date.";
+                }
+                break;
+
+            case "datetime":
+            case "datetime2":
+                if (!DateTime.TryParse(value, out _))
+                {
+                    ValidationMessage = $"{Field.DisplayName} must be a valid date and time.";
+                }
+                break;
+        }
+
+        // Custom regex validation
+        if (string.IsNullOrEmpty(ValidationMessage) && !string.IsNullOrWhiteSpace(Field.ValidationRegex))
+        {
+            try
+            {
+                var regex = new Regex(Field.ValidationRegex);
+                if (!regex.IsMatch(value))
+                {
+                    ValidationMessage = Field.ValidationMessage ?? $"{Field.DisplayName} format is invalid.";
+                }
+            }
+            catch (ArgumentException)
+            {
+                // Invalid regex - skip validation
+            }
+        }
+    }
+
+    private static bool ContainsDangerousContent(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return false;
+
+        // Check for script injection patterns
+        var dangerousPatterns = new[]
+        {
+            @"<script[^>]*>.*?</script>",
+            @"javascript:",
+            @"vbscript:",
+            @"onload=",
+            @"onerror=",
+            @"onclick=",
+            @"onmouseover=",
+            @"eval\s*\(",
+            @"alert\s*\(",
+            @"document\.cookie",
+            @"document\.write"
+        };
+
+        return dangerousPatterns.Any(pattern => 
+            Regex.IsMatch(value, pattern, RegexOptions.IgnoreCase));
+    }
+
+    private static bool IsValidEmail(string email)
+    {
+        try
+        {
+            var emailRegex = new Regex(@"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$");
+            var addr = new MailAddress(email);
+            return addr.Address == email && emailRegex.IsMatch(email);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsValidUrl(string url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out var result) 
+               && (result.Scheme == Uri.UriSchemeHttp || result.Scheme == Uri.UriSchemeHttps);
+    }
+
+    private static bool IsValidPhone(string phone)
+    {
+        var phoneRegex = new Regex(@"^[\+]?[1-9][\d]{0,15}$");
+        var cleaned = Regex.Replace(phone, @"[\s\-\(\)]", "");
+        return phoneRegex.IsMatch(cleaned);
+    }
+
+    public void Dispose()
+    {
+        _validationTimer?.Dispose();
+    }
+}

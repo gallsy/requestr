@@ -17,7 +17,7 @@ services:
       dockerfile: src/Requestr.Migrations/Dockerfile
     container_name: requestr-migrations
     environment:
-      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=RequestrApp;User Id=sa;Password=DevPassword123!;TrustServerCertificate=True;Connection Timeout=30;"
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=Requestr;User Id=sa;Password=DevPassword123!;TrustServerCertificate=True;Connection Timeout=30;"
     depends_on:
       - sqlserver
     restart: "no"
@@ -32,9 +32,9 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: "http://+:8080"
-      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=RequestrApp;User Id=sa;Password=DevPassword123!;TrustServerCertificate=True;Connection Timeout=30;"
-      DatabaseConnections__ReferenceData: "Server=sqlserver,1433;Database=RequestrApp;User Id=sa;Password=DevPassword123!;TrustServerCertificate=True;Connection Timeout=30;"
-      DatabaseConnections__MainApp: "Server=sqlserver,1433;Database=RequestrApp;User Id=sa;Password=DevPassword123!;TrustServerCertificate=True;Connection Timeout=30;"
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=Requestr;User Id=sa;Password=DevPassword123!;TrustServerCertificate=True;Connection Timeout=30;"
+      DatabaseConnections__ReferenceData: "Server=sqlserver,1433;Database=Requestr;User Id=sa;Password=DevPassword123!;TrustServerCertificate=True;Connection Timeout=30;"
+      DatabaseConnections__MainApp: "Server=sqlserver,1433;Database=Requestr;User Id=sa;Password=DevPassword123!;TrustServerCertificate=True;Connection Timeout=30;"
       AzureAd__TenantId: ${AzureAd__TenantId:-your-tenant-id-here}
       AzureAd__ClientId: ${AzureAd__ClientId:-your-client-id-here}
       AzureAd__ClientSecret: ${AzureAd__ClientSecret:-your-client-secret-here}

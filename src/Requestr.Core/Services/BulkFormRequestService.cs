@@ -20,6 +20,7 @@ public class BulkFormRequestService : IBulkFormRequestService
     private readonly IFormDefinitionService _formDefinitionService;
     private readonly IFormRequestService _formRequestService;
     private readonly IWorkflowService _workflowService;
+    private readonly IInputValidationService _inputValidationService;
     private readonly string _connectionString;
 
     public BulkFormRequestService(
@@ -27,13 +28,15 @@ public class BulkFormRequestService : IBulkFormRequestService
         ILogger<BulkFormRequestService> logger,
         IFormDefinitionService formDefinitionService,
         IFormRequestService formRequestService,
-        IWorkflowService workflowService)
+        IWorkflowService workflowService,
+        IInputValidationService inputValidationService)
     {
         _configuration = configuration;
         _logger = logger;
         _formDefinitionService = formDefinitionService;
         _formRequestService = formRequestService;
         _workflowService = workflowService;
+        _inputValidationService = inputValidationService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
     }
@@ -44,6 +47,20 @@ public class BulkFormRequestService : IBulkFormRequestService
         
         try
         {
+            // First validate the file upload for security
+            var fileSize = csvStream.Length;
+            var contentType = "text/csv"; // Assuming CSV content type
+            var fileValidationResult = await _inputValidationService.ValidateCsvUploadAsync(csvStream, fileName, fileSize, contentType);
+            
+            if (!fileValidationResult.IsValid)
+            {
+                result.Errors.AddRange(fileValidationResult.Errors);
+                return result;
+            }
+            
+            // Reset stream position after validation
+            csvStream.Position = 0;
+            
             // Get form definition to validate against
             var formDefinition = await _formDefinitionService.GetFormDefinitionAsync(formDefinitionId);
             if (formDefinition == null)
@@ -177,32 +194,43 @@ public class BulkFormRequestService : IBulkFormRequestService
         return result;
     }
 
-    private Task<object?> ConvertAndValidateFieldValueAsync(string? cellValue, FormField field, CsvRowValidationResult result)
+    private async Task<object?> ConvertAndValidateFieldValueAsync(string? cellValue, FormField field, CsvRowValidationResult result)
     {
         if (string.IsNullOrWhiteSpace(cellValue))
         {
-            return Task.FromResult<object?>(null);
+            return null;
         }
 
         try
         {
+            // Use the validation service for security validation
+            var (isValid, sanitizedValue, errors) = await _inputValidationService.ValidateAndSanitizeFieldAsync(cellValue, field);
+            
+            if (!isValid)
+            {
+                result.Errors.AddRange(errors);
+                result.IsValid = false;
+                return null;
+            }
+
+            // Convert the sanitized value to appropriate type
             object? convertedValue = field.DataType?.ToLower() switch
             {
-                "int" or "integer" => int.Parse(cellValue),
-                "decimal" or "float" or "double" => decimal.Parse(cellValue),
-                "bool" or "boolean" => bool.Parse(cellValue),
-                "datetime" => DateTime.Parse(cellValue),
-                "date" => DateTime.Parse(cellValue).Date,
-                _ => (object?)cellValue
+                "int" or "integer" => int.Parse(sanitizedValue),
+                "decimal" or "float" or "double" => decimal.Parse(sanitizedValue),
+                "bool" or "boolean" => bool.Parse(sanitizedValue),
+                "datetime" => DateTime.Parse(sanitizedValue),
+                "date" => DateTime.Parse(sanitizedValue).Date,
+                _ => (object?)sanitizedValue
             };
             
-            return Task.FromResult(convertedValue);
+            return convertedValue;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            result.Errors.Add($"Invalid {field.DataType} value in column '{field.Name}': {cellValue}");
+            result.Errors.Add($"Invalid {field.DataType} value in column '{field.Name}': {cellValue} - {ex.Message}");
             result.IsValid = false;
-            return Task.FromResult<object?>(null);
+            return null;
         }
     }
 
@@ -662,6 +690,11 @@ public class BulkFormRequestService : IBulkFormRequestService
 
     public async Task<bool> ApproveBulkFormRequestAsync(int id, string userId, string userName, string? comments = null)
     {
+        // Sanitize comments if provided
+        var sanitizedComments = !string.IsNullOrEmpty(comments) 
+            ? _inputValidationService.SanitizeComments(comments)
+            : comments;
+            
         using (var connection = new SqlConnection(_connectionString))
         {
             await connection.OpenAsync();
@@ -708,7 +741,7 @@ public class BulkFormRequestService : IBulkFormRequestService
                     WHERE Id = @Id AND Status = 0";
 
                 var approvedAt = DateTime.UtcNow;
-                var result = await connection.ExecuteAsync(sql, new { Id = id, UserId = userId, UserName = userName, ApprovedAt = approvedAt, Comments = comments }, transaction);
+                var result = await connection.ExecuteAsync(sql, new { Id = id, UserId = userId, UserName = userName, ApprovedAt = approvedAt, Comments = sanitizedComments }, transaction);
 
                 if (result <= 0)
                 {
