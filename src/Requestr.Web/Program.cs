@@ -8,6 +8,7 @@ using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using Requestr.Web.Authorization;
 using Serilog;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -72,6 +73,15 @@ builder.Services.AddAuthorization(options =>
 });
 
 var app = builder.Build();
+
+// Configure forwarded headers FIRST - must be before authentication
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
+    // Trust Azure App Service proxy
+    KnownProxies = { },
+    KnownNetworks = { }
+});
 
 // Configure the HTTP request pipeline
 if (!app.Environment.IsDevelopment())
