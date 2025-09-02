@@ -50,6 +50,7 @@ public class DatabaseService : IDatabaseService
 
         try
         {
+            _logger.LogInformation("Listing table schemas for database {DatabaseName}", databaseName);
             using var connection = new SqlConnection(connectionString);
             await connection.OpenAsync();
 
@@ -62,9 +63,11 @@ public class DatabaseService : IDatabaseService
                 ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME";
 
             var tables = await connection.QueryAsync<(string Schema, string TableName)>(sql);
+            _logger.LogInformation("Found {TableCount} tables across schemas for {DatabaseName}", tables.Count(), databaseName);
 
             foreach (var table in tables)
             {
+                _logger.LogInformation("Loading schema for {Schema}.{Table}", table.Schema, table.TableName);
                 var tableSchema = await GetTableSchemaAsync(databaseName, table.TableName, table.Schema);
                 schemas.Add(tableSchema);
             }
@@ -89,6 +92,7 @@ public class DatabaseService : IDatabaseService
 
         try
         {
+            _logger.LogInformation("Getting column metadata for {Schema}.{Table} in {DatabaseName}", schema, tableName, databaseName);
             using var connection = new SqlConnection(connectionString);
             await connection.OpenAsync();
 
@@ -117,6 +121,7 @@ public class DatabaseService : IDatabaseService
                 ORDER BY c.ORDINAL_POSITION";
 
             var columns = await connection.QueryAsync<ColumnInfo>(sql, new { TableName = tableName, Schema = schema });
+            _logger.LogInformation("Loaded {ColumnCount} columns for {Schema}.{Table}", columns.Count(), schema, tableName);
 
             return new TableSchema
             {
@@ -144,11 +149,13 @@ public class DatabaseService : IDatabaseService
 
         try
         {
+            _logger.LogInformation("Fetching TOP {Limit} from {Schema}.{Table} in {DatabaseName}", limit, schema, tableName, databaseName);
             using var connection = new SqlConnection(connectionString);
             await connection.OpenAsync();
 
             var sql = $"SELECT TOP ({limit}) * FROM [{schema}].[{tableName}]";
             var result = await connection.QueryAsync(sql);
+            _logger.LogInformation("Retrieved {RowCount} rows from {Schema}.{Table}", result.Count(), schema, tableName);
 
             return result.Cast<IDictionary<string, object>>()
                         .Select(row => row.ToDictionary(kvp => kvp.Key, kvp => (object?)kvp.Value))
@@ -193,7 +200,7 @@ public class DatabaseService : IDatabaseService
         await Task.CompletedTask; // Make it properly async
         
         // Add the configured database connections
-        if (_configuration.GetConnectionString("DefaultConnection") != null)
+    if (_configuration.GetConnectionString("DefaultConnection") != null)
         {
             connectionStrings.Add("DefaultConnection", "Default Application Database");
         }
@@ -213,7 +220,8 @@ public class DatabaseService : IDatabaseService
         var connectionString = GetConnectionString(connectionStringName);
         var tables = new List<string>();
         
-        using var connection = new SqlConnection(connectionString);
+    _logger.LogInformation("Listing dbo tables for connection {Connection}", connectionStringName);
+    using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         
         var sql = @"
@@ -223,7 +231,8 @@ public class DatabaseService : IDatabaseService
                 AND TABLE_SCHEMA = 'dbo'
             ORDER BY TABLE_NAME";
         
-        var result = await connection.QueryAsync<string>(sql);
+    var result = await connection.QueryAsync<string>(sql);
+    _logger.LogInformation("Found {TableCount} dbo tables for {Connection}", result.Count(), connectionStringName);
         return result.ToList();
     }
 
@@ -232,7 +241,8 @@ public class DatabaseService : IDatabaseService
         var connectionString = GetConnectionString(connectionStringName);
         var columns = new List<ColumnInfo>();
         
-        using var connection = new SqlConnection(connectionString);
+    _logger.LogInformation("Getting dbo columns for table {Table} on connection {Connection}", tableName, connectionStringName);
+    using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         
         var sql = @"
@@ -257,7 +267,8 @@ public class DatabaseService : IDatabaseService
                 AND c.TABLE_SCHEMA = 'dbo'
             ORDER BY c.ORDINAL_POSITION";
         
-        var result = await connection.QueryAsync<ColumnInfo>(sql, new { tableName });
+    var result = await connection.QueryAsync<ColumnInfo>(sql, new { tableName });
+    _logger.LogInformation("Loaded {ColumnCount} dbo columns for {Table} on {Connection}", result.Count(), tableName, connectionStringName);
         return result.ToList();
     }
 
