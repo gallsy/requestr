@@ -7,6 +7,7 @@ using Requestr.Core.Extensions;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using Requestr.Web.Authorization;
+using Requestr.Web.Configuration;
 using Serilog;
 using Microsoft.AspNetCore.HttpOverrides;
 
@@ -50,6 +51,10 @@ builder.Services.AddBlazorBootstrap();
 
 // Add application services
 builder.Services.AddRequestrCore();
+
+// Branding options
+builder.Services.Configure<AppBrandingOptions>(builder.Configuration.GetSection("AppBranding"));
+builder.Services.AddScoped(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AppBrandingOptions>>().Value);
 
 // Add custom authorization services
 builder.Services.AddScoped<IFormAuthorizationService, FormAuthorizationService>();

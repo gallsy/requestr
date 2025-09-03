@@ -10,7 +10,8 @@
 @inject ILogger<WorkflowDiagnostics> Logger
 @attribute [Authorize(Roles = "Admin")]
 
-<PageTitle>Workflow Diagnostics | Requestr</PageTitle>
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
+<PageTitle>Workflow Diagnostics | @Branding.ApplicationName</PageTitle>
 
 <div class="container-fluid">
     <div class="row">

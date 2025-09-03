@@ -11,9 +11,10 @@
 @inject ILogger<Index> Logger
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
-<PageTitle>Dashboard | Requestr</PageTitle>
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
+<PageTitle>Dashboard | @Branding.ApplicationName</PageTitle>
 
-<PageHeader Title="Welcome to Requestr" 
+<PageHeader Title="@($"Welcome to {Branding.ApplicationName}")" 
             Description="Manage your data requests and approvals."
             Icon="IconName.HouseDoorFill" />
 

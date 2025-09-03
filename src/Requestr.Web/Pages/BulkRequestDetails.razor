@@ -12,7 +12,8 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @attribute [Authorize]
 
-<h1 class="visually-hidden">Bulk Request Details - Requestr</h1>
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
+<h1 class="visually-hidden">Bulk Request Details - @Branding.ApplicationName</h1>
 
 @if (_isLoading)
 {

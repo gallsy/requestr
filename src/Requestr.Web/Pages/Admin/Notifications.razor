@@ -10,7 +10,8 @@
 @inject IJSRuntime JSRuntime
 @attribute [Authorize(Roles = "Admin")]
 
-<PageTitle>Notification Settings | Requestr Admin</PageTitle>
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
+<PageTitle>Notification Settings | @Branding.ApplicationName Admin</PageTitle>
 
 <!-- Include the notifications JavaScript -->
 <script src="~/js/notifications.js"></script>

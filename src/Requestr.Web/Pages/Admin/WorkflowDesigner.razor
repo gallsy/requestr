@@ -12,7 +12,8 @@
 @inject IJSRuntime JSRuntime
 @attribute [Authorize(Roles = "Admin")]
 
-<PageTitle>Workflow Designer | Requestr Admin</PageTitle>
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
+<PageTitle>Workflow Designer | @Branding.ApplicationName Admin</PageTitle>
 
 <style>
     .workflow-canvas {

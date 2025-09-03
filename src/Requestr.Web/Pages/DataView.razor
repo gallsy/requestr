@@ -20,9 +20,10 @@
 @inject ILogger<DataView> Logger
 @attribute [Authorize]
 
-<PageTitle>Data Viewer | Requestr</PageTitle>
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
+<PageTitle>Data Viewer | @Branding.ApplicationName</PageTitle>
 
-<h1 class="visually-hidden">Data View - Requestr</h1>
+<h1 class="visually-hidden">Data View - @Branding.ApplicationName</h1>
 
 @if (_isLoading)
 {

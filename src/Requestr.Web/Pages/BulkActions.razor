@@ -11,7 +11,8 @@
 @inject IJSRuntime JSRuntime
 @attribute [Authorize]
 
-<h1 class="visually-hidden">Bulk Actions - Requestr</h1>
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
+<h1 class="visually-hidden">Bulk Actions - @Branding.ApplicationName</h1>
 
 @if (_isLoading)
 {

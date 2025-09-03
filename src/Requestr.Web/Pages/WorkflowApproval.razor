@@ -18,7 +18,8 @@
 @inject ILogger<WorkflowApproval> Logger
 @attribute [Authorize]
 
-<PageTitle>Workflow Review | Requestr</PageTitle>
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
+<PageTitle>Workflow Review | @Branding.ApplicationName</PageTitle>
 
 @if (_isLoading)
 {

@@ -16,7 +16,8 @@
 @inject NavigationManager Navigation
 @inject ILogger<AllRequests> Logger
 
-<PageTitle>Requests Management | Requestr</PageTitle>
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
+<PageTitle>Requests Management | @Branding.ApplicationName</PageTitle>
 
 <div class="container-fluid">
     <div class="row">

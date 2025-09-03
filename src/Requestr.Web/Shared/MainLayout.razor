@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @inject ThemeService ThemeService
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
 @inject IWorkflowService WorkflowService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @implements IDisposable
@@ -8,7 +9,7 @@
     <div class="sidebar p-3">
         <div class="d-flex align-items-center mb-4">
             <i class="bi bi-clipboard-data me-2"></i>
-            <h5 class="mb-0">Requestr</h5>
+            <h5 class="mb-0">@Branding.ApplicationName</h5>
         </div>
         
         <nav class="nav flex-column">

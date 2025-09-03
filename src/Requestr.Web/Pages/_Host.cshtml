@@ -1,8 +1,11 @@
 @page "/"
 @namespace Requestr.Web.Pages
 @addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+@using Requestr.Web.Configuration
 @{
     Layout = "_Layout";
+    var branding = HttpContext.RequestServices.GetService(typeof(AppBrandingOptions)) as AppBrandingOptions;
+    ViewBag.BrandingName = branding?.ApplicationName ?? "Requestr";
 }
 
 <component type="typeof(App)" render-mode="ServerPrerendered" />

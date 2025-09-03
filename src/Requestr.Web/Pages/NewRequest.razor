@@ -8,7 +8,8 @@
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
-<PageTitle>Create New Request | Requestr</PageTitle>
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
+<PageTitle>Create New Request | @Branding.ApplicationName</PageTitle>
 
 <PageHeader Title="New Request" 
             Description="Choose a form below to submit a new request."

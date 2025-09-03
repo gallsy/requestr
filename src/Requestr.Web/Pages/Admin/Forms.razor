@@ -7,7 +7,8 @@
 @inject IJSRuntime JSRuntime
 @attribute [Authorize(Roles = "Admin")]
 
-<PageTitle>Form Management | Requestr Admin</PageTitle>
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
+<PageTitle>Form Management | @Branding.ApplicationName Admin</PageTitle>
 
 <div class="container-fluid">
     <div class="row">
