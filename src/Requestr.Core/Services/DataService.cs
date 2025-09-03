@@ -52,44 +52,79 @@ public class DataService : IDataService
             using var connection = new SqlConnection(connectionString);
             await connection.OpenAsync();
 
-            // First, check if the table has an identity column
+            // Discover auto-generated columns we must not include in INSERTs
             var identityColumnSql = @"
                 SELECT COLUMN_NAME 
                 FROM INFORMATION_SCHEMA.COLUMNS 
                 WHERE TABLE_NAME = @tableName 
                     AND TABLE_SCHEMA = @schema
                     AND COLUMNPROPERTY(OBJECT_ID(TABLE_SCHEMA + '.' + TABLE_NAME), COLUMN_NAME, 'IsIdentity') = 1";
-
             var identityColumn = await connection.QueryFirstOrDefaultAsync<string>(identityColumnSql, new { tableName, schema });
 
-            var columns = string.Join(", ", data.Keys.Select(k => $"[{k}]"));
-            var parameters = string.Join(", ", data.Keys.Select(k => $"@{k}"));
-            
+            var computedAndRowVersionSql = @"
+                SELECT c.COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS c
+                WHERE c.TABLE_NAME = @tableName
+                  AND c.TABLE_SCHEMA = @schema
+                  AND (
+                        COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsComputed') = 1
+                        OR c.DATA_TYPE IN ('timestamp', 'rowversion')
+                  )";
+            var computedAndRowVersion = (await connection.QueryAsync<string>(computedAndRowVersionSql, new { tableName, schema })).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var excluded = new HashSet<string>(computedAndRowVersion, StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(identityColumn)) excluded.Add(identityColumn);
+
+            // Filter out any auto-generated columns from the payload
+            var allowedData = data
+                .Where(kvp => !excluded.Contains(kvp.Key))
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+
             string sql;
             object? insertedId = null;
 
-            if (!string.IsNullOrEmpty(identityColumn))
+            if (allowedData.Count == 0)
             {
-                // Table has identity column, use OUTPUT to get the inserted ID
+                // No user-specified columns remain; insert DEFAULT VALUES
+                if (!string.IsNullOrEmpty(identityColumn))
+                {
+                    sql = $"INSERT INTO [{schema}].[{tableName}] DEFAULT VALUES; SELECT CAST(SCOPE_IDENTITY() AS sql_variant);";
+                    insertedId = await connection.ExecuteScalarAsync<object>(sql);
+                }
+                else
+                {
+                    sql = $"INSERT INTO [{schema}].[{tableName}] DEFAULT VALUES";
+                    var rows = await connection.ExecuteAsync(sql);
+                    if (rows > 0)
+                    {
+                        // Fallback: attempt to select using no criteria is not possible; mark success without ID
+                        insertedId = null;
+                    }
+                }
+            }
+            else if (!string.IsNullOrEmpty(identityColumn))
+            {
+                // Use OUTPUT to capture identity
+                var columns = string.Join(", ", allowedData.Keys.Select(k => $"[{k}]"));
+                var parameters = string.Join(", ", allowedData.Keys.Select(k => $"@{k}"));
                 sql = $"INSERT INTO [{schema}].[{tableName}] ({columns}) OUTPUT INSERTED.[{identityColumn}] VALUES ({parameters})";
-                insertedId = await connection.QuerySingleAsync<object>(sql, data);
+                insertedId = await connection.QuerySingleAsync<object>(sql, allowedData);
             }
             else
             {
-                // No identity column, just do a regular insert
+                // No identity column on table
+                var columns = string.Join(", ", allowedData.Keys.Select(k => $"[{k}]"));
+                var parameters = string.Join(", ", allowedData.Keys.Select(k => $"@{k}"));
                 sql = $"INSERT INTO [{schema}].[{tableName}] ({columns}) VALUES ({parameters})";
-                var rowsAffected = await connection.ExecuteAsync(sql, data);
+                var rowsAffected = await connection.ExecuteAsync(sql, allowedData);
                 if (rowsAffected > 0)
                 {
-                    // Try to get the inserted record using the provided data as a key
-                    // This assumes the provided data contains enough information to identify the record
-                    var whereClause = string.Join(" AND ", data.Keys.Select(k => $"[{k}] = @{k}"));
+                    // Try to get the inserted record using provided data as a key
+                    var whereClause = string.Join(" AND ", allowedData.Keys.Select(k => $"[{k}] = @{k}"));
                     var selectSql = $"SELECT TOP 1 * FROM [{schema}].[{tableName}] WHERE {whereClause}";
-                    var insertedRecord = await connection.QueryFirstOrDefaultAsync<dynamic>(selectSql, data);
-                    
+                    var insertedRecord = await connection.QueryFirstOrDefaultAsync<dynamic>(selectSql, allowedData);
                     if (insertedRecord != null)
                     {
-                        // Try to get the first column as the ID
                         var dict = (IDictionary<string, object>)insertedRecord;
                         insertedId = dict.Values.FirstOrDefault();
                     }
@@ -105,8 +140,8 @@ public class DataService : IDataService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error inserting data into {Schema}.{TableName} in database {DatabaseName}", 
-                schema, tableName, databaseName);
+            _logger.LogError(ex, "Error inserting data into {Schema}.{TableName} in database {DatabaseName}. Columns provided: {Columns}", 
+                schema, tableName, databaseName, string.Join(", ", data.Keys));
             throw;
         }
     }

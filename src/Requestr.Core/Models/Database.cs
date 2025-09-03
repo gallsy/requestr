@@ -24,5 +24,7 @@ public class ColumnInfo
     public bool IsNullable { get; set; }
     public bool IsPrimaryKey { get; set; }
     public bool IsIdentity { get; set; }
+    public bool IsComputed { get; set; }
+    public bool IsRowVersion { get; set; }
     public string? DefaultValue { get; set; }
 }

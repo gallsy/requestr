@@ -103,7 +103,9 @@ public class DatabaseService : IDatabaseService
                     COALESCE(c.CHARACTER_MAXIMUM_LENGTH, 0) as MaxLength,
                     CASE WHEN c.IS_NULLABLE = 'YES' THEN 1 ELSE 0 END as IsNullable,
                     CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END as IsPrimaryKey,
-                    CASE WHEN c.COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') = 1 THEN 1 ELSE 0 END as IsIdentity,
+                    CASE WHEN COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') = 1 THEN 1 ELSE 0 END as IsIdentity,
+                    CASE WHEN COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsComputed') = 1 THEN 1 ELSE 0 END as IsComputed,
+                    CASE WHEN c.DATA_TYPE IN ('timestamp','rowversion') THEN 1 ELSE 0 END as IsRowVersion,
                     c.COLUMN_DEFAULT as DefaultValue
                 FROM INFORMATION_SCHEMA.COLUMNS c
                 LEFT JOIN (
@@ -255,6 +257,8 @@ public class DatabaseService : IDatabaseService
                 CASE WHEN c.IS_NULLABLE = 'YES' THEN 1 ELSE 0 END as IsNullable,
                 CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END as IsPrimaryKey,
                 CASE WHEN COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') = 1 THEN 1 ELSE 0 END as IsIdentity,
+                CASE WHEN COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsComputed') = 1 THEN 1 ELSE 0 END as IsComputed,
+                CASE WHEN c.DATA_TYPE IN ('timestamp','rowversion') THEN 1 ELSE 0 END as IsRowVersion,
                 c.COLUMN_DEFAULT as DefaultValue
             FROM INFORMATION_SCHEMA.COLUMNS c
             LEFT JOIN (

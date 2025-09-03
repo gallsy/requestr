@@ -6,6 +6,7 @@
 @inject IFormDefinitionService FormDefinitionService
 @inject IFormRequestService FormRequestService
 @inject IDataService DataService
+@inject IDatabaseService DatabaseService
 @inject IFormAuthorizationService FormAuthorizationService
 @inject IWorkflowService WorkflowService
 @inject NavigationManager Navigation
@@ -96,7 +97,10 @@ else
                                         @* Grid layout for form fields *@
                                         <div class="form-grid" style="display: grid; grid-template-columns: repeat(@formSection.MaxColumns, 1fr); gap: 1rem; margin-bottom: 1rem;">
                                             @{
-                                                var sectionFields = formSection.Fields.Where(f => f.IsVisible).ToList();
+                                                var sectionFields = formSection.Fields
+                                                    .Where(f => f.IsVisible)
+                                                    .Where(f => !ShouldHideFieldOnCreate(f))
+                                                    .ToList();
                                                 var maxRow = sectionFields.Any() ? sectionFields.Max(f => f.GridRow) : 0;
                                             }
                                             @for (int row = 1; row <= maxRow; row++)
@@ -208,7 +212,7 @@ else
                             {
                                 @* Fallback: Render fields without form sections using legacy layout *@
                                 <div class="row">
-                                    @foreach (var field in _formDefinition.Fields.Where(f => f.IsVisible).OrderBy(f => f.DisplayOrder))
+                                    @foreach (var field in _formDefinition.Fields.Where(f => f.IsVisible).Where(f => !ShouldHideFieldOnCreate(f)).OrderBy(f => f.DisplayOrder))
                                     {
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label">
@@ -382,6 +386,7 @@ else
     [Parameter] public int? RequestId { get; set; }
     
     private FormDefinition? _formDefinition;
+    private List<ColumnInfo> _tableColumns = new();
     private Dictionary<string, string> _fieldValues = new();
     private Dictionary<string, bool> _checkboxValues = new();
     private Dictionary<string, string> _existingRecords = new();
@@ -417,6 +422,13 @@ else
             _canUpdateRequests = await FormAuthorizationService.UserHasPermissionAsync(user, FormId, FormPermissionType.UpdateRequest);
             _canDeleteRequests = await FormAuthorizationService.UserHasPermissionAsync(user, FormId, FormPermissionType.DeleteRequest);
             
+            // Load column metadata for hiding identity/computed columns on create
+            _tableColumns = await DatabaseService.GetTableColumnsAsync(
+                _formDefinition.DatabaseConnectionName,
+                _formDefinition.TableName,
+                _formDefinition.Schema
+            );
+
             // Set default request type based on available permissions
             if (_canCreateRequests)
             {
@@ -951,5 +963,22 @@ else
             RequestType.Delete => _canDeleteRequests,
             _ => false
         };
+    }
+
+    private bool ShouldHideFieldOnCreate(FormField field)
+    {
+        try
+        {
+            if (_requestType != RequestType.Insert)
+                return false;
+            var col = _tableColumns.FirstOrDefault(c => string.Equals(c.Name, field.Name, StringComparison.OrdinalIgnoreCase));
+            if (col == null)
+                return false;
+            return col.IsIdentity || col.IsComputed || col.IsRowVersion;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
