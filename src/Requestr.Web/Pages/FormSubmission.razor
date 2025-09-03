@@ -828,6 +828,7 @@ else
                 formRequest.OriginalValues = originalData ?? new Dictionary<string, object?>();
             }
 
+            FormRequest? createdRequest = null;
             if (RequestId.HasValue)
             {
                 formRequest.Id = RequestId.Value;
@@ -836,7 +837,7 @@ else
             }
             else
             {
-                await FormRequestService.CreateAsync(formRequest);
+                createdRequest = await FormRequestService.CreateAsync(formRequest);
                 
                 // Check if form has workflow to determine success message
                 var hasWorkflow = await WorkflowService.GetWorkflowDefinitionByFormAsync(FormId) != null;
@@ -845,9 +846,20 @@ else
                     : "Request submitted and processed successfully!";
             }
 
-            // Redirect after a brief delay
-            await Task.Delay(2000);
-            Navigation.NavigateTo("/");
+            // Redirect to the created/updated request details page when possible
+            if (createdRequest != null)
+            {
+                Navigation.NavigateTo($"/requests/{createdRequest.Id}");
+            }
+            else if (RequestId.HasValue)
+            {
+                Navigation.NavigateTo($"/requests/{RequestId.Value}");
+            }
+            else
+            {
+                // Fallback
+                Navigation.NavigateTo("/");
+            }
         }
         catch (Exception ex)
         {
