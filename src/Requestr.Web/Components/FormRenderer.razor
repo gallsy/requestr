@@ -246,6 +246,9 @@ else
     [Parameter] public FormDisplayMode DisplayMode { get; set; } = FormDisplayMode.Edit;
     [Parameter] public int? WorkflowStepId { get; set; } // For approval mode
     [Parameter] public EventCallback<(string FieldName, object? Value)> OnFieldValueChanged { get; set; }
+    // Optional request context for hiding auto-generated fields on insert
+    [Parameter] public RequestType? CurrentRequestType { get; set; }
+    [Parameter] public List<ColumnInfo>? TableColumns { get; set; }
     
     // Field configurations for approval mode
     private Dictionary<string, WorkflowStepFieldConfiguration> _fieldConfigurations = new();
@@ -277,12 +280,42 @@ else
     {
         return fields.Where(field =>
         {
+            // Per-step visibility overrides in approval mode
             if (DisplayMode == FormDisplayMode.Approval && _fieldConfigurations.ContainsKey(field.Name))
             {
-                return _fieldConfigurations[field.Name].IsVisible;
+                if (!_fieldConfigurations[field.Name].IsVisible)
+                    return false;
             }
-            return field.IsVisible;
+            else if (!field.IsVisible)
+            {
+                return false;
+            }
+
+            // Hide identity/computed/rowversion fields on Insert requests (to match FormSubmission)
+            if (ShouldHideFieldOnCreate(field))
+                return false;
+
+            return true;
         });
+    }
+
+    private bool ShouldHideFieldOnCreate(FormField field)
+    {
+        try
+        {
+            if (CurrentRequestType != RequestType.Insert)
+                return false;
+            if (TableColumns == null || TableColumns.Count == 0)
+                return false;
+            var col = TableColumns.FirstOrDefault(c => string.Equals(c.Name, field.Name, StringComparison.OrdinalIgnoreCase));
+            if (col == null)
+                return false;
+            return col.IsIdentity || col.IsComputed || col.IsRowVersion;
+        }
+        catch
+        {
+            return false;
+        }
     }
     
     private bool IsFieldReadOnly(FormField field)

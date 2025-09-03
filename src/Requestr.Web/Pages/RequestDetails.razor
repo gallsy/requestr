@@ -19,6 +19,7 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IDatabaseService DatabaseService
 @attribute [Authorize]
 
 <!-- Request Details Title -->
@@ -152,7 +153,7 @@ else
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                @foreach (var fieldValue in _request.FieldValues)
+                                                @foreach (var fieldValue in GetDisplayableFieldValues())
                                                 {
                                                     var field = _formDefinition?.Fields?.FirstOrDefault(f => f.Name == fieldValue.Key);
                                                     <tr>
@@ -507,6 +508,7 @@ else
     private FormRequest? _request;
     private FormDefinition? _formDefinition;
     private List<FormRequestHistory> _requestHistory = new();
+    private List<ColumnInfo> _tableColumns = new();
     private bool _isLoading = true;
     private bool _isProcessing = false;
     private bool _isApproval = false;
@@ -546,6 +548,24 @@ else
             {
                 _formDefinition = await FormDefinitionService.GetByIdAsync(_request.FormDefinitionId);
                 _requestHistory = _request.History;
+
+                // Load column metadata for filtering on display
+                try
+                {
+                    if (_formDefinition != null)
+                    {
+                        _tableColumns = await DatabaseService.GetTableColumnsAsync(
+                            _formDefinition.DatabaseConnectionName,
+                            _formDefinition.TableName,
+                            _formDefinition.Schema
+                        );
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Failed to load table columns for RequestDetails form {FormDefinitionId}", _request.FormDefinitionId);
+                    _tableColumns = new List<ColumnInfo>();
+                }
                 
                 // Load workflow information if request has a workflow
                 if (_request.WorkflowInstanceId.HasValue)
@@ -568,6 +588,24 @@ else
         {
             _isLoading = false;
         }
+    }
+
+    private IEnumerable<KeyValuePair<string, object?>> GetDisplayableFieldValues()
+    {
+        if (_request?.FieldValues == null)
+            return Enumerable.Empty<KeyValuePair<string, object?>>();
+
+        // For Insert requests, hide identity/computed/rowversion columns
+        if (_request.RequestType == RequestType.Insert && _tableColumns != null && _tableColumns.Count > 0)
+        {
+            var autoCols = new HashSet<string>(_tableColumns
+                .Where(c => c.IsIdentity || c.IsComputed || c.IsRowVersion)
+                .Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
+
+            return _request.FieldValues.Where(kvp => !autoCols.Contains(kvp.Key));
+        }
+
+        return _request.FieldValues;
     }
 
     private async Task LoadWorkflowInformation()

@@ -12,6 +12,7 @@
 @inject IBulkFormRequestService BulkFormRequestService
 @inject IDataService DataService
 @inject IConflictDetectionService ConflictDetectionService
+@inject IDatabaseService DatabaseService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -369,6 +370,8 @@ else
                                                       FieldValues="_workflowFieldValues"
                                                       DisplayMode="@(IsStepCompleted ? FormDisplayMode.ReadOnly : FormDisplayMode.Approval)"
                                                       WorkflowStepId="_currentStepDefinition.Id"
+                                                      CurrentRequestType="_formRequest.RequestType"
+                                                      TableColumns="_tableColumns"
                                                       OnFieldValueChanged="OnWorkflowFieldChanged" />
                                     </div>
                                 </div>
@@ -467,6 +470,7 @@ else
 
     // FormRenderer properties
     private Dictionary<string, object?> _workflowFieldValues = new();
+    private List<ColumnInfo> _tableColumns = new();
 
     // Helper properties
     private bool IsBulkRequest => _formRequest?.BulkFormRequestId.HasValue == true;
@@ -515,6 +519,28 @@ else
         _formRequest = await FormRequestService.GetByIdAsync(_workflowInstance.FormRequestId);
         Logger.LogInformation("LoadWorkflowDataAsync: FormRequest loaded: {Found}", _formRequest != null);
         if (_formRequest == null) return;
+
+        // Load column metadata for hiding identity/computed/rowversion columns on create/insert
+        try
+        {
+            if (_formRequest.FormDefinition != null)
+            {
+                _tableColumns = await DatabaseService.GetTableColumnsAsync(
+                    _formRequest.FormDefinition.DatabaseConnectionName,
+                    _formRequest.FormDefinition.TableName,
+                    _formRequest.FormDefinition.Schema
+                );
+                Logger.LogInformation("LoadWorkflowDataAsync: Loaded {Count} table columns for {Schema}.{Table}",
+                    _tableColumns?.Count ?? 0,
+                    _formRequest.FormDefinition.Schema,
+                    _formRequest.FormDefinition.TableName);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "LoadWorkflowDataAsync: Failed to load table columns for form definition {FormDefinitionId}", _formRequest.FormDefinitionId);
+            _tableColumns = new List<ColumnInfo>();
+        }
 
         // If this is a bulk request workflow, load the bulk request data
         if (_formRequest.BulkFormRequestId.HasValue)
@@ -721,13 +747,36 @@ else
         if (_fieldConfigurations.Any())
         {
             // Filter fields based on step configuration - only show visible fields
-            return _formRequest.FormDefinition.Fields
-                .Where(field => _fieldConfigurations.Any(fc => fc.FieldName == field.Name && fc.IsVisible))
-                .ToList();
+            var fields = _formRequest.FormDefinition.Fields
+                .Where(field => _fieldConfigurations.Any(fc => fc.FieldName == field.Name && fc.IsVisible));
+
+            // Also hide auto-generated columns during Insert requests
+            fields = fields.Where(f => !ShouldHideFieldOnCreate(f));
+            return fields.ToList();
         }
         
         // Show all fields if no configuration exists
-        return _formRequest.FormDefinition.Fields.ToList();
+        return _formRequest.FormDefinition.Fields
+            .Where(f => !ShouldHideFieldOnCreate(f))
+            .ToList();
+    }
+
+    private bool ShouldHideFieldOnCreate(FormField field)
+    {
+        try
+        {
+            if (_formRequest?.RequestType != RequestType.Insert)
+                return false;
+            if (_tableColumns == null || _tableColumns.Count == 0)
+                return false;
+            var col = _tableColumns.FirstOrDefault(c => string.Equals(c.Name, field.Name, StringComparison.OrdinalIgnoreCase));
+            if (col == null) return false;
+            return col.IsIdentity || col.IsComputed || col.IsRowVersion;
+        }
+        catch
+        {
+            return false;
+        }
     }
     
     private bool IsFieldRequiredByConfiguration(string fieldName)
