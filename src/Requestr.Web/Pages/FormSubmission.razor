@@ -847,7 +847,7 @@ else
             }
 
             // Redirect to the created/updated request details page when possible
-            await Task.Delay(1200);
+            await Task.Delay(200);
             if (createdRequest != null)
             {
                 Navigation.NavigateTo($"/requests/{createdRequest.Id}");
