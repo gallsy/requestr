@@ -12,12 +12,24 @@
 
 @code {
     private bool _isDarkMode;
+    private DotNetObjectReference<ThemeToggle>? _dotNetRef;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadThemeFromStorage();
         _isDarkMode = ThemeService.IsDarkMode;
         ThemeService.OnThemeChanged += OnThemeChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await RegisterStorageListener();
+            // Call init with current .NET instance to receive storage events
+            try { await JSRuntime.InvokeVoidAsync("RequestrThemeSyncInit", _dotNetRef); } catch {}
+        }
     }
 
     private async Task LoadThemeFromStorage()
@@ -54,7 +66,8 @@
     {
         try
         {
-            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "theme", _isDarkMode ? "dark" : "light");
+            var current = ThemeService.IsDarkMode ? "dark" : "light";
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "theme", current);
         }
         catch
         {
@@ -65,12 +78,43 @@
     private void OnThemeChanged()
     {
         _isDarkMode = ThemeService.IsDarkMode;
-        _ = SaveThemeToStorage(); // Save asynchronously without waiting
         InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RegisterStorageListener()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("eval", @"(function(){
+                if (!window.RequestrThemeSyncInit) {
+                    window.RequestrThemeSyncInit = function(dotnet){
+                        if (window.__requestrThemeSync) return;
+                        window.__requestrThemeSync = true;
+                        window.addEventListener('storage', function(e){
+                            try {
+                                if (e.key === 'theme') {
+                                    const isDark = e.newValue === 'dark';
+                                    if (dotnet) dotnet.invokeMethodAsync('OnStorageThemeChanged', isDark);
+                                }
+                            } catch {}
+                        });
+                    }
+                }
+            })();");
+        }
+        catch { }
+    }
+
+    [JSInvokable]
+    public Task OnStorageThemeChanged(bool isDark)
+    {
+        ThemeService.SetTheme(isDark);
+        return Task.CompletedTask;
     }
 
     public void Dispose()
     {
         ThemeService.OnThemeChanged -= OnThemeChanged;
+    _dotNetRef?.Dispose();
     }
 }
