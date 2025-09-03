@@ -2065,6 +2065,7 @@ public class WorkflowService : IWorkflowService
         
         const string sql = @"
             SELECT wi.Id as WorkflowInstanceId, wi.Status, wi.CurrentStepId, wi.StartedAt, wi.CompletedAt,
+                   wi.WorkflowDefinitionId,
                    wd.Name as WorkflowName,
                    ws.Name as CurrentStepName,
                    wsi.Status as CurrentStepStatus,
@@ -2084,7 +2085,8 @@ public class WorkflowService : IWorkflowService
             return null;
         }
 
-        var workflowInstanceId = (int)result.WorkflowInstanceId;
+    var workflowInstanceId = (int)result.WorkflowInstanceId;
+    var workflowDefinitionId = (int)result.WorkflowDefinitionId;
         _logger.LogInformation("Found workflow instance {WorkflowInstanceId} for FormRequestId {FormRequestId}", workflowInstanceId, formRequestId);
 
         // Get step counts (excluding Start/End steps for progress calculation)
@@ -2163,6 +2165,75 @@ public class WorkflowService : IWorkflowService
                 JsonSerializer.Deserialize<List<string>>(step.AssignedRoles) ?? new List<string>() : 
                 new List<string>()
         }).ToList();
+
+        // Reorder steps by workflow definition sequence (Start -> ... -> End)
+        try
+        {
+            var definition = await GetWorkflowDefinitionAsync(connection, null, workflowDefinitionId);
+            if (definition != null)
+            {
+                // Build adjacency list from transitions
+                var graph = new Dictionary<string, List<string>>();
+                foreach (var s in definition.Steps)
+                {
+                    if (!graph.ContainsKey(s.StepId)) graph[s.StepId] = new List<string>();
+                }
+                foreach (var t in definition.Transitions)
+                {
+                    if (!graph.ContainsKey(t.FromStepId)) graph[t.FromStepId] = new List<string>();
+                    graph[t.FromStepId].Add(t.ToStepId);
+                }
+
+                // Find start step id
+                var startStep = definition.Steps.FirstOrDefault(s => s.StepType == WorkflowStepType.Start);
+                var endStep = definition.Steps.FirstOrDefault(s => s.StepType == WorkflowStepType.End);
+                var orderIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                if (startStep != null)
+                {
+                    // BFS from start to assign distances
+                    var q = new Queue<(string id, int dist)>();
+                    q.Enqueue((startStep.StepId, 0));
+                    orderIndex[startStep.StepId] = 0;
+                    while (q.Count > 0)
+                    {
+                        var (id, dist) = q.Dequeue();
+                        if (graph.TryGetValue(id, out var neighbors))
+                        {
+                            foreach (var n in neighbors)
+                            {
+                                if (!orderIndex.ContainsKey(n))
+                                {
+                                    orderIndex[n] = dist + 1;
+                                    q.Enqueue((n, dist + 1));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Assign a sort key to each step
+                int maxAssigned = orderIndex.Values.DefaultIfEmpty(0).Max();
+                int GetSortKey(WorkflowStepProgress s)
+                {
+                    if (s.StepType == WorkflowStepType.Start) return -1;
+                    if (s.StepType == WorkflowStepType.End) return int.MaxValue;
+                    if (orderIndex.TryGetValue(s.StepId, out var idx)) return idx;
+                    // Fallback: place unknowns after known sequence but before End
+                    return maxAssigned + 1;
+                }
+
+                steps = steps
+                    .OrderBy(s => GetSortKey(s))
+                    .ThenBy(s => s.StartedAt ?? DateTime.MaxValue)
+                    .ThenBy(s => s.StepName)
+                    .ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to compute workflow step order by definition sequence. Falling back to default order.");
+            // keep existing order
+        }
 
         _logger.LogInformation("Created {StepProgressCount} step progress objects for FormRequestId {FormRequestId}", steps.Count, formRequestId);
         foreach (var step in steps)
