@@ -215,12 +215,13 @@ public class DatabaseService : IDatabaseService
         return connectionStrings;
     }
 
-    public async Task<List<string>> GetTablesAsync(string connectionStringName)
+    public async Task<List<string>> GetTablesAsync(string connectionStringName, string? schema = null)
     {
         var connectionString = GetConnectionString(connectionStringName);
         var tables = new List<string>();
         
-    _logger.LogInformation("Listing dbo tables for connection {Connection}", connectionStringName);
+    var effectiveSchema = string.IsNullOrWhiteSpace(schema) ? "dbo" : schema;
+    _logger.LogInformation("Listing tables for schema {Schema} on connection {Connection}", effectiveSchema, connectionStringName);
     using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         
@@ -228,20 +229,21 @@ public class DatabaseService : IDatabaseService
             SELECT TABLE_NAME 
             FROM INFORMATION_SCHEMA.TABLES 
             WHERE TABLE_TYPE = 'BASE TABLE' 
-                AND TABLE_SCHEMA = 'dbo'
+                AND TABLE_SCHEMA = @schema
             ORDER BY TABLE_NAME";
         
-    var result = await connection.QueryAsync<string>(sql);
-    _logger.LogInformation("Found {TableCount} dbo tables for {Connection}", result.Count(), connectionStringName);
+    var result = await connection.QueryAsync<string>(sql, new { schema = effectiveSchema });
+    _logger.LogInformation("Found {TableCount} tables in schema {Schema} for {Connection}", result.Count(), effectiveSchema, connectionStringName);
         return result.ToList();
     }
 
-    public async Task<List<ColumnInfo>> GetTableColumnsAsync(string connectionStringName, string tableName)
+    public async Task<List<ColumnInfo>> GetTableColumnsAsync(string connectionStringName, string tableName, string? schema = null)
     {
         var connectionString = GetConnectionString(connectionStringName);
         var columns = new List<ColumnInfo>();
         
-    _logger.LogInformation("Getting dbo columns for table {Table} on connection {Connection}", tableName, connectionStringName);
+    var effectiveSchema = string.IsNullOrWhiteSpace(schema) ? "dbo" : schema;
+    _logger.LogInformation("Getting columns for {Schema}.{Table} on connection {Connection}", effectiveSchema, tableName, connectionStringName);
     using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         
@@ -264,11 +266,25 @@ public class DatabaseService : IDatabaseService
                     AND tc.TABLE_NAME = ku.TABLE_NAME
             ) pk ON c.TABLE_NAME = pk.TABLE_NAME AND c.COLUMN_NAME = pk.COLUMN_NAME
             WHERE c.TABLE_NAME = @tableName
-                AND c.TABLE_SCHEMA = 'dbo'
+                AND c.TABLE_SCHEMA = @schema
             ORDER BY c.ORDINAL_POSITION";
         
-    var result = await connection.QueryAsync<ColumnInfo>(sql, new { tableName });
-    _logger.LogInformation("Loaded {ColumnCount} dbo columns for {Table} on {Connection}", result.Count(), tableName, connectionStringName);
+    var result = await connection.QueryAsync<ColumnInfo>(sql, new { tableName, schema = effectiveSchema });
+    _logger.LogInformation("Loaded {ColumnCount} columns for {Schema}.{Table} on {Connection}", result.Count(), effectiveSchema, tableName, connectionStringName);
+        return result.ToList();
+    }
+
+    public async Task<List<string>> GetSchemasAsync(string connectionStringName)
+    {
+        var connectionString = GetConnectionString(connectionStringName);
+        using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        var sql = @"
+            SELECT DISTINCT TABLE_SCHEMA
+            FROM INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_TYPE = 'BASE TABLE'
+            ORDER BY TABLE_SCHEMA";
+        var result = await connection.QueryAsync<string>(sql);
         return result.ToList();
     }
 

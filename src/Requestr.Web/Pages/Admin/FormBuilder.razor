@@ -176,7 +176,7 @@
                                 </h6>
                                 
                                 <div class="row">
-                                    <div class="col-md-6">
+                                    <div class="col-md-4">
                                         <div class="mb-3">
                                             <label class="form-label">Database Connection *</label>
                                             <select class="form-select" @bind="_selectedConnectionString" @bind:after="OnConnectionStringChangedAsync">
@@ -189,7 +189,23 @@
                                             <small class="form-text text-muted">Choose the database this form will interact with</small>
                                         </div>
                                     </div>
-                                    <div class="col-md-6">
+                                    <div class="col-md-4">
+                                        @if (!string.IsNullOrEmpty(_selectedConnectionString))
+                                        {
+                                            <div class="mb-3">
+                                                <label class="form-label">Schema *</label>
+                                                <select class="form-select" @bind="_formDefinition.Schema" @bind:after="OnSchemaChangedAsync">
+                                                    <option value="">Select a schema</option>
+                                                    @foreach (var s in _schemas)
+                                                    {
+                                                        <option value="@s">@s</option>
+                                                    }
+                                                </select>
+                                                <small class="form-text text-muted">Pick the schema that contains your table</small>
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="col-md-4">
                                         @if (!string.IsNullOrEmpty(_selectedConnectionString))
                                         {
                                             <div class="mb-3">
@@ -1290,6 +1306,7 @@
     private FormDefinition _formDefinition = new();
     private List<string> _existingCategories = new();
     private Dictionary<string, string> _connectionStrings = new();
+    private List<string> _schemas = new();
     private List<string> _tables = new();
     private List<ColumnInfo> _tableColumns = new();
     private List<ColumnInfo> _filteredColumns = new();
@@ -1432,11 +1449,16 @@
                 
                 if (!string.IsNullOrEmpty(_selectedConnectionString))
                 {
-                    _tables = await DatabaseService.GetTablesAsync(_selectedConnectionString);
+                    _schemas = await DatabaseService.GetSchemasAsync(_selectedConnectionString);
+                    if (string.IsNullOrWhiteSpace(_formDefinition.Schema) || !_schemas.Contains(_formDefinition.Schema))
+                    {
+                        _formDefinition.Schema = _schemas.FirstOrDefault() ?? "dbo";
+                    }
+                    _tables = await DatabaseService.GetTablesAsync(_selectedConnectionString, _formDefinition.Schema);
                     
                     if (!string.IsNullOrEmpty(_formDefinition.TableName))
                     {
-                        _tableColumns = await DatabaseService.GetTableColumnsAsync(_selectedConnectionString, _formDefinition.TableName);
+                        _tableColumns = await DatabaseService.GetTableColumnsAsync(_selectedConnectionString, _formDefinition.TableName, _formDefinition.Schema);
                         _filteredColumns = _tableColumns.ToList();
                     }
                 }
@@ -1757,7 +1779,7 @@
     {
         if (!string.IsNullOrEmpty(_formDefinition.TableName) && !string.IsNullOrEmpty(_selectedConnectionString))
         {
-            _tableColumns = await DatabaseService.GetTableColumnsAsync(_selectedConnectionString, _formDefinition.TableName);
+            _tableColumns = await DatabaseService.GetTableColumnsAsync(_selectedConnectionString, _formDefinition.TableName, _formDefinition.Schema);
             _filteredColumns = _tableColumns.ToList();
             
             // Check for primary keys
@@ -1786,7 +1808,9 @@
         {
             try
             {
-                _tables = await DatabaseService.GetTablesAsync(_selectedConnectionString);
+                _schemas = await DatabaseService.GetSchemasAsync(_selectedConnectionString);
+                _formDefinition.Schema = _schemas.FirstOrDefault() ?? "dbo";
+                _tables = await DatabaseService.GetTablesAsync(_selectedConnectionString, _formDefinition.Schema);
                 // Clear table selection and columns when connection changes
                 _formDefinition.TableName = "";
                 _tableColumns.Clear();
@@ -1802,6 +1826,17 @@
         else
         {
             _tables.Clear();
+            _formDefinition.TableName = "";
+            _tableColumns.Clear();
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnSchemaChangedAsync()
+    {
+        if (!string.IsNullOrEmpty(_selectedConnectionString) && !string.IsNullOrWhiteSpace(_formDefinition.Schema))
+        {
+            _tables = await DatabaseService.GetTablesAsync(_selectedConnectionString, _formDefinition.Schema);
             _formDefinition.TableName = "";
             _tableColumns.Clear();
             StateHasChanged();

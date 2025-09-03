@@ -251,7 +251,7 @@ public class DataService : IDataService
     }
 
     // Additional methods for UI support
-    public async Task<Dictionary<string, string>> GetRecordSummariesAsync(string connectionStringName, string tableName)
+    public async Task<Dictionary<string, string>> GetRecordSummariesAsync(string connectionStringName, string tableName, string schema = "dbo")
     {
         var connectionString = GetConnectionString(connectionStringName);
         var summaries = new Dictionary<string, string>();
@@ -264,10 +264,10 @@ public class DataService : IDataService
             SELECT TOP 3 COLUMN_NAME 
             FROM INFORMATION_SCHEMA.COLUMNS 
             WHERE TABLE_NAME = @tableName 
-                AND TABLE_SCHEMA = 'dbo'
+                AND TABLE_SCHEMA = @schema
             ORDER BY ORDINAL_POSITION";
         
-        var columns = await connection.QueryAsync<string>(columnsSql, new { tableName });
+        var columns = await connection.QueryAsync<string>(columnsSql, new { tableName, schema });
         var columnList = columns.ToList();
         
         if (!columnList.Any()) return summaries;
@@ -280,7 +280,7 @@ public class DataService : IDataService
             SELECT TOP 50 
                 {primaryKeyColumn} as Id,
                 CONCAT({string.Join(", ' - ', ", columnList.Take(2))}) as DisplayText
-            FROM [{tableName}]
+            FROM [{schema}].[{tableName}]
             ORDER BY {primaryKeyColumn}";
         
         try
@@ -303,7 +303,7 @@ public class DataService : IDataService
         return summaries;
     }
 
-    public async Task<Dictionary<string, object?>> GetRecordByIdAsync(string connectionStringName, string tableName, string recordId)
+    public async Task<Dictionary<string, object?>> GetRecordByIdAsync(string connectionStringName, string tableName, string recordId, string schema = "dbo")
     {
         var connectionString = GetConnectionString(connectionStringName);
         var record = new Dictionary<string, object?>();
@@ -316,10 +316,10 @@ public class DataService : IDataService
             SELECT COLUMN_NAME 
             FROM INFORMATION_SCHEMA.COLUMNS 
             WHERE TABLE_NAME = @tableName 
-                AND TABLE_SCHEMA = 'dbo'
+                AND TABLE_SCHEMA = @schema
             ORDER BY ORDINAL_POSITION";
         
-        var columns = await connection.QueryAsync<string>(columnsSql, new { tableName });
+        var columns = await connection.QueryAsync<string>(columnsSql, new { tableName, schema });
         var columnList = columns.ToList();
         
         if (!columnList.Any()) return record;
@@ -330,7 +330,7 @@ public class DataService : IDataService
         
         var dataSql = $@"
             SELECT {selectColumns}
-            FROM [{tableName}]
+            FROM [{schema}].[{tableName}]
             WHERE [{primaryKeyColumn}] = @recordId";
         
         try

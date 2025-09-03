@@ -483,7 +483,8 @@ else
             {
                 _existingRecords = await DataService.GetRecordSummariesAsync(
                     _formDefinition.DatabaseConnectionName,
-                    _formDefinition.TableName);
+                    _formDefinition.TableName,
+                    _formDefinition.Schema);
             }
         }
         catch (Exception ex)
@@ -501,7 +502,8 @@ else
                 var recordData = await DataService.GetRecordByIdAsync(
                     _formDefinition.DatabaseConnectionName,
                     _formDefinition.TableName,
-                    _selectedRecordId);
+                    _selectedRecordId,
+                    _formDefinition.Schema);
 
                 if (recordData != null)
                 {
@@ -811,7 +813,8 @@ else
                 var originalData = await DataService.GetRecordByIdAsync(
                     _formDefinition.DatabaseConnectionName,
                     _formDefinition.TableName,
-                    _selectedRecordId);
+                    _selectedRecordId,
+                    _formDefinition.Schema);
                 formRequest.OriginalValues = originalData ?? new Dictionary<string, object?>();
             }
 
