@@ -3069,12 +3069,14 @@ public class WorkflowService : IWorkflowService
                 SELECT 
                     wi.Id as WorkflowInstanceId,
                     wi.FormRequestId,
-                    fr.Title as FormTitle,
-                    fr.RequestorEmail,
+                    fd.Name as FormTitle,
+                    fr.RequestedBy as RequestorEmail,
+                    fr.RequestedByName as RequestedByName,
                     ws.Name as StepName,
                     ws.NotificationEmail as StepNotificationEmail
                 FROM WorkflowInstances wi
                 INNER JOIN FormRequests fr ON wi.FormRequestId = fr.Id
+                INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
                 INNER JOIN WorkflowSteps ws ON ws.StepId = @StepId
                 WHERE wi.Id = @WorkflowInstanceId";
 
@@ -3091,12 +3093,19 @@ public class WorkflowService : IWorkflowService
             }
 
             // Prepare notification variables
+            var reqEmail = (stepData.RequestorEmail ?? "").ToString();
+            if (string.IsNullOrWhiteSpace(reqEmail) || !reqEmail.Contains("@"))
+            {
+                // fall back to requested by name if email not available
+                reqEmail = (stepData.RequestedByName ?? stepData.RequestorEmail ?? "Unknown").ToString();
+            }
+
             var variables = new Dictionary<string, string>
             {
                 ["FormTitle"] = (stepData.FormTitle ?? "Form Request").ToString(),
                 ["StepName"] = (stepData.StepName ?? stepId).ToString(),
                 ["FormRequestId"] = stepData.FormRequestId.ToString(),
-                ["RequestorEmail"] = (stepData.RequestorEmail ?? "Unknown").ToString()
+                ["RequestorEmail"] = reqEmail
             };
 
             var notificationEmails = new List<string>();
