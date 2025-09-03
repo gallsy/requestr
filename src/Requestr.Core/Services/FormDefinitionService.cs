@@ -504,22 +504,8 @@ public class FormDefinitionService : IFormDefinitionService
                     }
                 }
 
-                // Update the workflow definition to establish bidirectional relationship
-                if (formDefinition.WorkflowDefinitionId.HasValue)
-                {
-                    var workflowUpdateSql = @"
-                        UPDATE WorkflowDefinitions 
-                        SET FormDefinitionId = @FormDefinitionId, UpdatedAt = @UpdatedAt, UpdatedBy = @UpdatedBy
-                        WHERE Id = @WorkflowDefinitionId";
-
-                    await connection.ExecuteAsync(workflowUpdateSql, new
-                    {
-                        FormDefinitionId = formDefinition.Id,
-                        WorkflowDefinitionId = formDefinition.WorkflowDefinitionId.Value,
-                        formDefinition.UpdatedAt,
-                        formDefinition.UpdatedBy
-                    }, transaction);
-                }
+                // No longer updating WorkflowDefinitions.FormDefinitionId here; reuse is supported by
+                // pointing multiple forms at the same workflow via FormDefinitions.WorkflowDefinitionId.
 
                 await transaction.CommitAsync();
                 return formDefinition;

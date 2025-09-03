@@ -217,10 +217,13 @@ public class WorkflowService : IWorkflowService
     public async Task<WorkflowDefinition?> GetWorkflowDefinitionByFormAsync(int formDefinitionId)
     {
         using var connection = new SqlConnection(_connectionString);
-        
-        const string sql = "SELECT Id FROM WorkflowDefinitions WHERE FormDefinitionId = @FormDefinitionId";
+        // Resolve the workflow assigned to the form via FormDefinitions.WorkflowDefinitionId
+        const string sql = @"
+            SELECT fd.WorkflowDefinitionId
+            FROM FormDefinitions fd
+            WHERE fd.Id = @FormDefinitionId";
         var workflowId = await connection.QueryFirstOrDefaultAsync<int?>(sql, new { FormDefinitionId = formDefinitionId });
-        
+
         return workflowId.HasValue ? await GetWorkflowDefinitionAsync(workflowId.Value) : null;
     }
 
@@ -2085,8 +2088,8 @@ public class WorkflowService : IWorkflowService
             return null;
         }
 
-    var workflowInstanceId = (int)result.WorkflowInstanceId;
-    var workflowDefinitionId = (int)result.WorkflowDefinitionId;
+        var workflowInstanceId = (int)result.WorkflowInstanceId;
+        var workflowDefinitionId = (int)result.WorkflowDefinitionId;
         _logger.LogInformation("Found workflow instance {WorkflowInstanceId} for FormRequestId {FormRequestId}", workflowInstanceId, formRequestId);
 
         // Get step counts (excluding Start/End steps for progress calculation)
