@@ -212,6 +212,7 @@ else
                                             {
                                                 <th>@column</th>
                                             }
+                                            <th style="width: 150px;">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -230,6 +231,24 @@ else
                                                 {
                                                     <td>@(record.ContainsKey(column) ? record[column]?.ToString() : "")</td>
                                                 }
+                                                <td>
+                                                    <div class="btn-group btn-group-sm" role="group">
+                                                        @if (_canUpdateRequests)
+                                                        {
+                                                            <button class="btn btn-outline-primary" title="Edit"
+                                                                    @onclick="() => GoToEdit(recordId)">
+                                                                <i class="bi bi-pencil-square"></i>
+                                                            </button>
+                                                        }
+                                                        @if (_canDeleteRequests)
+                                                        {
+                                                            <button class="btn btn-outline-danger" title="Delete"
+                                                                    @onclick="() => GoToDelete(recordId)">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
+                                                        }
+                                                    </div>
+                                                </td>
                                             </tr>
                                         }
                                     </tbody>
@@ -505,6 +524,8 @@ else
     private bool _canAccessDataView = false;
     private bool _canExecuteBulkActions = false;
     private bool _canUploadCsv = false;
+    private bool _canUpdateRequests = false;
+    private bool _canDeleteRequests = false;
     private List<string> _userRoles = new();
     
     // Bulk operations - Modal references
@@ -566,9 +587,11 @@ else
             _canAccessDataView = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.ViewData);
             _canExecuteBulkActions = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.BulkActions);
             _canUploadCsv = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.BulkUploadCsv);
+            _canUpdateRequests = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.UpdateRequest);
+            _canDeleteRequests = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.DeleteRequest);
             
-            Logger.LogInformation("Permission check results for form {FormDefinitionId}: ViewData={ViewData}, BulkActions={BulkActions}, BulkUploadCsv={BulkUploadCsv}", 
-                FormDefinitionId, _canAccessDataView, _canExecuteBulkActions, _canUploadCsv);
+            Logger.LogInformation("Permission check results for form {FormDefinitionId}: ViewData={ViewData}, BulkActions={BulkActions}, BulkUploadCsv={BulkUploadCsv}, Update={Update}, Delete={Delete}", 
+                FormDefinitionId, _canAccessDataView, _canExecuteBulkActions, _canUploadCsv, _canUpdateRequests, _canDeleteRequests);
         }
         catch (Exception ex)
         {
@@ -992,5 +1015,17 @@ else
     private string GetUserDisplayName(System.Security.Claims.ClaimsPrincipal user)
     {
         return user.Identity?.Name ?? "Unknown User";
+    }
+
+    private void GoToEdit(string recordId)
+    {
+        // Navigate to form screen with requestType=Update and selected record id
+        Navigation.NavigateTo($"/forms/{FormDefinitionId}?requestType=update&recordId={Uri.EscapeDataString(recordId)}");
+    }
+
+    private void GoToDelete(string recordId)
+    {
+        // Navigate to form screen with requestType=Delete and selected record id
+        Navigation.NavigateTo($"/forms/{FormDefinitionId}?requestType=delete&recordId={Uri.EscapeDataString(recordId)}");
     }
 }

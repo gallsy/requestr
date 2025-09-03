@@ -310,45 +310,33 @@ else
                                 </div>
                             }
                             
-                            <div class="mt-4">
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <label class="form-label">Request Type</label>
-                                        <select class="form-select" @bind="_requestType">
-                                            @if (_canCreateRequests)
-                                            {
-                                                <option value="@RequestType.Insert">Add New Record</option>
-                                            }
-                                            @if (_canUpdateRequests)
-                                            {
-                                                <option value="@RequestType.Update">Update Existing Record</option>
-                                            }
-                                            @if (_canDeleteRequests)
-                                            {
-                                                <option value="@RequestType.Delete">Delete Record</option>
-                                            }
-                                        </select>
-                                        @if (!_canCreateRequests && !_canUpdateRequests && !_canDeleteRequests)
+                            <div class="mt-3">
+                                @if (_requestType == RequestType.Insert)
+                                {
+                                    <div class="alert alert-info py-2 mb-0"><i class="bi bi-plus-circle me-2"></i>Mode: Add new record</div>
+                                }
+                                else if (_requestType == RequestType.Update)
+                                {
+                                    <div class="alert alert-warning py-2 mb-0">
+                                        <i class="bi bi-pencil-square me-2"></i>
+                                        Mode: Update record @(_selectedRecordId)
+                                        @if (string.IsNullOrWhiteSpace(_selectedRecordId))
                                         {
-                                            <div class="text-muted mt-1">
-                                                <small>You don't have permission to submit requests for this form.</small>
-                                            </div>
+                                            <span class="ms-2 text-danger">No record selected. Open this form from the Data View row actions.</span>
                                         }
                                     </div>
-                                    @if (_requestType != RequestType.Insert)
-                                    {
-                                        <div class="col-md-6">
-                                            <label class="form-label">Select Existing Record</label>
-                                            <select class="form-select" @bind="_selectedRecordId" @bind:after="LoadExistingRecord">
-                                                <option value="">Select a record</option>
-                                                @foreach (var record in _existingRecords)
-                                                {
-                                                    <option value="@record.Key">@record.Value</option>
-                                                }
-                                            </select>
-                                        </div>
-                                    }
-                                </div>
+                                }
+                                else if (_requestType == RequestType.Delete)
+                                {
+                                    <div class="alert alert-danger py-2 mb-0">
+                                        <i class="bi bi-trash me-2"></i>
+                                        Mode: Delete record @(_selectedRecordId)
+                                        @if (string.IsNullOrWhiteSpace(_selectedRecordId))
+                                        {
+                                            <span class="ms-2 text-dark">No record selected. Open this form from the Data View row actions.</span>
+                                        }
+                                    </div>
+                                }
                             </div>
                             
                             <div class="mt-4">
@@ -384,12 +372,13 @@ else
 @code {
     [Parameter] public int FormId { get; set; }
     [Parameter] public int? RequestId { get; set; }
+    [SupplyParameterFromQuery(Name = "requestType")] public string? RequestTypeQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "recordId")] public string? RecordIdQuery { get; set; }
     
     private FormDefinition? _formDefinition;
     private List<ColumnInfo> _tableColumns = new();
     private Dictionary<string, string> _fieldValues = new();
     private Dictionary<string, bool> _checkboxValues = new();
-    private Dictionary<string, string> _existingRecords = new();
     private RequestType _requestType = RequestType.Insert;
     private string _selectedRecordId = "";
     private string _comments = "";
@@ -429,10 +418,24 @@ else
                 _formDefinition.Schema
             );
 
-            // Set default request type based on available permissions
+            // Honor querystring overrides for requestType/recordId when coming from DataView
+            if (!string.IsNullOrWhiteSpace(RequestTypeQuery))
+            {
+                var rt = RequestTypeQuery.Trim().ToLowerInvariant();
+                if (rt == "update" && _canUpdateRequests) _requestType = RequestType.Update;
+                else if (rt == "delete" && _canDeleteRequests) _requestType = RequestType.Delete;
+            }
+
+            if (!string.IsNullOrWhiteSpace(RecordIdQuery))
+            {
+                _selectedRecordId = RecordIdQuery;
+            }
+
+            // Set default request type based on available permissions (if not already set via query)
             if (_canCreateRequests)
             {
-                _requestType = RequestType.Insert;
+                if (string.IsNullOrWhiteSpace(RequestTypeQuery))
+                    _requestType = RequestType.Insert;
             }
             else if (_canUpdateRequests)
             {
@@ -468,13 +471,16 @@ else
                 }
             }
 
-            // Load existing records for UPDATE/DELETE operations
-            await LoadExistingRecords();
+            // Existing records dropdown removed; rely on Data View to navigate with recordId
 
             // If editing an existing request, load its values
             if (RequestId.HasValue)
             {
                 await LoadExistingRequest();
+            }
+            else if (!string.IsNullOrWhiteSpace(_selectedRecordId) && _requestType != RequestType.Insert)
+            {
+                await LoadExistingRecord();
             }
         }
         catch (Exception ex)
@@ -487,23 +493,7 @@ else
         }
     }
 
-    private async Task LoadExistingRecords()
-    {
-        try
-        {
-            if (_formDefinition != null)
-            {
-                _existingRecords = await DataService.GetRecordSummariesAsync(
-                    _formDefinition.DatabaseConnectionName,
-                    _formDefinition.TableName,
-                    _formDefinition.Schema);
-            }
-        }
-        catch (Exception ex)
-        {
-            await JSRuntime.InvokeVoidAsync("console.error", $"Error loading existing records: {ex.Message}");
-        }
-    }
+    // Legacy LoadExistingRecords removed; Data View provides recordId when needed
 
     private async Task LoadExistingRecord()
     {
@@ -525,54 +515,55 @@ else
                         {
                             var dataType = field.DataType?.ToLower() ?? "text";
                             var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : DetermineControlType(dataType);
+                            var raw = recordData[field.Name];
                             
                             if (controlType == "checkbox" || dataType == "bit")
                             {
-                                _checkboxValues[field.Name] = Convert.ToBoolean(recordData[field.Name]);
+                                _checkboxValues[field.Name] = Convert.ToBoolean(raw);
                             }
-                            else if (controlType == "date" && recordData[field.Name] != null)
+                            else if (controlType == "date" && raw != null)
                             {
                                 // Format date values for HTML date input
-                                if (DateTime.TryParse(recordData[field.Name].ToString(), out var dateValue))
+                                if (DateTime.TryParse(raw.ToString(), out var dateValue))
                                 {
                                     _fieldValues[field.Name] = dateValue.ToString("yyyy-MM-dd");
                                 }
                                 else
                                 {
-                                    _fieldValues[field.Name] = recordData[field.Name]?.ToString() ?? "";
+                                    _fieldValues[field.Name] = raw?.ToString() ?? "";
                                 }
                             }
-                            else if (controlType == "datetime-local" && recordData[field.Name] != null)
+                            else if (controlType == "datetime-local" && raw != null)
                             {
                                 // Format datetime values for HTML datetime-local input
-                                if (DateTime.TryParse(recordData[field.Name].ToString(), out var dateTimeValue))
+                                if (DateTime.TryParse(raw.ToString(), out var dateTimeValue))
                                 {
                                     _fieldValues[field.Name] = dateTimeValue.ToString("yyyy-MM-ddTHH:mm");
                                 }
                                 else
                                 {
-                                    _fieldValues[field.Name] = recordData[field.Name]?.ToString() ?? "";
+                                    _fieldValues[field.Name] = raw?.ToString() ?? "";
                                 }
                             }
-                            else if (controlType == "time" && recordData[field.Name] != null)
+                            else if (controlType == "time" && raw != null)
                             {
                                 // Format time values for HTML time input
-                                if (DateTime.TryParse(recordData[field.Name].ToString(), out var timeValue))
+                                if (DateTime.TryParse(raw.ToString(), out var timeValue))
                                 {
                                     _fieldValues[field.Name] = timeValue.ToString("HH:mm");
                                 }
-                                else if (TimeOnly.TryParse(recordData[field.Name].ToString(), out var timeOnlyValue))
+                                else if (TimeOnly.TryParse(raw.ToString(), out var timeOnlyValue))
                                 {
                                     _fieldValues[field.Name] = timeOnlyValue.ToString("HH:mm");
                                 }
                                 else
                                 {
-                                    _fieldValues[field.Name] = recordData[field.Name]?.ToString() ?? "";
+                                    _fieldValues[field.Name] = raw?.ToString() ?? "";
                                 }
                             }
                             else
                             {
-                                _fieldValues[field.Name] = recordData[field.Name]?.ToString() ?? "";
+                                _fieldValues[field.Name] = raw?.ToString() ?? "";
                             }
                         }
                     }
@@ -801,6 +792,13 @@ else
                 return;
             }
 
+            // Require a selected record for update/delete modes when not editing an existing request
+            if (_requestType != RequestType.Insert && string.IsNullOrWhiteSpace(_selectedRecordId) && !RequestId.HasValue)
+            {
+                _errorMessage = "No record selected. Please open this form from the Data View row actions to update or delete a record.";
+                return;
+            }
+
             // Combine regular field values and checkbox values
             var allFieldValues = _fieldValues.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
             foreach (var checkboxValue in _checkboxValues)
@@ -908,7 +906,7 @@ else
 
     private void SetFieldValue(string fieldName, object? value)
     {
-        var stringValue = value?.ToString();
+    var stringValue = value?.ToString() ?? string.Empty;
         
         // Find the field to determine its data type
         var field = _formDefinition?.Fields.FirstOrDefault(f => f.Name == fieldName);
