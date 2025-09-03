@@ -847,26 +847,10 @@ else
             }
 
             // Redirect to the created/updated request details page when possible
+            await Task.Delay(1200);
             if (createdRequest != null)
             {
-                // If this form has a workflow, wait briefly until the instance is created to avoid a race on the details page
-                var wfDef = await WorkflowService.GetWorkflowDefinitionByFormAsync(FormId);
-                if (wfDef != null)
-                {
-                    const int maxRetries = 10; // ~2s total
-                    for (int i = 0; i < maxRetries; i++)
-                    {
-                        var wfInstance = await WorkflowService.GetWorkflowInstanceByRequestAsync(createdRequest.Id);
-                        if (wfInstance != null)
-                            break;
-                        await Task.Delay(200);
-                    }
-                }
                 Navigation.NavigateTo($"/requests/{createdRequest.Id}");
-            }
-            else if (RequestId.HasValue)
-            {
-                Navigation.NavigateTo($"/requests/{RequestId.Value}");
             }
             else
             {
