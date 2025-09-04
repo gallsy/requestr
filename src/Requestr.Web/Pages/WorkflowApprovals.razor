@@ -390,12 +390,12 @@
                             
                             if (userCanApprove)
                             {
-                                // For pending/in-progress steps, take the user to the first one they can approve
-                                if (stepInstance.Status == WorkflowStepInstanceStatus.Pending || stepInstance.Status == WorkflowStepInstanceStatus.InProgress)
+                                // Only allow navigation to InProgress steps (not Pending)
+                                if (stepInstance.Status == WorkflowStepInstanceStatus.InProgress)
                                 {
                                     targetStepInstance = stepInstance;
                                     targetStepId = stepInstance.StepId;
-                                    Logger.LogInformation("Found pending/in-progress approval step: {StepId} with status {Status}", stepInstance.StepId, stepInstance.Status);
+                                    Logger.LogInformation("Found in-progress approval step: {StepId} with status {Status}", stepInstance.StepId, stepInstance.Status);
                                     break;
                                 }
                                 // For historical approvals, remember the last completed one they could have approved

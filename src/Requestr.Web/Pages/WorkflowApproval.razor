@@ -379,7 +379,7 @@ else
                         }
 
                         <!-- Approval Actions -->
-                        @if (_currentStep.Status == WorkflowStepInstanceStatus.Pending || _currentStep.Status == WorkflowStepInstanceStatus.InProgress)
+                        @if (_currentStep.Status == WorkflowStepInstanceStatus.InProgress)
                         {
                             @if (_canUserApprove)
                             {
@@ -425,6 +425,13 @@ else
                                     <strong>@string.Join(", ", _currentStepDefinition?.AssignedRoles ?? new List<string>())</strong>
                                 </StandardAlert>
                             }
+                        }
+                        else if (_currentStep.Status == WorkflowStepInstanceStatus.Pending)
+                        {
+                            <div class="text-center p-3 bg-light rounded">
+                                <i class="bi bi-hourglass-split text-warning"></i>
+                                <p class="mb-0 mt-2">This step hasn't started yet. You can review and act on it once it's In Progress.</p>
+                            </div>
                         }
                         else
                         {

@@ -243,29 +243,20 @@ public class WorkflowService : IWorkflowService
         await connection.OpenAsync();
         using var transaction = connection.BeginTransaction();
 
-        int workflowId = 0;
         bool committed = false;
-        
+        int workflowId = 0;
+
         try
         {
-            _logger.LogInformation("Starting creation of workflow definition '{Name}' for form {FormId}", 
-                workflowDefinition.Name, workflowDefinition.FormDefinitionId);
-
-            // Validate the workflow definition
-            if (workflowDefinition == null)
-                throw new ArgumentNullException(nameof(workflowDefinition));
-            if (string.IsNullOrWhiteSpace(workflowDefinition.Name))
-                throw new ArgumentException("Workflow name cannot be empty", nameof(workflowDefinition.Name));
-            // Allow FormDefinitionId to be null or 0 for standalone workflows
-            var formDefId = workflowDefinition.FormDefinitionId > 0 ? workflowDefinition.FormDefinitionId : (int?)null;
             // Insert workflow definition
             const string workflowSql = @"
                 INSERT INTO WorkflowDefinitions (FormDefinitionId, Name, Description, Version, CreatedBy, CreatedAt)
                 OUTPUT INSERTED.Id
                 VALUES (@FormDefinitionId, @Name, @Description, @Version, @CreatedBy, @CreatedAt)";
+
             _logger.LogDebug("Inserting workflow definition into database");
             workflowId = await connection.QuerySingleAsync<int>(workflowSql, new {
-                FormDefinitionId = formDefId,
+                FormDefinitionId = workflowDefinition.FormDefinitionId,
                 workflowDefinition.Name,
                 workflowDefinition.Description,
                 workflowDefinition.Version,
@@ -780,6 +771,16 @@ public class WorkflowService : IWorkflowService
             var workflowDefinition = await GetWorkflowDefinitionAsync(connection, transaction, workflowInstance.WorkflowDefinitionId);
             var step = workflowDefinition?.Steps?.FirstOrDefault(s => s.StepId == stepId);
             var stepName = step?.Name ?? stepId;
+
+            // Guard: Only allow completing steps that are InProgress
+            const string statusCheckSql = @"SELECT Status FROM WorkflowStepInstances WHERE WorkflowInstanceId = @WorkflowInstanceId AND StepId = @StepId";
+            var currentStatusInt = await connection.QuerySingleOrDefaultAsync<int?>(statusCheckSql, new { WorkflowInstanceId = workflowInstanceId, StepId = stepId }, transaction);
+            var currentStatus = currentStatusInt.HasValue ? (WorkflowStepInstanceStatus)currentStatusInt.Value : WorkflowStepInstanceStatus.Pending;
+            if (currentStatus != WorkflowStepInstanceStatus.InProgress)
+            {
+                _logger.LogWarning("Attempt to complete step {StepId} in status {Status} blocked. Only InProgress steps can be actioned.", stepId, currentStatus);
+                throw new InvalidOperationException("This step cannot be approved or rejected until it is In Progress.");
+            }
 
             // Update step instance
             const string updateStepSql = @"
