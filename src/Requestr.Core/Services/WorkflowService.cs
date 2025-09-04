@@ -3008,18 +3008,14 @@ public class WorkflowService : IWorkflowService
             {
                 case WorkflowStepAction.Approved:
                     templateKey = WorkflowStepApproved;
-                    // Notify requester and form admin
-                    if (!string.IsNullOrEmpty(formRequestData.RequestedBy?.ToString()))
-                        notificationEmails.Add(formRequestData.RequestedBy.ToString());
+                    // Notify form admin
                     if (!string.IsNullOrEmpty(formRequestData.FormNotificationEmail?.ToString()))
                         notificationEmails.Add(formRequestData.FormNotificationEmail.ToString());
                     break;
 
                 case WorkflowStepAction.Rejected:
                     templateKey = WorkflowStepRejected;
-                    // Notify requester and form admin
-                    if (!string.IsNullOrEmpty(formRequestData.RequestedBy?.ToString()))
-                        notificationEmails.Add(formRequestData.RequestedBy.ToString());
+                    // Notify form admin
                     if (!string.IsNullOrEmpty(formRequestData.FormNotificationEmail?.ToString()))
                         notificationEmails.Add(formRequestData.FormNotificationEmail.ToString());
                     break;
