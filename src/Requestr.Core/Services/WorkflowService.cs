@@ -894,15 +894,14 @@ public class WorkflowService : IWorkflowService
     {
         using var connection = new SqlConnection(_connectionString);
         
-        // This query finds workflow step instances that are pending or in-progress
+        // This query finds workflow step instances that are InProgress (actionable)
         // and checks if the user can access them based on assigned roles or direct assignment
-        // Note: Also handles NULL status values for backwards compatibility
         const string sql = @"
             SELECT wsi.*, wi.FormRequestId, wi.WorkflowDefinitionId
             FROM WorkflowStepInstances wsi
             INNER JOIN WorkflowInstances wi ON wsi.WorkflowInstanceId = wi.Id
             INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId AND ws.StepId = wsi.StepId
-            WHERE (wsi.Status IN (@InProgress, @Pending) OR wsi.Status IS NULL)
+            WHERE wsi.Status = @InProgress
             AND wi.Status = @WorkflowInProgress
             AND ws.StepType = @ApprovalStepType
             AND (
@@ -918,7 +917,6 @@ public class WorkflowService : IWorkflowService
         {
             UserId = userId,
             InProgress = WorkflowStepInstanceStatus.InProgress,
-            Pending = WorkflowStepInstanceStatus.Pending,
             WorkflowInProgress = WorkflowInstanceStatus.InProgress,
             ApprovalStepType = WorkflowStepType.Approval
         });
