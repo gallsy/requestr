@@ -276,8 +276,8 @@ a:hover, .btn-link:hover {
 @media (max-width: 768px) {
     .sidebar {
         position: fixed;
-        transform: translateX(-100%);
-        transition: transform 0.3s ease;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
     }
     
     .main {
@@ -2495,4 +2495,45 @@ p {
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
+}
+
+/* Sidebar open state on mobile */
+@media (max-width: 768px) {
+    .page.sidebar-open .sidebar {
+        transform: translateX(0);
+    }
+    .sidebar-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.35);
+        z-index: 900;
+        opacity: 1;
+        transition: opacity 0.3s ease;
+    }
+    /* Hidden by default when sidebar is closed */
+    .page:not(.sidebar-open) .sidebar-overlay {
+        opacity: 0;
+        pointer-events: none;
+    }
+}
+
+/* Sidebar nav link styles */
+.sidebar .nav-link {
+    color: var(--nav-link-color);
+    border-radius: .5rem;
+    padding: .5rem .75rem;
+    margin: .125rem 0;
+}
+
+.sidebar .nav-submenu .nav-link {
+    padding-left: 1.25rem;
+}
+
+.sidebar .nav-link.active, .sidebar .nav-link:hover {
+    background: var(--nav-link-hover);
+    color: var(--primary);
+}
+
+.sidebar-toggle-btn {
+    color: var(--text-color);
 }

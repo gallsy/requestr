@@ -5,7 +5,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @implements IDisposable
 
-<div class="page" data-theme="@(_isDarkMode ? "dark" : "light")">
+<div class="page @(_isSidebarOpen ? "sidebar-open" : null)" data-theme="@(_isDarkMode ? "dark" : "light")">
     <div class="sidebar p-3">
         <div class="d-flex align-items-center mb-4">
             <i class="bi bi-clipboard-data me-2"></i>
@@ -83,10 +83,16 @@
             </AuthorizeView>
         </nav>
     </div>
+    
+    <!-- Overlay for mobile when sidebar is open -->
+    <div class="sidebar-overlay d-md-none" @onclick="CloseSidebar"></div>
 
     <main class="main">
         <div class="top-row px-4 auth">
-            <div class="d-flex align-items-center">
+            <div class="d-flex align-items-center ms-n2">
+                <button type="button" class="btn btn-link text-decoration-none sidebar-toggle-btn d-md-none me-2" @onclick="ToggleSidebar" aria-label="Toggle navigation">
+                    <i class="bi bi-list fs-4"></i>
+                </button>
                 <ThemeToggle />
                 <LoginDisplay />
             </div>
@@ -106,6 +112,7 @@
 @code {
     private bool _isDarkMode;
     private bool _isAdminExpanded = false;
+    private bool _isSidebarOpen = false;
     private bool UserHasPendingWorkflowSteps = false;
     private string? CurrentUserId;
     private List<string> UserRoles = new();
@@ -157,6 +164,16 @@
     private void ToggleAdminSection()
     {
         _isAdminExpanded = !_isAdminExpanded;
+    }
+
+    private void ToggleSidebar()
+    {
+        _isSidebarOpen = !_isSidebarOpen;
+    }
+
+    private void CloseSidebar()
+    {
+        _isSidebarOpen = false;
     }
 
     public void Dispose()
