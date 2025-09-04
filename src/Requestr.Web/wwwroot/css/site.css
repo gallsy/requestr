@@ -324,6 +324,9 @@ a:hover, .btn-link:hover {
     padding: 1.25rem 1.5rem;
     font-weight: 600;
     color: white !important;
+    min-height: 3.5rem;
+    display: flex;
+    align-items: center;
 }
 
 .card-header.bg-info {
@@ -346,6 +349,12 @@ a:hover, .btn-link:hover {
     background-color: var(--card-bg);
     color: var(--text-color);
 }
+
+/* Card accent border utility for variety without changing header color */
+.card-accent-info { border-top: 4px solid var(--info); }
+.card-accent-warning { border-top: 4px solid var(--warning); }
+.card-accent-success { border-top: 4px solid var(--success); }
+.card-accent-danger { border-top: 4px solid var(--danger); }
 
 .list-group-item {
     border: 1px solid var(--border-color);
@@ -382,6 +391,9 @@ a:hover, .btn-link:hover {
     color: var(--primary-dark);
 }
 
+/* Align trailing chevrons */
+.list-chevron { align-self: center; }
+
 /* Form Controls - Modern styling */
 .form-control, .form-select, textarea {
     border: 2px solid var(--input-border);
@@ -398,6 +410,11 @@ a:hover, .btn-link:hover {
     box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
     background-color: var(--input-bg);
 }
+
+/* Compact sticky tables for long lists */
+.table-sm th, .table-sm td { padding: .5rem .75rem; }
+.table-scroll { max-height: 420px; overflow: auto; }
+.table-sticky thead th { position: sticky; top: 0; background: var(--card-bg); z-index: 1; }
 
 /* Comprehensive input styling to ensure theme support */
 input[type="text"],

@@ -22,7 +22,7 @@
     <!-- Available Forms -->
     <div class="col-lg-6 col-md-12">
         <div class="card h-100 slide-up">
-            <div class="card-header bg-primary">
+            <div class="card-header">
                 <h5 class="card-title mb-0 text-white">
                     <i class="bi bi-clipboard-data me-2"></i>
                     Available Forms
@@ -93,7 +93,7 @@
     <!-- Pending Requests -->
     <div class="col-lg-6 col-md-12">
         <div class="card h-100 slide-up">
-            <div class="card-header bg-info">
+            <div class="card-header">
                 <h5 class="card-title mb-0 text-white">
                     <i class="bi bi-clock-history me-2"></i>
                     My Pending Requests
@@ -115,7 +115,7 @@
                     <div class="list-group list-group-flush">
                         @foreach (var request in PendingRequests?.Take(3) ?? Enumerable.Empty<FormRequest>())
                         {
-                            <a href="/requests/@request.Id" class="list-group-item list-group-item-action">
+                <a href="/requests/@request.Id" class="list-group-item list-group-item-action">
                                 <div class="d-flex w-100 justify-content-between align-items-start">
                                     <div class="flex-grow-1">
                                         <h6 class="mb-2 fw-bold">@request.FormDefinition?.Name</h6>
@@ -133,10 +133,10 @@
                                         }
                                         <small class="text-muted">
                                             <i class="bi bi-calendar me-1"></i>
-                                            @request.RequestedAt.ToString("MMM dd, yyyy")
+                        @FormatRelativeTime(request.RequestedAt)
                                         </small>
                                     </div>
-                                    <i class="bi bi-chevron-right text-muted"></i>
+                    <i class="bi bi-chevron-right text-muted list-chevron"></i>
                                 </div>
                             </a>
                         }
@@ -161,10 +161,10 @@
     <div class="row mt-4">
         <div class="col-12">
             <div class="card slide-up">
-                <div class="card-header bg-info text-white">
+        <div class="card-header">
                     <h5 class="card-title mb-0">
                         <i class="bi bi-diagram-3 me-2"></i>
-                        Workflow Steps Awaiting My Action
+            My In‑Progress Approvals
                     </h5>
                 </div>
                 <div class="card-body">
@@ -175,13 +175,13 @@
                     else if (!PendingWorkflowSteps.Any())
                     {
                         <EmptyState IconName="IconName.CheckCircle" 
-                                    Title="No workflow steps pending" 
+                                    Title="No approvals in progress" 
                                     Description="You have no workflow steps requiring your action at this time." />
                     }
                     else
                     {
-                        <div class="table-responsive">
-                            <table class="table table-hover">
+                        <div class="table-responsive table-scroll">
+                            <table class="table table-hover table-sm table-sticky">
                                 <thead>
                                     <tr>
                                         <th>Workflow</th>
@@ -204,7 +204,7 @@
                                             </td>
                                             <td>@GetFormName(step.WorkflowInstanceId)</td>
                                             <td>@GetRequesterName(step.WorkflowInstanceId)</td>
-                                            <td>@(step.StartedAt?.ToString("MMM dd, yyyy HH:mm") ?? "Not started")</td>
+                                            <td>@(step.StartedAt.HasValue ? FormatRelativeTime(step.StartedAt.Value) : "Not started")</td>
                                             <td>
                                                 <a href="/workflow/@step.WorkflowInstanceId/step/@step.StepId" class="btn btn-sm btn-outline-info">
                                                     <i class="bi bi-play-circle me-1"></i>
@@ -219,9 +219,9 @@
                         @if (PendingWorkflowSteps?.Count > 10)
                         {
                             <div class="mt-3 pt-3 border-top">
-                                <a href="/approvals" class="btn btn-info">
+                                <a href="/approvals" class="btn btn-outline-primary">
                                     <i class="bi bi-arrow-right me-2"></i>
-                                    View All (@PendingWorkflowSteps.Count) Pending Steps
+                                    View All (@PendingWorkflowSteps.Count) Approvals
                                 </a>
                             </div>
                         }
@@ -240,6 +240,21 @@
     private Dictionary<int, FormRequest> _formRequestCache = new();
     private string? CurrentUserId;
     private List<string> UserRoles = new();
+    
+    private static string FormatRelativeTime(DateTime dateTime)
+    {
+        var now = DateTime.Now;
+        var dt = dateTime.Kind == DateTimeKind.Utc ? dateTime.ToLocalTime() : dateTime;
+        var ts = now - dt;
+
+        if (ts.TotalSeconds < 60) return "just now";
+        if (ts.TotalMinutes < 60) return $"{(int)ts.TotalMinutes}m ago";
+        if (ts.TotalHours < 24) return $"{(int)ts.TotalHours}h ago";
+        if (ts.TotalDays < 7) return $"{(int)ts.TotalDays}d ago";
+        if (ts.TotalDays < 30) return $"{(int)(ts.TotalDays / 7)}w ago";
+        if (ts.TotalDays < 365) return $"{(int)(ts.TotalDays / 30)}mo ago";
+        return $"{(int)(ts.TotalDays / 365)}y ago";
+    }
 
     protected override async Task OnInitializedAsync()
     {
