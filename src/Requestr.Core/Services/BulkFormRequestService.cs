@@ -269,10 +269,10 @@ public class BulkFormRequestService : IBulkFormRequestService
             // Create the bulk request first (without workflow)
             var sql = @"
                 INSERT INTO BulkFormRequests (FormDefinitionId, RequestType, FileName, TotalRows, ValidRows, InvalidRows, SelectedRows, 
-                                            RequestedBy, RequestedByName, RequestedAt, Comments, CreatedBy, CreatedAt)
+                                            RequestedBy, RequestedAt, Comments, CreatedBy, CreatedAt)
                 OUTPUT INSERTED.Id
                 VALUES (@FormDefinitionId, @RequestType, @FileName, @TotalRows, @ValidRows, @InvalidRows, @SelectedRows,
-                        @RequestedBy, @RequestedByName, @RequestedAt, @Comments, @CreatedBy, @CreatedAt)";
+                        @RequestedBy, @RequestedAt, @Comments, @CreatedBy, @CreatedAt)";
 
             var bulkRequestId = await connection.QuerySingleAsync<int>(sql, new
             {
@@ -284,7 +284,6 @@ public class BulkFormRequestService : IBulkFormRequestService
                 InvalidRows = bulkRequest.InvalidRows,
                 SelectedRows = bulkRequest.SelectedRows,
                 RequestedBy = bulkRequest.RequestedBy,
-                RequestedByName = bulkRequest.RequestedByName,
                 RequestedAt = bulkRequest.RequestedAt,
                 Comments = bulkRequest.Comments,
                 CreatedBy = bulkRequest.CreatedBy,
@@ -336,7 +335,7 @@ public class BulkFormRequestService : IBulkFormRequestService
                     {
                         FormDefinitionId = formDefinition.Id,
                         RequestType = createDto.RequestType,
-                        FieldValues = new Dictionary<string, object> 
+                        FieldValues = new Dictionary<string, object?> 
                         { 
                             ["IsBulkRequest"] = true,
                             ["BulkRequestId"] = bulkRequestId,
@@ -351,20 +350,19 @@ public class BulkFormRequestService : IBulkFormRequestService
 
                     var tempFormRequestSql = @"
                         INSERT INTO FormRequests (FormDefinitionId, RequestType, FieldValues, OriginalValues, Status, 
-                                                RequestedBy, RequestedByName, RequestedAt, Comments, BulkFormRequestId)
+                                                RequestedBy, RequestedAt, Comments, BulkFormRequestId)
                         OUTPUT INSERTED.Id
                         VALUES (@FormDefinitionId, @RequestType, @FieldValues, @OriginalValues, @Status,
-                                @RequestedBy, @RequestedByName, @RequestedAt, @Comments, @BulkFormRequestId)";
+                                @RequestedBy, @RequestedAt, @Comments, @BulkFormRequestId)";
 
                     var tempFormRequestId = await connection.QuerySingleAsync<int>(tempFormRequestSql, new
                     {
                         FormDefinitionId = tempFormRequest.FormDefinitionId,
                         RequestType = (int)tempFormRequest.RequestType,
                         FieldValues = JsonSerializer.Serialize(tempFormRequest.FieldValues),
-                        OriginalValues = JsonSerializer.Serialize(tempFormRequest.OriginalValues ?? new Dictionary<string, object>()),
+                        OriginalValues = JsonSerializer.Serialize(tempFormRequest.OriginalValues ?? new Dictionary<string, object?>()),
                         Status = (int)tempFormRequest.Status,
                         RequestedBy = tempFormRequest.RequestedBy,
-                        RequestedByName = tempFormRequest.RequestedByName,
                         RequestedAt = tempFormRequest.RequestedAt,
                         Comments = tempFormRequest.Comments,
                         BulkFormRequestId = tempFormRequest.BulkFormRequestId
@@ -432,8 +430,10 @@ public class BulkFormRequestService : IBulkFormRequestService
             await connection.OpenAsync();
             
             var sql = @"
-                SELECT bfr.*
+                SELECT bfr.*, COALESCE(uReq.DisplayName, bfr.RequestedBy) AS RequestedByName, COALESCE(uApp.DisplayName, bfr.ApprovedBy) AS ApprovedByName
                 FROM BulkFormRequests bfr
+                LEFT JOIN Users uReq ON TRY_CONVERT(uniqueidentifier, bfr.RequestedBy) = uReq.UserObjectId
+                LEFT JOIN Users uApp ON TRY_CONVERT(uniqueidentifier, bfr.ApprovedBy) = uApp.UserObjectId
                 WHERE bfr.Id = @Id";
             
             var bulkRequest = await connection.QueryFirstOrDefaultAsync<BulkFormRequest>(sql, new { Id = id });
@@ -497,21 +497,21 @@ public class BulkFormRequestService : IBulkFormRequestService
                     if (row.FieldValues != null)
                     {
                         _logger.LogInformation($"Deserializing FieldValues: {row.FieldValues}");
-                        item.FieldValues = JsonSerializer.Deserialize<Dictionary<string, object>>(row.FieldValues.ToString()) ?? new Dictionary<string, object>();
+                        item.FieldValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(row.FieldValues.ToString()) ?? new Dictionary<string, object?>();
                     }
                     else
                     {
-                        item.FieldValues = new Dictionary<string, object>();
+                        item.FieldValues = new Dictionary<string, object?>();
                     }
                     
                     if (row.OriginalValues != null)
                     {
                         _logger.LogInformation($"Deserializing OriginalValues: {row.OriginalValues}");
-                        item.OriginalValues = JsonSerializer.Deserialize<Dictionary<string, object>>(row.OriginalValues.ToString()) ?? new Dictionary<string, object>();
+                        item.OriginalValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(row.OriginalValues.ToString()) ?? new Dictionary<string, object?>();
                     }
                     else
                     {
-                        item.OriginalValues = new Dictionary<string, object>();
+                        item.OriginalValues = new Dictionary<string, object?>();
                     }
                     
                     items.Add(item);
@@ -552,8 +552,10 @@ public class BulkFormRequestService : IBulkFormRequestService
         using var connection = new SqlConnection(_connectionString);
         
         var sql = @"
-            SELECT bfr.*
+            SELECT bfr.*, COALESCE(uReq.DisplayName, bfr.RequestedBy) AS RequestedByName, COALESCE(uApp.DisplayName, bfr.ApprovedBy) AS ApprovedByName
             FROM BulkFormRequests bfr
+            LEFT JOIN Users uReq ON TRY_CONVERT(uniqueidentifier, bfr.RequestedBy) = uReq.UserObjectId
+            LEFT JOIN Users uApp ON TRY_CONVERT(uniqueidentifier, bfr.ApprovedBy) = uApp.UserObjectId
             WHERE bfr.RequestedBy = @UserId
             ORDER BY bfr.RequestedAt DESC";
 
@@ -613,13 +615,15 @@ public class BulkFormRequestService : IBulkFormRequestService
         
         // Get both role-based and workflow-based bulk requests that need approval
         var sql = @"
-            SELECT DISTINCT bfr.*
+            SELECT DISTINCT bfr.*, COALESCE(uReq.DisplayName, bfr.RequestedBy) AS RequestedByName, COALESCE(uApp.DisplayName, bfr.ApprovedBy) AS ApprovedByName
             FROM BulkFormRequests bfr
             INNER JOIN FormDefinitions fd ON bfr.FormDefinitionId = fd.Id
             LEFT JOIN WorkflowInstances wi ON bfr.WorkflowInstanceId = wi.Id
             LEFT JOIN WorkflowStepInstances wsi ON wi.Id = wsi.WorkflowInstanceId 
                 AND wsi.Status = 0 -- Pending status
             LEFT JOIN WorkflowSteps ws ON wsi.StepId = ws.Id
+            LEFT JOIN Users uReq ON TRY_CONVERT(uniqueidentifier, bfr.RequestedBy) = uReq.UserObjectId
+            LEFT JOIN Users uApp ON TRY_CONVERT(uniqueidentifier, bfr.ApprovedBy) = uApp.UserObjectId
             WHERE bfr.Status = 0 AND bfr.RequestedBy != @UserId
             AND (
                 -- Role-based approval (legacy)
@@ -735,7 +739,7 @@ public class BulkFormRequestService : IBulkFormRequestService
                 // Update the bulk request status to approved (legacy path)
                 var sql = @"
                     UPDATE BulkFormRequests 
-                    SET Status = 1, ApprovedBy = @UserId, ApprovedByName = @UserName, ApprovedAt = @ApprovedAt,
+                    SET Status = 1, ApprovedBy = @UserId, ApprovedAt = @ApprovedAt,
                         Comments = CASE WHEN @Comments IS NOT NULL THEN @Comments ELSE Comments END,
                         UpdatedBy = @UserId, UpdatedAt = @ApprovedAt
                     WHERE Id = @Id AND Status = 0";
@@ -811,7 +815,7 @@ public class BulkFormRequestService : IBulkFormRequestService
             
             var sql = @"
                 UPDATE BulkFormRequests 
-                SET Status = 2, ApprovedBy = @UserId, ApprovedByName = @UserName, ApprovedAt = @ApprovedAt,
+                SET Status = 2, ApprovedBy = @UserId, ApprovedAt = @ApprovedAt,
                     RejectionReason = @RejectionReason, UpdatedBy = @UserId, UpdatedAt = @ApprovedAt
                 WHERE Id = @Id AND Status = 0";
 
@@ -883,8 +887,10 @@ public class BulkFormRequestService : IBulkFormRequestService
             using var connection = new SqlConnection(_connectionString);
             
             var sql = @"
-                SELECT TOP (@Limit) bfr.*
+                SELECT TOP (@Limit) bfr.*, COALESCE(uReq.DisplayName, bfr.RequestedBy) AS RequestedByName, COALESCE(uApp.DisplayName, bfr.ApprovedBy) AS ApprovedByName
                 FROM BulkFormRequests bfr
+                LEFT JOIN Users uReq ON TRY_CONVERT(uniqueidentifier, bfr.RequestedBy) = uReq.UserObjectId
+                LEFT JOIN Users uApp ON TRY_CONVERT(uniqueidentifier, bfr.ApprovedBy) = uApp.UserObjectId
                 WHERE bfr.FormDefinitionId = @FormDefinitionId
                 ORDER BY bfr.RequestedAt DESC";
 
@@ -947,8 +953,10 @@ public class BulkFormRequestService : IBulkFormRequestService
         using var connection = new SqlConnection(_connectionString);
         
         var sql = @"
-            SELECT bfr.*
+            SELECT bfr.*, COALESCE(uReq.DisplayName, bfr.RequestedBy) AS RequestedByName, COALESCE(uApp.DisplayName, bfr.ApprovedBy) AS ApprovedByName
             FROM BulkFormRequests bfr
+            LEFT JOIN Users uReq ON TRY_CONVERT(uniqueidentifier, bfr.RequestedBy) = uReq.UserObjectId
+            LEFT JOIN Users uApp ON TRY_CONVERT(uniqueidentifier, bfr.ApprovedBy) = uApp.UserObjectId
             ORDER BY bfr.RequestedAt DESC";
 
         var results = await connection.QueryAsync<BulkFormRequest>(sql);

@@ -726,8 +726,8 @@ public class WorkflowService : IWorkflowService
             }
 
             const string sql = @"
-                INSERT INTO FormRequestHistory (FormRequestId, ChangeType, PreviousValues, NewValues, ChangedBy, ChangedByName, ChangedAt, Comments)
-                VALUES (@FormRequestId, @ChangeType, @PreviousValues, @NewValues, @ChangedBy, @ChangedByName, @ChangedAt, @Comments)";
+                INSERT INTO FormRequestHistory (FormRequestId, ChangeType, PreviousValues, NewValues, ChangedBy, ChangedAt, Comments)
+                VALUES (@FormRequestId, @ChangeType, @PreviousValues, @NewValues, @ChangedBy, @ChangedAt, @Comments)";
 
             await connection.ExecuteAsync(sql, new
             {
@@ -736,7 +736,6 @@ public class WorkflowService : IWorkflowService
                 PreviousValues = JsonSerializer.Serialize(new Dictionary<string, object?>()),
                 NewValues = JsonSerializer.Serialize(newValues),
                 ChangedBy = changedBy,
-                ChangedByName = changedByName,
                 ChangedAt = DateTime.UtcNow,
                 Comments = comments
             }, transaction);
@@ -786,7 +785,7 @@ public class WorkflowService : IWorkflowService
             const string updateStepSql = @"
                 UPDATE WorkflowStepInstances 
                 SET Status = @Status, CompletedAt = @CompletedAt, CompletedBy = @CompletedBy, 
-                    CompletedByName = @CompletedByName, Action = @Action, Comments = @Comments, FieldValues = @FieldValues
+                    Action = @Action, Comments = @Comments, FieldValues = @FieldValues
                 WHERE WorkflowInstanceId = @WorkflowInstanceId AND StepId = @StepId";
 
             await connection.ExecuteAsync(updateStepSql, new
@@ -794,7 +793,6 @@ public class WorkflowService : IWorkflowService
                 Status = WorkflowStepInstanceStatus.Completed,
                 CompletedAt = DateTime.UtcNow,
                 CompletedBy = userId,
-                CompletedByName = userName,
                 Action = action,
                 Comments = comments,
                 FieldValues = fieldValues != null ? JsonSerializer.Serialize(fieldValues) : null,
@@ -962,8 +960,10 @@ public class WorkflowService : IWorkflowService
         
         // First try to get the current step using CurrentStepId
         const string sqlCurrentStep = @"
-            SELECT wsi.* FROM WorkflowStepInstances wsi
+            SELECT wsi.*, COALESCE(u.DisplayName, wsi.CompletedBy) AS CompletedByName
+            FROM WorkflowStepInstances wsi
             INNER JOIN WorkflowInstances wi ON wsi.WorkflowInstanceId = wi.Id
+            LEFT JOIN Users u ON TRY_CONVERT(uniqueidentifier, wsi.CompletedBy) = u.UserObjectId
             WHERE wi.Id = @WorkflowInstanceId AND wsi.StepId = wi.CurrentStepId";
 
         var currentStepData = await connection.QueryFirstOrDefaultAsync(sqlCurrentStep, new { WorkflowInstanceId = workflowInstanceId });
@@ -996,7 +996,9 @@ public class WorkflowService : IWorkflowService
         
         // Fallback: Look for InProgress step instances
         const string sqlInProgressStep = @"
-            SELECT wsi.* FROM WorkflowStepInstances wsi
+            SELECT wsi.*, COALESCE(u.DisplayName, wsi.CompletedBy) AS CompletedByName
+            FROM WorkflowStepInstances wsi
+            LEFT JOIN Users u ON TRY_CONVERT(uniqueidentifier, wsi.CompletedBy) = u.UserObjectId
             WHERE wsi.WorkflowInstanceId = @WorkflowInstanceId 
             AND wsi.Status = @InProgressStatus
             ORDER BY wsi.StartedAt DESC";
@@ -1041,7 +1043,12 @@ public class WorkflowService : IWorkflowService
     {
         using var connection = new SqlConnection(_connectionString);
         
-        const string sql = "SELECT * FROM WorkflowStepInstances WHERE WorkflowInstanceId = @WorkflowInstanceId ORDER BY ISNULL(StartedAt, '1900-01-01'), Id";
+        const string sql = @"
+            SELECT wsi.*, COALESCE(u.DisplayName, wsi.CompletedBy) AS CompletedByName
+            FROM WorkflowStepInstances wsi
+            LEFT JOIN Users u ON TRY_CONVERT(uniqueidentifier, wsi.CompletedBy) = u.UserObjectId
+            WHERE wsi.WorkflowInstanceId = @WorkflowInstanceId 
+            ORDER BY ISNULL(wsi.StartedAt, '1900-01-01'), wsi.Id";
         var stepInstancesData = await connection.QueryAsync(sql, new { WorkflowInstanceId = workflowInstanceId });
         
         var stepInstances = stepInstancesData.Select(data => new WorkflowStepInstance
@@ -1079,7 +1086,7 @@ public class WorkflowService : IWorkflowService
         return configurationsDb.Select(c => c.ToDomainModel()).ToList();
     }
 
-    public async Task<Dictionary<string, object>> GetEffectiveFieldConfigurationAsync(int workflowInstanceId, string stepId)
+    public async Task<Dictionary<string, object?>> GetEffectiveFieldConfigurationAsync(int workflowInstanceId, string stepId)
     {
         using var connection = new SqlConnection(_connectionString);
         
@@ -1095,7 +1102,7 @@ public class WorkflowService : IWorkflowService
             StepId = stepId 
         });
 
-        var result = new Dictionary<string, object>();
+    var result = new Dictionary<string, object?>();
         foreach (var configDb in configurationsDb)
         {
             var config = configDb.ToDomainModel();
@@ -1500,7 +1507,7 @@ public class WorkflowService : IWorkflowService
             // Update request status to approved and set approval details
             const string updateRequestSql = @"
                 UPDATE FormRequests 
-                SET Status = @Status, ApprovedAt = @ApprovedAt, ApprovedBy = @ApprovedBy, ApprovedByName = @ApprovedByName
+                SET Status = @Status, ApprovedAt = @ApprovedAt, ApprovedBy = @ApprovedBy
                 WHERE Id = @FormRequestId";
 
             await connection.ExecuteAsync(updateRequestSql, new
@@ -1508,7 +1515,6 @@ public class WorkflowService : IWorkflowService
                 Status = (int)RequestStatus.Approved,
                 ApprovedAt = DateTime.UtcNow,
                 ApprovedBy = approvedBy,
-                ApprovedByName = approvedBy == "System" ? "Workflow System" : approvedBy,
                 FormRequestId = formRequestId
             }, transaction);
 
@@ -1517,7 +1523,7 @@ public class WorkflowService : IWorkflowService
             {
                 const string updateBulkRequestSql = @"
                     UPDATE BulkFormRequests 
-                    SET Status = @Status, ApprovedAt = @ApprovedAt, ApprovedBy = @ApprovedBy, ApprovedByName = @ApprovedByName
+                    SET Status = @Status, ApprovedAt = @ApprovedAt, ApprovedBy = @ApprovedBy
                     WHERE Id = @BulkFormRequestId";
 
                 await connection.ExecuteAsync(updateBulkRequestSql, new
@@ -1525,7 +1531,6 @@ public class WorkflowService : IWorkflowService
                     Status = (int)RequestStatus.Approved,
                     ApprovedAt = DateTime.UtcNow,
                     ApprovedBy = approvedBy,
-                    ApprovedByName = approvedBy == "System" ? "Workflow System" : approvedBy,
                     BulkFormRequestId = bulkFormRequestId.Value
                 }, transaction);
                 
@@ -1588,7 +1593,7 @@ public class WorkflowService : IWorkflowService
             // Update request status to approved and set approval details
             const string updateRequestSql = @"
                 UPDATE FormRequests 
-                SET Status = @Status, ApprovedAt = @ApprovedAt, ApprovedBy = @ApprovedBy, ApprovedByName = @ApprovedByName
+                SET Status = @Status, ApprovedAt = @ApprovedAt, ApprovedBy = @ApprovedBy
                 WHERE Id = @FormRequestId";
 
             await connection.ExecuteAsync(updateRequestSql, new
@@ -1596,7 +1601,6 @@ public class WorkflowService : IWorkflowService
                 Status = (int)RequestStatus.Approved,
                 ApprovedAt = DateTime.UtcNow,
                 ApprovedBy = approvedBy,
-                ApprovedByName = approvedBy == "System" ? "Workflow System" : approvedBy,
                 FormRequestId = formRequestId
             }, transaction);
 
@@ -1624,13 +1628,13 @@ public class WorkflowService : IWorkflowService
                 // Update the FormRequest status to Failed since the data application failed
                 using var failConnection = new SqlConnection(_connectionString);
                 await failConnection.OpenAsync();
-                
-                const string failSql = @"
+
+                const string sql = @"
                     UPDATE FormRequests 
                     SET Status = @Status, FailureMessage = @FailureMessage
                     WHERE Id = @FormRequestId";
 
-                await failConnection.ExecuteAsync(failSql, new
+                await failConnection.ExecuteAsync(sql, new
                 {
                     Status = (int)RequestStatus.Failed,
                     FailureMessage = "Failed to apply data changes to target database after workflow approval",
@@ -2041,10 +2045,12 @@ public class WorkflowService : IWorkflowService
         using var connection = new SqlConnection(_connectionString);
         
         const string sql = @"
-            SELECT * FROM WorkflowStepInstances 
-            WHERE WorkflowInstanceId = @WorkflowInstanceId 
-            AND Status = @CompletedStatus
-            ORDER BY CompletedAt";
+            SELECT wsi.*, COALESCE(u.DisplayName, wsi.CompletedBy) AS CompletedByName
+            FROM WorkflowStepInstances wsi
+            LEFT JOIN Users u ON TRY_CONVERT(uniqueidentifier, wsi.CompletedBy) = u.UserObjectId
+            WHERE wsi.WorkflowInstanceId = @WorkflowInstanceId 
+            AND wsi.Status = @CompletedStatus
+            ORDER BY wsi.CompletedAt";
 
         var stepInstances = await connection.QueryAsync<WorkflowStepInstance>(sql, new 
         { 
@@ -2114,7 +2120,7 @@ public class WorkflowService : IWorkflowService
             formRequestId, (int)counts.TotalSteps, (int)counts.CompletedSteps);
 
         // Get all step details for the workflow
-        const string stepsSql = @"
+    const string stepsSql = @"
             SELECT 
                 ws.StepId,
                 ws.Name as StepName,
@@ -2126,12 +2132,13 @@ public class WorkflowService : IWorkflowService
                 wsi.StartedAt,
                 wsi.CompletedAt,
                 wsi.CompletedBy,
-                wsi.CompletedByName,
+        COALESCE(u.DisplayName, wsi.CompletedBy) AS CompletedByName,
                 wsi.Action,
                 wsi.Comments
             FROM WorkflowStepInstances wsi
             INNER JOIN WorkflowInstances wi ON wsi.WorkflowInstanceId = wi.Id
             INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId AND ws.StepId = wsi.StepId
+        LEFT JOIN Users u ON TRY_CONVERT(uniqueidentifier, wsi.CompletedBy) = u.UserObjectId
             WHERE wi.FormRequestId = @FormRequestId
             ORDER BY 
                 CASE ws.StepType 
@@ -2356,7 +2363,7 @@ public class WorkflowService : IWorkflowService
         const string updateStepSql = @"
             UPDATE WorkflowStepInstances 
             SET Status = @Status, CompletedAt = @CompletedAt, CompletedBy = @CompletedBy, 
-                CompletedByName = @CompletedByName, Action = @Action, Comments = @Comments
+                Action = @Action, Comments = @Comments
             WHERE WorkflowInstanceId = @WorkflowInstanceId AND StepId = @StepId";
 
         await connection.ExecuteAsync(updateStepSql, new
@@ -2364,7 +2371,6 @@ public class WorkflowService : IWorkflowService
             Status = WorkflowStepInstanceStatus.Completed,
             CompletedAt = DateTime.UtcNow,
             CompletedBy = completedBy,
-            CompletedByName = $"System ({stepTypeName} Step)",
             Action = WorkflowStepAction.Completed,
             Comments = $"Auto-completed {stepTypeName} step",
             WorkflowInstanceId = workflowInstanceId,
@@ -3065,14 +3071,15 @@ public class WorkflowService : IWorkflowService
                     wi.Id as WorkflowInstanceId,
                     wi.FormRequestId,
                     fd.Name as FormTitle,
-                    fr.RequestedBy as RequestorEmail,
-                    fr.RequestedByName as RequestedByName,
+                    COALESCE(uReq.Email, fr.RequestedBy) as RequestorEmail,
+                    COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName,
                     ws.Name as StepName,
                     ws.NotificationEmail as StepNotificationEmail
                 FROM WorkflowInstances wi
                 INNER JOIN FormRequests fr ON wi.FormRequestId = fr.Id
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
                 INNER JOIN WorkflowSteps ws ON ws.StepId = @StepId
+                LEFT JOIN Users uReq ON uReq.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
                 WHERE wi.Id = @WorkflowInstanceId";
 
             var stepData = await connection.QueryFirstOrDefaultAsync(sql, new 

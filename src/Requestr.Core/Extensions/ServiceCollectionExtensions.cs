@@ -43,6 +43,9 @@ public static class ServiceCollectionExtensions
         // Input Validation Services
         services.AddScoped<Services.IInputValidationService, Services.InputValidationService>();
         
+    // User Services
+    services.AddScoped<IUserService, UserService>();
+        
     // UI Services (per-circuit in Blazor Server)
     services.AddScoped<ThemeService>();
 

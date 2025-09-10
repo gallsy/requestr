@@ -29,7 +29,7 @@ public interface IWorkflowService
     
     // Step Field Configuration
     Task<List<WorkflowStepFieldConfiguration>> GetStepFieldConfigurationsAsync(int workflowStepId);
-    Task<Dictionary<string, object>> GetEffectiveFieldConfigurationAsync(int workflowInstanceId, string stepId);
+    Task<Dictionary<string, object?>> GetEffectiveFieldConfigurationAsync(int workflowInstanceId, string stepId);
     
     // Workflow Navigation
     Task<bool> CanUserAccessStepAsync(string userId, List<string> userRoles, int workflowInstanceId, string stepId);

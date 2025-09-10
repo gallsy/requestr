@@ -799,7 +799,7 @@ else
     }
     
     // Bulk editing helper methods
-    private object? GetCurrentBulkValue(int itemId, string fieldName, Dictionary<string, object> originalValues)
+    private object? GetCurrentBulkValue(int itemId, string fieldName, Dictionary<string, object?> originalValues)
     {
         // Check if there's a pending change for this item and field
         if (_bulkItemChanges.ContainsKey(itemId.ToString()) && 

@@ -87,15 +87,19 @@ public class FormRequestService : IFormRequestService
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            var sql = @"
-                SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
-                       fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
-                       fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                       fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
-                       fd.Name as FormName, fd.Description as FormDescription
-                FROM FormRequests fr
-                INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
-                ORDER BY fr.RequestedAt DESC";
+         var sql = @"
+          SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
+              fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy,
+              COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName,
+              fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) as ApprovedByName,
+              fr.ApprovedAt, fr.RejectionReason, fr.Comments,
+              fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
+              fd.Name as FormName, fd.Description as FormDescription
+          FROM FormRequests fr
+          INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+          LEFT JOIN Users uReq ON uReq.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
+          LEFT JOIN Users uApp ON uApp.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.ApprovedBy)
+          ORDER BY fr.RequestedAt DESC";
 
             var requests = await connection.QueryAsync(sql);
             var result = new List<FormRequest>();
@@ -122,16 +126,20 @@ public class FormRequestService : IFormRequestService
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            var sql = @"
-                SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
-                       fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
-                       fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                       fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
-                       fd.Name as FormName, fd.Description as FormDescription
-                FROM FormRequests fr
-                INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
-                WHERE fr.RequestedBy = @UserId
-                ORDER BY fr.RequestedAt DESC";
+         var sql = @"
+          SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
+              fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy,
+              COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName,
+              fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) as ApprovedByName,
+              fr.ApprovedAt, fr.RejectionReason, fr.Comments,
+              fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
+              fd.Name as FormName, fd.Description as FormDescription
+          FROM FormRequests fr
+          INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+          LEFT JOIN Users uReq ON uReq.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
+          LEFT JOIN Users uApp ON uApp.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.ApprovedBy)
+          WHERE fr.RequestedBy = @UserId
+          ORDER BY fr.RequestedAt DESC";
 
             var requests = await connection.QueryAsync(sql, new { UserId = userId });
             var result = new List<FormRequest>();
@@ -166,16 +174,20 @@ public class FormRequestService : IFormRequestService
                 parameters.Add($"role{i}", approverRoles[i]);
             }
 
-            var sql = $@"
-                SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
-                       fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
-                       fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                       fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
-                       fd.Name as FormName, fd.Description as FormDescription, fd.ApproverRoles
-                FROM FormRequests fr
-                INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
-                WHERE fr.Status = @Status
-                ORDER BY fr.RequestedAt DESC";
+         var sql = $@"
+          SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
+              fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy,
+              COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName,
+              fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) as ApprovedByName,
+              fr.ApprovedAt, fr.RejectionReason, fr.Comments,
+              fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
+              fd.Name as FormName, fd.Description as FormDescription, fd.ApproverRoles
+          FROM FormRequests fr
+          INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+          LEFT JOIN Users uReq ON uReq.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
+          LEFT JOIN Users uApp ON uApp.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.ApprovedBy)
+          WHERE fr.Status = @Status
+          ORDER BY fr.RequestedAt DESC";
 
             parameters.Add("Status", (int)RequestStatus.Pending);
 
@@ -209,15 +221,19 @@ public class FormRequestService : IFormRequestService
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            var sql = @"
-                SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
-                       fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
-                       fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                       fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
-                       fd.Name as FormName, fd.Description as FormDescription
-                FROM FormRequests fr
-                INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
-                WHERE fr.Id = @Id";
+         var sql = @"
+          SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
+              fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy,
+              COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName,
+              fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) as ApprovedByName,
+              fr.ApprovedAt, fr.RejectionReason, fr.Comments,
+              fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
+              fd.Name as FormName, fd.Description as FormDescription
+          FROM FormRequests fr
+          INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+          LEFT JOIN Users uReq ON uReq.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
+          LEFT JOIN Users uApp ON uApp.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.ApprovedBy)
+          WHERE fr.Id = @Id";
 
             var row = await connection.QueryFirstOrDefaultAsync(sql, new { Id = id });
             
@@ -272,9 +288,9 @@ public class FormRequestService : IFormRequestService
             var workflowDefinition = await _workflowService.GetWorkflowDefinitionByFormAsync(formRequest.FormDefinitionId);
             
             var sql = @"
-                INSERT INTO FormRequests (FormDefinitionId, RequestType, FieldValues, OriginalValues, Status, RequestedBy, RequestedByName, RequestedAt, Comments, AppliedRecordKey, FailureMessage, WorkflowInstanceId)
+                INSERT INTO FormRequests (FormDefinitionId, RequestType, FieldValues, OriginalValues, Status, RequestedBy, RequestedAt, Comments, AppliedRecordKey, FailureMessage, WorkflowInstanceId)
                 OUTPUT INSERTED.Id
-                VALUES (@FormDefinitionId, @RequestType, @FieldValues, @OriginalValues, @Status, @RequestedBy, @RequestedByName, @RequestedAt, @Comments, @AppliedRecordKey, @FailureMessage, @WorkflowInstanceId)";
+                VALUES (@FormDefinitionId, @RequestType, @FieldValues, @OriginalValues, @Status, @RequestedBy, @RequestedAt, @Comments, @AppliedRecordKey, @FailureMessage, @WorkflowInstanceId)";
 
             // Set initial status based on whether workflow exists
             formRequest.Status = workflowDefinition != null ? RequestStatus.Pending : RequestStatus.Approved;
@@ -287,7 +303,6 @@ public class FormRequestService : IFormRequestService
                 OriginalValues = JsonSerializer.Serialize(formRequest.OriginalValues),
                 Status = (int)formRequest.Status,
                 formRequest.RequestedBy,
-                formRequest.RequestedByName,
                 formRequest.RequestedAt,
                 formRequest.Comments,
                 formRequest.AppliedRecordKey,
@@ -600,7 +615,7 @@ public class FormRequestService : IFormRequestService
             // Update the request status to approved
             var sql = @"
                 UPDATE FormRequests 
-                SET Status = @Status, ApprovedBy = @ApprovedBy, ApprovedByName = @ApprovedByName, ApprovedAt = @ApprovedAt
+                SET Status = @Status, ApprovedBy = @ApprovedBy, ApprovedAt = @ApprovedAt
                 WHERE Id = @Id";
 
             var rowsAffected = await connection.ExecuteAsync(sql, new
@@ -608,7 +623,6 @@ public class FormRequestService : IFormRequestService
                 Id = id,
                 Status = (int)RequestStatus.Approved,
                 ApprovedBy = approvedBy,
-                ApprovedByName = approvedByName,
                 ApprovedAt = DateTime.UtcNow
             }, transaction);
 
@@ -888,7 +902,7 @@ public class FormRequestService : IFormRequestService
 
             var sql = @"
                 UPDATE FormRequests 
-                SET Status = @Status, ApprovedBy = @RejectedBy, ApprovedByName = @RejectedByName, ApprovedAt = @RejectedAt, RejectionReason = @RejectionReason
+                SET Status = @Status, ApprovedBy = @RejectedBy, ApprovedAt = @RejectedAt, RejectionReason = @RejectionReason
                 WHERE Id = @Id";
 
             var rowsAffected = await connection.ExecuteAsync(sql, new
@@ -1167,12 +1181,13 @@ public class FormRequestService : IFormRequestService
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            var sql = @"
-                SELECT Id, FormRequestId, ChangeType, PreviousValues as PreviousValuesJson, 
-                       NewValues as NewValuesJson, ChangedBy, ChangedByName, ChangedAt, Comments
-                FROM FormRequestHistory
-                WHERE FormRequestId = @FormRequestId
-                ORDER BY ChangedAt DESC";
+         var sql = @"
+          SELECT h.Id, h.FormRequestId, h.ChangeType, h.PreviousValues as PreviousValuesJson, 
+              h.NewValues as NewValuesJson, h.ChangedBy, COALESCE(u.DisplayName, h.ChangedBy) AS ChangedByName, h.ChangedAt, h.Comments
+          FROM FormRequestHistory h
+          LEFT JOIN Users u ON TRY_CONVERT(uniqueidentifier, h.ChangedBy) = u.UserObjectId
+          WHERE h.FormRequestId = @FormRequestId
+          ORDER BY h.ChangedAt DESC";
 
             var historyItems = await connection.QueryAsync(sql, new { FormRequestId = formRequestId });
             var result = new List<FormRequestHistory>();
@@ -1211,9 +1226,9 @@ public class FormRequestService : IFormRequestService
             await connection.OpenAsync();
 
             var sql = @"
-                INSERT INTO FormRequestHistory (FormRequestId, ChangeType, PreviousValues, NewValues, ChangedBy, ChangedByName, ChangedAt, Comments)
+                INSERT INTO FormRequestHistory (FormRequestId, ChangeType, PreviousValues, NewValues, ChangedBy, ChangedAt, Comments)
                 OUTPUT INSERTED.Id
-                VALUES (@FormRequestId, @ChangeType, @PreviousValues, @NewValues, @ChangedBy, @ChangedByName, @ChangedAt, @Comments)";
+                VALUES (@FormRequestId, @ChangeType, @PreviousValues, @NewValues, @ChangedBy, @ChangedAt, @Comments)";
 
             var id = await connection.QuerySingleAsync<int>(sql, new
             {
@@ -1222,7 +1237,6 @@ public class FormRequestService : IFormRequestService
                 PreviousValues = JsonSerializer.Serialize(history.PreviousValues),
                 NewValues = JsonSerializer.Serialize(history.NewValues),
                 history.ChangedBy,
-                history.ChangedByName,
                 history.ChangedAt,
                 history.Comments
             });
@@ -1260,8 +1274,8 @@ public class FormRequestService : IFormRequestService
         string changedBy, string changedByName, string? comments = null)
     {
         var sql = @"
-            INSERT INTO FormRequestHistory (FormRequestId, ChangeType, PreviousValues, NewValues, ChangedBy, ChangedByName, ChangedAt, Comments)
-            VALUES (@FormRequestId, @ChangeType, @PreviousValues, @NewValues, @ChangedBy, @ChangedByName, @ChangedAt, @Comments)";
+            INSERT INTO FormRequestHistory (FormRequestId, ChangeType, PreviousValues, NewValues, ChangedBy, ChangedAt, Comments)
+            VALUES (@FormRequestId, @ChangeType, @PreviousValues, @NewValues, @ChangedBy, @ChangedAt, @Comments)";
 
         await connection.ExecuteAsync(sql, new
         {
@@ -1270,7 +1284,6 @@ public class FormRequestService : IFormRequestService
             PreviousValues = JsonSerializer.Serialize(previousValues ?? new Dictionary<string, object?>()),
             NewValues = JsonSerializer.Serialize(newValues ?? new Dictionary<string, object?>()),
             ChangedBy = changedBy,
-            ChangedByName = changedByName,
             ChangedAt = DateTime.UtcNow,
             Comments = comments
         }, transaction);
@@ -1651,10 +1664,11 @@ public class FormRequestService : IFormRequestService
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            var sql = @"
+         var sql = @"
                 SELECT DISTINCT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
-                       fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
-                       fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
+              fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, 
+              COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName, 
+              fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) as ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
                        fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
                        fd.Name as FormName, fd.Description as FormDescription,
                        wsi.Status as WorkflowStepStatus, ws.AssignedRoles, ws.Name as StepName, wsi.Id as WorkflowStepInstanceId
@@ -1663,6 +1677,8 @@ public class FormRequestService : IFormRequestService
                 INNER JOIN WorkflowInstances wi ON fr.WorkflowInstanceId = wi.Id
                 INNER JOIN WorkflowStepInstances wsi ON wi.Id = wsi.WorkflowInstanceId
                 INNER JOIN WorkflowSteps ws ON wsi.StepId = ws.StepId AND wi.WorkflowDefinitionId = ws.WorkflowDefinitionId
+          LEFT JOIN Users uReq ON uReq.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
+          LEFT JOIN Users uApp ON uApp.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.ApprovedBy)
                 WHERE ws.StepType = @ApprovalStepType
                   AND wsi.Status IN (@PendingStatus, @InProgressStatus, @CompletedStatus)
                   AND (@IsAdmin = 1 
@@ -1856,19 +1872,22 @@ public class FormRequestService : IFormRequestService
             await connection.OpenAsync();
 
             // Find requests that have completed workflows but are still in Approved status (not Applied)
-            var sql = @"
-                SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
-                       fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
-                       fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                       fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
-                       fd.Name as FormName, fd.Description as FormDescription,
-                       wi.Status as WorkflowStatus, wi.CompletedAt as WorkflowCompletedAt
-                FROM FormRequests fr
-                INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
-                INNER JOIN WorkflowInstances wi ON fr.WorkflowInstanceId = wi.Id
-                WHERE wi.Status = @WorkflowCompletedStatus
-                  AND fr.Status = @ApprovedStatus
-                ORDER BY fr.RequestedAt DESC";
+                        var sql = @"
+                                SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
+                                             fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, 
+                                             COALESCE(uReq.DisplayName, fr.RequestedBy) AS RequestedByName, 
+                                             fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) AS ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
+                                             fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId,
+                                             fd.Name as FormName, fd.Description as FormDescription,
+                                             wi.Status as WorkflowStatus, wi.CompletedAt as WorkflowCompletedAt
+                                FROM FormRequests fr
+                                INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+                                INNER JOIN WorkflowInstances wi ON fr.WorkflowInstanceId = wi.Id
+                                LEFT JOIN Users uReq ON TRY_CONVERT(uniqueidentifier, fr.RequestedBy) = uReq.UserObjectId
+                                LEFT JOIN Users uApp ON TRY_CONVERT(uniqueidentifier, fr.ApprovedBy) = uApp.UserObjectId
+                                WHERE wi.Status = @WorkflowCompletedStatus
+                                    AND fr.Status = @ApprovedStatus
+                                ORDER BY fr.RequestedAt DESC";
 
             var requests = await connection.QueryAsync(sql, new 
             { 
@@ -2087,15 +2106,18 @@ public class FormRequestService : IFormRequestService
             if (isAdmin)
             {
                 // Admin users can see all requests
-                sql = @"
-                    SELECT DISTINCT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
-                           fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
-                           fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                           fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
-                           fd.Name as FormName, fd.Description as FormDescription, fd.ApproverRoles
-                    FROM FormRequests fr
-                    INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
-                    ORDER BY fr.RequestedAt DESC";
+          sql = @"
+              SELECT DISTINCT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
+                  fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, 
+                  COALESCE(uReq.DisplayName, fr.RequestedBy) AS RequestedByName, 
+                  fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) AS ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
+                  fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
+                  fd.Name as FormName, fd.Description as FormDescription, fd.ApproverRoles
+              FROM FormRequests fr
+              INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+              LEFT JOIN Users uReq ON TRY_CONVERT(uniqueidentifier, fr.RequestedBy) = uReq.UserObjectId
+              LEFT JOIN Users uApp ON TRY_CONVERT(uniqueidentifier, fr.ApprovedBy) = uApp.UserObjectId
+              ORDER BY fr.RequestedAt DESC";
             }
             else
             {
@@ -2104,8 +2126,9 @@ public class FormRequestService : IFormRequestService
                 // 2. Requests where they have approval permissions through workflow steps
                 sql = @"
                     SELECT DISTINCT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
-                           fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedByName, 
-                           fr.RequestedAt, fr.ApprovedBy, fr.ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
+                           fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, 
+                           COALESCE(uReq.DisplayName, fr.RequestedBy) AS RequestedByName, 
+                           fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) AS ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
                            fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
                            fd.Name as FormName, fd.Description as FormDescription, fd.ApproverRoles
                     FROM FormRequests fr
@@ -2113,6 +2136,8 @@ public class FormRequestService : IFormRequestService
                     LEFT JOIN WorkflowInstances wi ON fr.WorkflowInstanceId = wi.Id
                     LEFT JOIN WorkflowStepInstances wsi ON wi.Id = wsi.WorkflowInstanceId
                     LEFT JOIN WorkflowSteps ws ON wsi.StepId = ws.StepId AND wi.WorkflowDefinitionId = ws.WorkflowDefinitionId
+                    LEFT JOIN Users uReq ON TRY_CONVERT(uniqueidentifier, fr.RequestedBy) = uReq.UserObjectId
+                    LEFT JOIN Users uApp ON TRY_CONVERT(uniqueidentifier, fr.ApprovedBy) = uApp.UserObjectId
                     WHERE 
                         -- Requests created by the user
                         fr.RequestedBy = @UserId

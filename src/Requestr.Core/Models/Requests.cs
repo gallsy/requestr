@@ -80,8 +80,8 @@ public class BulkFormRequest : AuditableEntity
 public class BulkFormRequestItem : BaseEntity
 {
     public int BulkFormRequestId { get; set; }
-    public Dictionary<string, object> FieldValues { get; set; } = new();
-    public Dictionary<string, object> OriginalValues { get; set; } = new(); // For updates
+    public Dictionary<string, object?> FieldValues { get; set; } = new();
+    public Dictionary<string, object?> OriginalValues { get; set; } = new(); // For updates
     public int RowNumber { get; set; } // Original row number from CSV
     public RequestStatus Status { get; set; } = RequestStatus.Pending;
     public string? ValidationErrors { get; set; } // JSON array of validation errors

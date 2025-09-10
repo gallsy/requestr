@@ -103,6 +103,9 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Sync authenticated user claims into Users table
+app.UseMiddleware<Requestr.Web.Services.UserSyncMiddleware>();
+
 app.MapControllers();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
