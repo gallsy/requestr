@@ -532,7 +532,7 @@ else
     private Modal bulkUpdateModal = default!;
     private Modal bulkDeleteModal = default!;
     private Modal csvUploadModal = default!;
-    private Dictionary<string, object?> _bulkUpdateFields = new();
+    private Dictionary<string, string> _bulkUpdateFields = new();
     private string _bulkUpdateComments = string.Empty;
     private string _bulkDeleteComments = string.Empty;
     
@@ -943,10 +943,13 @@ else
             var selectedRecords = await DataViewService.GetSelectedRecordsAsync(FormDefinitionId, _selectedRecords.ToList());
 
             // Create bulk update request
+            // Convert string values to object? for the service contract
+            var updates = _bulkUpdateFields.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
+
             var bulkRequest = await DataViewService.CreateBulkUpdateRequestAsync(
                 FormDefinitionId, 
                 selectedRecords, 
-                _bulkUpdateFields, 
+                updates, 
                 currentUser, 
                 currentUserName, 
                 _bulkUpdateComments);
