@@ -160,6 +160,55 @@ public class DataService : IDataService
             using var connection = new SqlConnection(connectionString);
             await connection.OpenAsync();
 
+            // Determine columns that must not be updated (identity, computed/rowversion, primary keys, and WHERE columns)
+            var identityColumnSql = @"
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_NAME = @tableName 
+                    AND TABLE_SCHEMA = @schema
+                    AND COLUMNPROPERTY(OBJECT_ID(TABLE_SCHEMA + '.' + TABLE_NAME), COLUMN_NAME, 'IsIdentity') = 1";
+            var identityColumn = await connection.QueryFirstOrDefaultAsync<string>(identityColumnSql, new { tableName, schema });
+
+            var computedAndRowVersionSql = @"
+                SELECT c.COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS c
+                WHERE c.TABLE_NAME = @tableName
+                  AND c.TABLE_SCHEMA = @schema
+                  AND (
+                        COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsComputed') = 1
+                        OR c.DATA_TYPE IN ('timestamp', 'rowversion')
+                  )";
+            var computedAndRowVersion = (await connection.QueryAsync<string>(computedAndRowVersionSql, new { tableName, schema }))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            // Primary key columns
+            var primaryKeySql = @"
+                SELECT col.COLUMN_NAME
+                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+                INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+                    ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+                    AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
+                    AND tc.TABLE_NAME = kcu.TABLE_NAME
+                INNER JOIN INFORMATION_SCHEMA.COLUMNS col
+                    ON kcu.COLUMN_NAME = col.COLUMN_NAME
+                    AND kcu.TABLE_SCHEMA = col.TABLE_SCHEMA
+                    AND kcu.TABLE_NAME = col.TABLE_NAME
+                WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
+                    AND tc.TABLE_NAME = @tableName
+                    AND tc.TABLE_SCHEMA = @schema
+                ORDER BY kcu.ORDINAL_POSITION";
+            var primaryKeyColumns = (await connection.QueryAsync<string>(primaryKeySql, new { tableName, schema })).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var excluded = new HashSet<string>(computedAndRowVersion, StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(identityColumn)) excluded.Add(identityColumn);
+            foreach (var pk in primaryKeyColumns) excluded.Add(pk);
+            foreach (var wc in whereConditions.Keys) excluded.Add(wc);
+
+            // Filter data to only updatable columns
+            var updatableData = data
+                .Where(kvp => !excluded.Contains(kvp.Key))
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+
             // First, check if the record exists
             var whereClause = string.Join(" AND ", whereConditions.Keys.Select(k => $"[{k}] = @where_{k}"));
             var checkSql = $"SELECT COUNT(*) FROM [{schema}].[{tableName}] WHERE {whereClause}";
@@ -179,29 +228,35 @@ public class DataService : IDataService
                 throw new InvalidOperationException($"No records found to update. WHERE conditions: {string.Join(", ", whereConditions.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
             }
 
-            var setClause = string.Join(", ", data.Keys.Select(k => $"[{k}] = @{k}"));
+            if (updatableData.Count == 0)
+            {
+                _logger.LogInformation("No updatable columns for {Schema}.{TableName} after excluding identity/computed/PK/WHERE. Skipping UPDATE.", schema, tableName);
+                return true; // Treat as success: nothing to update
+            }
+
+            var setClause = string.Join(", ", updatableData.Keys.Select(k => $"[{k}] = @{k}"));
             var sql = $"UPDATE [{schema}].[{tableName}] SET {setClause} WHERE {whereClause}";
-            
+
             // Combine parameters
-            var parameters = new Dictionary<string, object?>(data);
+            var parameters = new Dictionary<string, object?>(updatableData);
             foreach (var condition in whereConditions)
             {
                 parameters[$"where_{condition.Key}"] = condition.Value;
             }
-            
+
             _logger.LogInformation("Executing UPDATE SQL: {Sql} with parameters: {Parameters}", 
                 sql, string.Join(", ", parameters.Select(kvp => $"{kvp.Key}={kvp.Value}")));
-            
+
             var rowsAffected = await connection.ExecuteAsync(sql, parameters);
-            
+
             _logger.LogInformation("Updated data in {Schema}.{TableName} in database {DatabaseName}. Rows affected: {RowsAffected}", 
                 schema, tableName, databaseName, rowsAffected);
-            
+
             if (rowsAffected == 0)
             {
                 throw new InvalidOperationException($"UPDATE operation affected 0 rows. This may indicate a data type mismatch or constraint violation.");
             }
-            
+
             return rowsAffected > 0;
         }
         catch (Exception ex)
