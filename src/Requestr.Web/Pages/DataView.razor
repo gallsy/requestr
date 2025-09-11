@@ -11,6 +11,7 @@
 @using Microsoft.AspNetCore.Components
 @using BlazorBootstrap
 @using Requestr.Web.Authorization
+@using Requestr.Web.Utilities
 @inject IDataViewService DataViewService
 @inject IFormDefinitionService FormDefinitionService
 @inject IFormAuthorizationService FormAuthorizationService
@@ -321,9 +322,106 @@ else
                     </div>
                     @if (_bulkUpdateFields.ContainsKey(field.Name))
                     {
-                        <input type="text" class="form-control mt-2" 
-                               placeholder="New value for @field.DisplayName"
-                               @bind="_bulkUpdateFields[field.Name]">
+                        var controlType = FieldRenderUtils.DetermineControlType(field);
+                        <div class="mt-2 d-flex align-items-start gap-2">
+                            <div class="flex-grow-1">
+                @if (controlType == "checkbox")
+                                {
+                                    if (!_bulkCheckboxValues.ContainsKey(field.Name)) { _bulkCheckboxValues[field.Name] = false; }
+                                    <div class="form-check">
+                    <input class="form-check-input" type="checkbox"
+                           @bind="_bulkCheckboxValues[field.Name]"
+                           @bind:after="@(() => OnBulkCheckboxChanged(field.Name))"
+                           disabled="@(_bulkSetNull.TryGetValue(field.Name, out var sn) && sn)" />
+                                        <label class="form-check-label">Set @field.DisplayName</label>
+                                    </div>
+                                }
+                                else if (controlType == "select" && !string.IsNullOrWhiteSpace(field.DropdownOptions))
+                    {
+                     <select class="form-select"
+                          @bind="_bulkUpdateFields[field.Name]"
+                          @bind:after="@(() => SetBulkFieldValue(field, null))"
+                                            disabled="@(_bulkSetNull.TryGetValue(field.Name, out var sn2) && sn2)">
+                                        <option value="">Select an option</option>
+                                        @foreach (var opt in FieldRenderUtils.GetDropdownOptions(field.DropdownOptions))
+                                        {
+                                            <option value="@opt.Value">@opt.Text</option>
+                                        }
+                                    </select>
+                                }
+                                else if (controlType == "textarea")
+                                {
+                                    var maxLen = field.MaxLength > 0 ? field.MaxLength : (int?)null;
+                                    <textarea class="form-control"
+                                              rows="4"
+                                              placeholder="New value for @field.DisplayName"
+                                              @bind="_bulkUpdateFields[field.Name]"
+                                              @bind:after="@(() => SetBulkFieldValue(field, null))"
+                                              disabled="@(_bulkSetNull.TryGetValue(field.Name, out var sn3) && sn3)"
+                                              required="@field.IsRequired"
+                                              maxlength="@maxLen"
+                                              pattern="@field.ValidationRegex"
+                                              title="@field.ValidationMessage"></textarea>
+                                    @if (!string.IsNullOrWhiteSpace(field.ValidationMessage))
+                                    {
+                                        <div class="form-text">@field.ValidationMessage</div>
+                                    }
+                                }
+                                else if (controlType == "date")
+                                {
+                     <input type="date" class="form-control"
+                         value="@(_bulkUpdateFields.TryGetValue(field.Name, out var v) ? v : string.Empty)"
+                                           disabled="@(_bulkSetNull.TryGetValue(field.Name, out var sn4) && sn4)"
+                                           required="@field.IsRequired"
+                                           pattern="@field.ValidationRegex"
+                                           title="@field.ValidationMessage"
+                                           @onchange="@(e => SetBulkFieldValue(field, e.Value))" />
+                                }
+                                else if (controlType == "datetime-local")
+                                {
+                     <input type="datetime-local" class="form-control"
+                         value="@(_bulkUpdateFields.TryGetValue(field.Name, out var v2) ? v2 : string.Empty)"
+                                           disabled="@(_bulkSetNull.TryGetValue(field.Name, out var sn5) && sn5)"
+                                           required="@field.IsRequired"
+                                           pattern="@field.ValidationRegex"
+                                           title="@field.ValidationMessage"
+                                           @onchange="@(e => SetBulkFieldValue(field, e.Value))" />
+                                }
+                                else if (controlType == "time")
+                                {
+                     <input type="time" class="form-control"
+                         value="@(_bulkUpdateFields.TryGetValue(field.Name, out var v3) ? v3 : string.Empty)"
+                                           disabled="@(_bulkSetNull.TryGetValue(field.Name, out var sn6) && sn6)"
+                                           required="@field.IsRequired"
+                                           pattern="@field.ValidationRegex"
+                                           title="@field.ValidationMessage"
+                                           @onchange="@(e => SetBulkFieldValue(field, e.Value))" />
+                                }
+                                else
+                                {
+                                    var inputType = FieldRenderUtils.GetInputType(field.DataType ?? string.Empty);
+                                    var isInteger = new[]{"tinyint","smallint","int","bigint"}.Contains(field.DataType?.ToLower());
+                                    <input type="@inputType" class="form-control"
+                                           placeholder="New value for @field.DisplayName"
+                         @bind="_bulkUpdateFields[field.Name]"
+                         @bind:after="@(() => SetBulkFieldValue(field, null))"
+                                           disabled="@(_bulkSetNull.TryGetValue(field.Name, out var sn7) && sn7)"
+                                           required="@field.IsRequired"
+                                           pattern="@field.ValidationRegex"
+                                           title="@field.ValidationMessage"
+                                           maxlength="@((inputType == "text" && field.MaxLength > 0) ? field.MaxLength : (int?)null)"
+                                           step="@(inputType == "number" ? (isInteger ? "1" : "any") : null)"
+                         />
+                                }
+                            </div>
+                            <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="null-@field.Name"
+                        @bind="_bulkSetNull[field.Name]"
+                        @bind:after="@(() => OnBulkSetNullChanged(field.Name))"
+                        disabled="@field.IsRequired" />
+                                <label class="form-check-label" for="null-@field.Name">NULL</label>
+                            </div>
+                        </div>
                     }
                 </div>
             }
@@ -532,7 +630,10 @@ else
     private Modal bulkUpdateModal = default!;
     private Modal bulkDeleteModal = default!;
     private Modal csvUploadModal = default!;
-    private Dictionary<string, string> _bulkUpdateFields = new();
+    private Dictionary<string, string> _bulkUpdateFields = new(); // UI text backing
+    private Dictionary<string, object?> _bulkUpdateValues = new(); // typed values for submission
+    private Dictionary<string, bool> _bulkCheckboxValues = new(); // checkbox backing
+    private Dictionary<string, bool> _bulkSetNull = new(); // per-field NULL flag
     private string _bulkUpdateComments = string.Empty;
     private string _bulkDeleteComments = string.Empty;
     
@@ -673,6 +774,44 @@ else
         }
     }
 
+    private void OnBulkCheckboxChanged(string fieldName)
+    {
+        if (_formDefinition == null) return;
+        var field = _formDefinition.Fields.FirstOrDefault(f => f.Name == fieldName);
+        if (field == null) return;
+        var controlType = FieldRenderUtils.DetermineControlType(field);
+        var valStr = _bulkCheckboxValues.TryGetValue(fieldName, out var b) && b ? "true" : "false";
+        _bulkUpdateFields[fieldName] = valStr;
+        _bulkUpdateValues[fieldName] = FieldRenderUtils.ConvertStringToTyped(field.DataType, controlType, valStr);
+    }
+
+    private void SetBulkFieldValue(FormField field, object? raw)
+    {
+        var controlType = FieldRenderUtils.DetermineControlType(field);
+        var s = _bulkUpdateFields.TryGetValue(field.Name, out var v) ? v : raw?.ToString() ?? string.Empty;
+        _bulkUpdateFields[field.Name] = s ?? string.Empty;
+        _bulkUpdateValues[field.Name] = FieldRenderUtils.ConvertStringToTyped(field.DataType, controlType, s ?? string.Empty);
+    }
+
+    private void OnBulkSetNullChanged(string fieldName)
+    {
+        if (_bulkSetNull.TryGetValue(fieldName, out var isNull) && isNull)
+        {
+            _bulkUpdateValues[fieldName] = null;
+        }
+        else if (_formDefinition != null)
+        {
+            // Re-derive typed value from current text if unsetting NULL
+            var field = _formDefinition.Fields.FirstOrDefault(f => f.Name == fieldName);
+            if (field != null)
+            {
+                var controlType = FieldRenderUtils.DetermineControlType(field);
+                var s = _bulkUpdateFields.TryGetValue(fieldName, out var v) ? v : string.Empty;
+                _bulkUpdateValues[fieldName] = FieldRenderUtils.ConvertStringToTyped(field.DataType, controlType, s);
+            }
+        }
+    }
+
     private async Task ChangePage(int page)
     {
         if (_dataResult == null || page < 1 || page > _dataResult.TotalPages) return;
@@ -738,8 +877,20 @@ else
 
     private async Task ShowBulkUpdateModal()
     {
-        _bulkUpdateFields.Clear();
+    _bulkUpdateFields.Clear();
+    _bulkUpdateValues.Clear();
+    _bulkCheckboxValues.Clear();
+    _bulkSetNull.Clear();
         _bulkUpdateComments = string.Empty;
+        if (_formDefinition?.Fields != null)
+        {
+            // Prepopulate per-field dictionaries to safe defaults
+            foreach (var f in _formDefinition.Fields)
+            {
+                _bulkCheckboxValues[f.Name] = false;
+                _bulkSetNull[f.Name] = false;
+            }
+        }
         await bulkUpdateModal.ShowAsync();
     }
 
@@ -917,11 +1068,18 @@ else
         {
             if (selected)
             {
+                // Initialize all per-field states to avoid KeyNotFound during bind
                 _bulkUpdateFields[fieldName] = string.Empty;
+                _bulkSetNull[fieldName] = false;
+                _bulkCheckboxValues[fieldName] = false;
+                _bulkUpdateValues.Remove(fieldName); // let handlers populate typed value later
             }
             else
             {
                 _bulkUpdateFields.Remove(fieldName);
+                _bulkSetNull.Remove(fieldName);
+                _bulkCheckboxValues.Remove(fieldName);
+                _bulkUpdateValues.Remove(fieldName);
             }
         }
     }
@@ -943,8 +1101,35 @@ else
             var selectedRecords = await DataViewService.GetSelectedRecordsAsync(FormDefinitionId, _selectedRecords.ToList());
 
             // Create bulk update request
-            // Convert string values to object? for the service contract
-            var updates = _bulkUpdateFields.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
+            // Build updates using typed values and NULL flags. Only include fields toggled on.
+            var updates = new Dictionary<string, object?>();
+            foreach (var kv in _bulkUpdateFields)
+            {
+                var name = kv.Key;
+                if (_bulkSetNull.TryGetValue(name, out var isNull) && isNull)
+                {
+                    updates[name] = null;
+                }
+                else if (_bulkUpdateValues.TryGetValue(name, out var typed))
+                {
+                    updates[name] = typed;
+                }
+                else
+                {
+                    // If no typed value, handle checkbox explicitly; otherwise fallback to string
+                    var fieldMeta = _formDefinition?.Fields.FirstOrDefault(f => f.Name == name);
+                    var controlType = fieldMeta != null ? FieldRenderUtils.DetermineControlType(fieldMeta) : string.Empty;
+                    if (controlType == "checkbox")
+                    {
+                        var chk = _bulkCheckboxValues.TryGetValue(name, out var b) && b;
+                        updates[name] = chk;
+                    }
+                    else
+                    {
+                        updates[name] = kv.Value; // fallback as string
+                    }
+                }
+            }
 
             var bulkRequest = await DataViewService.CreateBulkUpdateRequestAsync(
                 FormDefinitionId, 
