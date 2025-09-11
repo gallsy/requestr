@@ -3,6 +3,7 @@
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
 @using Requestr.Web.Authorization
+@using Requestr.Web.Utilities
 @inject IFormDefinitionService FormDefinitionService
 @inject IFormRequestService FormRequestService
 @inject IDataService DataService
@@ -119,9 +120,9 @@ else
                                                             }
                                                         </label>
                                                         
-                                                        @{
+                                                        @{ 
                                                             var dataType = field.DataType?.ToLower() ?? "text";
-                                                            var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : DetermineControlType(dataType);
+                                                            var controlType = FieldRenderUtils.DetermineControlType(field);
                                                         }
                                                         
                                                         @* Render the appropriate control type *@
@@ -148,13 +149,13 @@ else
                                                         }
                                                         else if (controlType == "select")
                                                         {
-                                                            <select class="form-select" 
-                                                                    @bind="_fieldValues[field.Name]"
-                                                                                                                                        disabled="@IsFieldDisabled(field)">
+                                <select class="form-select" 
+                                    @bind="_fieldValues[field.Name]"
+                                                                    disabled="@IsFieldDisabled(field)">
                                                                 <option value="">Select an option</option>
                                                                 @if (!string.IsNullOrEmpty(field.DropdownOptions))
                                                                 {
-                                                                    @foreach (var option in GetDropdownOptions(field.DropdownOptions))
+                                    @foreach (var option in GetDropdownOptions(field.DropdownOptions))
                                                                     {
                                                                         <option value="@option.Value">@option.Text</option>
                                                                     }
@@ -223,9 +224,9 @@ else
                                                 }
                                             </label>
                                             
-                                            @{
+                                            @{ 
                                                 var dataType = field.DataType?.ToLower() ?? "text";
-                                                var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : DetermineControlType(dataType);
+                                                var controlType = FieldRenderUtils.DetermineControlType(field);
                                             }
                                             
                                             @* Same control rendering logic as above *@
@@ -252,13 +253,13 @@ else
                                             }
                                             else if (controlType == "select")
                                             {
-                                                <select class="form-select" 
-                                                        @bind="_fieldValues[field.Name]"
-                                                                                                                disabled="@IsFieldDisabled(field)">
+                        <select class="form-select" 
+                            @bind="_fieldValues[field.Name]"
+                                                        disabled="@IsFieldDisabled(field)">
                                                     <option value="">Select an option</option>
                                                     @if (!string.IsNullOrEmpty(field.DropdownOptions))
                                                     {
-                                                        @foreach (var option in GetDropdownOptions(field.DropdownOptions))
+                            @foreach (var option in GetDropdownOptions(field.DropdownOptions))
                                                         {
                                                             <option value="@option.Value">@option.Text</option>
                                                         }
@@ -450,7 +451,7 @@ else
             foreach (var field in _formDefinition.Fields)
             {
                 var dataType = field.DataType?.ToLower() ?? "text";
-                var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : DetermineControlType(dataType);
+                var controlType = FieldRenderUtils.DetermineControlType(field);
                 
                 // Check if this should be a checkbox (using ControlType or fallback to DataType)
                 if (controlType == "checkbox" || dataType == "bit")
@@ -514,7 +515,7 @@ else
                         if (recordData.ContainsKey(field.Name))
                         {
                             var dataType = field.DataType?.ToLower() ?? "text";
-                            var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : DetermineControlType(dataType);
+                            var controlType = FieldRenderUtils.DetermineControlType(field);
                             var raw = recordData[field.Name];
                             
                             if (controlType == "checkbox" || dataType == "bit")
@@ -595,7 +596,7 @@ else
                     if (field != null)
                     {
                         var dataType = field.DataType?.ToLower() ?? "text";
-                        var controlType = !string.IsNullOrEmpty(field.ControlType) ? field.ControlType.ToLower() : DetermineControlType(dataType);
+                        var controlType = FieldRenderUtils.DetermineControlType(field);
                         
                         if (controlType == "checkbox" || dataType == "bit")
                         {
@@ -657,111 +658,19 @@ else
 
     private string GetInputType(string dataType)
     {
-        var lowerType = dataType.ToLower();
-        
-        // Handle form control types (new format)
-        if (lowerType == "number" || lowerType == "date" || lowerType == "datetime-local" || 
-            lowerType == "time" || lowerType == "email" || lowerType == "text" || 
-            lowerType == "checkbox" || lowerType == "textarea")
-        {
-            return lowerType == "checkbox" ? "checkbox" : lowerType;
-        }
-        
-        // Handle SQL data types (legacy format) - convert to form control types
-        return lowerType switch
-        {
-            "bit" => "checkbox",
-            "tinyint" or "smallint" or "int" or "bigint" => "number",
-            "decimal" or "numeric" or "float" or "real" or "money" or "smallmoney" => "number",
-            "date" => "date",
-            "datetime" or "datetime2" or "smalldatetime" => "datetime-local",
-            "time" => "time",
-            "varchar" or "nvarchar" or "char" or "nchar" when IsLongText(dataType) => "textarea",
-            "varchar" or "nvarchar" or "char" or "nchar" => "text",
-            "text" or "ntext" => "textarea",
-            "uniqueidentifier" => "text",
-            _ => "text"
-        };
+        return FieldRenderUtils.GetInputType(dataType);
     }
 
-    private bool IsLongText(string sqlDataType)
-    {
-        // Consider fields with more than 255 characters as long text
-        if (sqlDataType.Contains("("))
-        {
-            var lengthPart = sqlDataType.Split('(')[1].Split(')')[0];
-            if (int.TryParse(lengthPart, out int length))
-            {
-                return length > 255;
-            }
-        }
-        return false;
-    }
+    // Removed local IsLongText; using FieldRenderUtils internal logic
 
-    private string DetermineControlType(string dataType)
-    {
-        var lowerType = dataType.ToLower();
-        
-        return lowerType switch
-        {
-            "bit" => "checkbox",
-            "date" => "date",
-            "datetime" or "datetime2" or "smalldatetime" => "datetime-local",
-            "time" => "time",
-            "select" => "select",
-            "varchar" or "nvarchar" or "char" or "nchar" when IsLongText(dataType) => "textarea",
-            "text" or "ntext" => "textarea",
-            _ => "input"
-        };
-    }
+    // Removed local DetermineControlType; using FieldRenderUtils.DetermineControlType(field)
 
     private List<(string Value, string Text)> GetDropdownOptions(string dropdownOptionsJson)
     {
-        if (string.IsNullOrEmpty(dropdownOptionsJson))
-            return new List<(string Value, string Text)>();
-
-        try
-        {
-            // Try to parse as simple array of strings (JSON format)
-            var simpleOptions = System.Text.Json.JsonSerializer.Deserialize<string[]>(dropdownOptionsJson);
-            if (simpleOptions != null)
-            {
-                return simpleOptions.Select(opt => (Value: opt, Text: opt)).ToList();
-            }
-        }
-        catch
-        {
-            try
-            {
-                // Try to parse as array of objects with Value and Text properties (JSON format)
-                var complexOptions = System.Text.Json.JsonSerializer.Deserialize<DropdownOption[]>(dropdownOptionsJson);
-                if (complexOptions != null)
-                {
-                    return complexOptions.Select(opt => (Value: opt.Value, Text: opt.Text)).ToList();
-                }
-            }
-            catch
-            {
-                // Check if it's line-separated format from Form Builder
-                if (dropdownOptionsJson.Contains('\n') || dropdownOptionsJson.Contains('\r'))
-                {
-                    var lines = dropdownOptionsJson.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-                    return lines.Select(line => (Value: line.Trim(), Text: line.Trim())).ToList();
-                }
-                
-                // If all else fails, treat as single option
-                return new List<(string Value, string Text)> { (Value: dropdownOptionsJson, Text: dropdownOptionsJson) };
-            }
-        }
-
-        return new List<(string Value, string Text)>();
+        return FieldRenderUtils.GetDropdownOptions(dropdownOptionsJson);
     }
 
-    public class DropdownOption
-    {
-        public string Value { get; set; } = string.Empty;
-        public string Text { get; set; } = string.Empty;
-    }
+    // Removed local DropdownOption; using FieldRenderUtils.DropdownOption
 
     private async Task SubmitForm()
     {
