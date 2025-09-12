@@ -41,34 +41,31 @@
                 }
                 else
                 {
-                    <div class="list-group list-group-flush">
+                    <div class="list-group list-group-flush available-forms-list">
                         @foreach (var form in AvailableForms?.Take(5) ?? Enumerable.Empty<FormDefinition>())
                         {
-                            <div class="list-group-item list-group-item-action border-0">
-                                <div class="d-flex w-100 justify-content-between align-items-start">
-                                    <div class="flex-grow-1">
-                                        <h6 class="mb-2 fw-bold">@form.Name</h6>
-                                        <p class="mb-1 text-muted small">@form.Description</p>
-                                        <small class="text-muted">
+                            <div class="list-group-item list-group-item-action border-0 available-form-item">
+                                <div class="d-flex align-items-stretch">
+                                    <div class="flex-grow-1 me-3 min-width-0">
+                                        <div class="d-flex align-items-start justify-content-between">
+                                            <h6 class="mb-1 fw-bold text-truncate" title="@form.Name">@form.Name</h6>
+                                        </div>
+                                        <p class="mb-1 text-muted small text-truncate-2" title="@form.Description">@form.Description</p>
+                                        <small class="text-muted d-block text-truncate">
                                             <i class="bi bi-server me-1"></i>@form.DatabaseConnectionName
                                             <span class="mx-2">•</span>
                                             <i class="bi bi-table me-1"></i>@form.TableName
                                         </small>
                                     </div>
-                                    <div class="btn-group">
-                                        <!-- New Request - Requires CreateRequest permission -->
+                                    <div class="form-actions d-flex flex-column flex-md-row gap-2 ms-auto">
                                         <DynamicAuthorizeView FormDefinitionId="@form.Id" Permission="FormPermissionType.CreateRequest">
-                                            <a href="/forms/@form.Id" class="btn btn-sm btn-outline-primary">
-                                                <i class="bi bi-plus-circle me-1"></i>
-                                                New Request
+                                            <a href="/forms/@form.Id" class="btn btn-sm btn-outline-primary action-btn" title="Create a new request">
+                                                <i class="bi bi-plus-circle me-1"></i> New
                                             </a>
                                         </DynamicAuthorizeView>
-                                        
-                                        <!-- View Data - Requires ViewData permission -->
                                         <DynamicAuthorizeView FormDefinitionId="@form.Id" Permission="FormPermissionType.ViewData">
-                                            <a href="/data-view/@form.Id" class="btn btn-sm btn-outline-secondary">
-                                                <i class="bi bi-table me-1"></i>
-                                                View Data
+                                            <a href="/data-view/@form.Id" class="btn btn-sm btn-outline-secondary action-btn" title="View existing data">
+                                                <i class="bi bi-table me-1"></i> Data
                                             </a>
                                         </DynamicAuthorizeView>
                                     </div>

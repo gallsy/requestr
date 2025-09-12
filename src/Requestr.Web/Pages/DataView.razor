@@ -10,6 +10,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
 @using BlazorBootstrap
+@using Microsoft.JSInterop
 @using Requestr.Web.Authorization
 @using Requestr.Web.Utilities
 @inject IDataViewService DataViewService
@@ -202,7 +203,7 @@ else
                     <div class="card-body">
                         @if (_dataResult != null && _dataResult.Records.Any())
                         {
-                            <div class="table-responsive">
+                            <div class="table-responsive data-table-nowrap">
                                 <table class="table table-striped table-hover">
                                     <thead class="table-dark">
                                         <tr>
@@ -211,9 +212,15 @@ else
                                             </th>
                                             @foreach (var column in _dataResult.Columns)
                                             {
-                                                <th>@column</th>
+                                                <th class="resizable-header" data-column="@column" style="@GetColumnWidthStyle(column)">
+                                                    <span>@column</span>
+                                                    <span class="resize-handle" @onmousedown="(e) => BeginResize(e, column)"></span>
+                                                </th>
                                             }
-                                            <th style="width: 150px;">Actions</th>
+                                            <th style='@GetColumnWidthStyle("__actions")' class="resizable-header" data-column="__actions">
+                                                <span>Actions</span>
+                                                <span class="resize-handle" @onmousedown='(e) => BeginResize(e, "__actions")'></span>
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -230,7 +237,8 @@ else
                                                 </td>
                                                 @foreach (var column in _dataResult.Columns)
                                                 {
-                                                    <td>@(record.ContainsKey(column) ? record[column]?.ToString() : "")</td>
+                                                    var cellValue = record.ContainsKey(column) ? record[column]?.ToString() : "";
+                                                    <td title="@cellValue">@cellValue</td>
                                                 }
                                                 <td>
                                                     <div class="btn-group btn-group-sm" role="group">
@@ -642,6 +650,65 @@ else
     private string _csvFileName = string.Empty;
     private CsvUploadResult? _csvUploadResult;
     private string _csvUploadComments = string.Empty;
+
+    // Column resize state
+    private string? _resizingColumn;
+    private double _resizeStartX;
+    private double _initialColumnWidth;
+    private readonly Dictionary<string, double> _columnWidths = new();
+    private DotNetObjectReference<DataView>? _dotNetRef;
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    private string GetColumnWidthStyle(string column)
+    {
+        if (_columnWidths.TryGetValue(column, out var width) && width > 0)
+        {
+            return $"width:{width}px;min-width:{width}px;max-width:{width}px;";
+        }
+        if (column == "__actions") return "width:150px;min-width:120px;";
+        return string.Empty; // auto
+    }
+
+    private async void BeginResize(MouseEventArgs e, string column)
+    {
+        _resizingColumn = column;
+        _resizeStartX = e.ClientX;
+        _initialColumnWidth = _columnWidths.TryGetValue(column, out var w) ? w : 150;
+        _dotNetRef ??= DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("dataViewColumnResizer.begin", _dotNetRef, column, _initialColumnWidth, e.ClientX);
+    }
+
+    [JSInvokable]
+    public void OnColumnResize(string column, double newWidth)
+    {
+        if (string.IsNullOrWhiteSpace(column) || newWidth < 40) return;
+        _columnWidths[column] = newWidth;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnColumnResizeEnd(string column, double finalWidth)
+    {
+        if (!string.IsNullOrWhiteSpace(column) && finalWidth >= 40)
+        {
+            _columnWidths[column] = finalWidth;
+        }
+        _resizingColumn = null;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_dotNetRef != null)
+            {
+                await JS.InvokeVoidAsync("dataViewColumnResizer.detach");
+                _dotNetRef.Dispose();
+            }
+        }
+        catch { /* ignore disposal errors */ }
+    }
 
     protected override async Task OnInitializedAsync()
     {

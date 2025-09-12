@@ -391,6 +391,60 @@ a:hover, .btn-link:hover {
     color: var(--primary-dark);
 }
 
+/* Available Forms list layout improvements */
+.available-forms-list .available-form-item {
+    padding-top: 0.85rem;
+    padding-bottom: 0.85rem;
+}
+.available-forms-list .form-actions {
+    width: 140px; /* fixed action column */
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+}
+.available-forms-list .form-actions .action-btn {
+    flex: 1 1 auto;
+    width: 100%;
+}
+@media (min-width: 768px) {
+    .available-forms-list .form-actions {
+        flex-direction: column;
+        gap: .5rem;
+    }
+    .available-forms-list .form-actions .action-btn {
+        width: 100%;
+    }
+}
+.text-truncate-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2; /* standard */
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Data table non-wrapping & basic resizable columns */
+.data-table-nowrap table td,
+.data-table-nowrap table th {
+    white-space: nowrap;
+    vertical-align: middle;
+}
+.data-table-nowrap .table-responsive { overflow-x: auto; }
+
+/* Basic column resize handles */
+.resizable-header { position: relative; }
+.resizable-header .resize-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 6px;
+    cursor: col-resize;
+    user-select: none;
+    height: 100%;
+}
+.resizing-column { background-color: rgba(59,130,246,0.15); }
+
 /* Align trailing chevrons */
 .list-chevron { align-self: center; }
 
