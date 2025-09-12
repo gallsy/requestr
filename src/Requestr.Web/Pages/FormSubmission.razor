@@ -708,8 +708,21 @@ else
                 return;
             }
 
-            // Combine regular field values and checkbox values
-            var allFieldValues = _fieldValues.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
+            // Combine regular field values and checkbox values, honoring TreatBlankAsNull
+            var allFieldValues = new Dictionary<string, object?>();
+            foreach (var kv in _fieldValues)
+            {
+                var fld = _formDefinition.Fields.FirstOrDefault(f => f.Name == kv.Key);
+                if (fld != null && fld.TreatBlankAsNull && !fld.IsRequired)
+                {
+                    var v = kv.Value?.Trim();
+                    allFieldValues[kv.Key] = string.IsNullOrEmpty(v) ? null : v;
+                }
+                else
+                {
+                    allFieldValues[kv.Key] = kv.Value;
+                }
+            }
             foreach (var checkboxValue in _checkboxValues)
             {
                 allFieldValues[checkboxValue.Key] = checkboxValue.Value;

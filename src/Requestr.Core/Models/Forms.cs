@@ -64,6 +64,7 @@ public class FormField : BaseEntity
     public string? VisibilityCondition { get; set; }
     public string? DropdownOptions { get; set; } // JSON array of options for select controls
     public int DisplayOrder { get; set; }
+    public bool TreatBlankAsNull { get; set; } = false;
     
     // Grid positioning properties
     public int? FormSectionId { get; set; }

@@ -38,7 +38,7 @@ public class FormDefinitionService : IFormDefinitionService
                        fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.MaxLength, 
                        ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
-                       ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder
+                       ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
                 ORDER BY fd.Name, ff.DisplayOrder";
@@ -91,7 +91,8 @@ public class FormDefinitionService : IFormDefinitionService
                         ValidationMessage = (string?)row.ValidationMessage,
                         VisibilityCondition = (string?)row.VisibilityCondition,
                         DropdownOptions = (string?)row.DropdownOptions,
-                        DisplayOrder = (int)row.DisplayOrder
+                        DisplayOrder = (int)row.DisplayOrder,
+                        TreatBlankAsNull = Convert.ToBoolean(row.TreatBlankAsNull)
                     };
                     formDict[(int)row.Id].Fields.Add(field);
                 }
@@ -122,7 +123,7 @@ public class FormDefinitionService : IFormDefinitionService
                        fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.MaxLength, 
                        ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
-                       ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder
+                       ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
                 WHERE fd.IsActive = 1
@@ -175,7 +176,8 @@ public class FormDefinitionService : IFormDefinitionService
                         ValidationMessage = row.ValidationMessage as string,
                         VisibilityCondition = row.VisibilityCondition as string,
                         DropdownOptions = row.DropdownOptions as string,
-                        DisplayOrder = (int)(row.DisplayOrder ?? 0)
+                        DisplayOrder = (int)(row.DisplayOrder ?? 0),
+                        TreatBlankAsNull = Convert.ToBoolean(row.TreatBlankAsNull ?? 0)
                     };
 
                     formDict[(int)row.FormDefinitionId].Fields.Add(field);
@@ -295,6 +297,7 @@ public class FormDefinitionService : IFormDefinitionService
                         VisibilityCondition = (string?)row.VisibilityCondition,
                         DropdownOptions = (string?)row.DropdownOptions,
                         DisplayOrder = (int)row.DisplayOrder,
+                        TreatBlankAsNull = Convert.ToBoolean(row.TreatBlankAsNull ?? 0),
                         FormSectionId = (int?)row.FormSectionId,
                         GridRow = (int)(row.GridRow ?? 1),
                         GridColumn = (int)(row.GridColumn ?? 1),
@@ -381,8 +384,8 @@ public class FormDefinitionService : IFormDefinitionService
                 if (formDefinition.Fields.Any())
                 {
                     var fieldSql = @"
-                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan)
-                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan)";
+                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan, TreatBlankAsNull)
+                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan, @TreatBlankAsNull)";
 
                     foreach (var field in formDefinition.Fields)
                     {
@@ -487,8 +490,8 @@ public class FormDefinitionService : IFormDefinitionService
                 if (formDefinition.Fields.Any())
                 {
                     var fieldSql = @"
-                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan)
-                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan)";
+                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan, TreatBlankAsNull)
+                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan, @TreatBlankAsNull)";
 
                     foreach (var field in formDefinition.Fields)
                     {
@@ -554,7 +557,7 @@ public class FormDefinitionService : IFormDefinitionService
                        fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.MaxLength, 
                        ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
-                       ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder
+                       ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
                 WHERE fd.IsActive = 1
@@ -608,7 +611,8 @@ public class FormDefinitionService : IFormDefinitionService
                         ValidationMessage = (string?)row.ValidationMessage,
                         VisibilityCondition = (string?)row.VisibilityCondition,
                         DropdownOptions = (string?)row.DropdownOptions,
-                        DisplayOrder = (int)row.DisplayOrder
+                        DisplayOrder = (int)row.DisplayOrder,
+                        TreatBlankAsNull = Convert.ToBoolean(row.TreatBlankAsNull)
                     };
                     formDict[(int)row.Id].Fields.Add(field);
                 }

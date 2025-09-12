@@ -252,6 +252,7 @@
                             </div>
                         </div>
                     </div>
+                    @* Removed misplaced Blank is NULL checkbox from Details tab; now shown in field configuration modal *@
                 </div>
             }
 
@@ -1292,6 +1293,30 @@
                                 <label class="form-check-label">Visible in Data View</label>
                             </div>
                         </div>
+                        <div class="col-md-3">
+                            @if (_selectedField != null)
+                            {
+                                var selNameCfg = _selectedField.Name;
+                                var colCfg = _tableColumns.FirstOrDefault(c => string.Equals(c.Name, selNameCfg, StringComparison.OrdinalIgnoreCase));
+                                var isNullableCfg = colCfg?.IsNullable ?? true; // default true until loaded
+                                var eligibleCfg = isNullableCfg && !_selectedField.IsRequired;
+                                if (_selectedField.IsRequired && _selectedField.TreatBlankAsNull)
+                                {
+                                    _selectedField.TreatBlankAsNull = false; // enforce rule
+                                }
+                                <div class="form-check" title="Treat blank input as NULL when saved (only for nullable, non-required fields)">
+                                    <input class="form-check-input" type="checkbox" @bind="_selectedField.TreatBlankAsNull" disabled="@(!eligibleCfg)" />
+                                    <label class="form-check-label">Blank is NULL</label>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" disabled />
+                                    <label class="form-check-label text-muted">Blank is NULL</label>
+                                </div>
+                            }
+                        </div>
                     </div>
         }
     </BodyTemplate>
@@ -1891,7 +1916,8 @@
                     IsVisible = true,
                     IsVisibleInDataView = true,
                     DefaultValue = GetDefaultValueForSqlType(_draggedColumn.DataType, _draggedColumn.IsNullable, _draggedColumn.DefaultValue),
-                    DisplayOrder = _formDefinition.Fields.Count + 1
+                    DisplayOrder = _formDefinition.Fields.Count + 1,
+                    TreatBlankAsNull = _draggedColumn.IsNullable && !_draggedColumn.IsIdentity // default ON for eligible nullable columns
                 };
                 
                 // Store the original SQL type for this field
@@ -2573,7 +2599,8 @@
                     FormSectionId = section.Id,
                     GridRow = GetNextAvailableRow(section),
                     GridColumn = 1,
-                    GridColumnSpan = Math.Min(6, section.MaxColumns) // Ensure span doesn't exceed section width
+                    GridColumnSpan = Math.Min(6, section.MaxColumns), // Ensure span doesn't exceed section width
+                    TreatBlankAsNull = _draggedColumn.IsNullable && !_draggedColumn.IsIdentity
                 };
                 
                 // Store the original SQL type for this field
@@ -2918,7 +2945,8 @@
             FormSectionId = section.Id,
             GridRow = row,
             GridColumn = col,
-            GridColumnSpan = gridColumnSpan
+            GridColumnSpan = gridColumnSpan,
+            TreatBlankAsNull = column.IsNullable && !column.IsIdentity
         };
 
         // Store the original SQL type for this field
