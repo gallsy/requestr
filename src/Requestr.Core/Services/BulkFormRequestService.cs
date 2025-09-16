@@ -47,10 +47,24 @@ public class BulkFormRequestService : IBulkFormRequestService
         
         try
         {
-            // First validate the file upload for security
-            var fileSize = csvStream.Length;
+            // Ensure we have a seekable working stream (BrowserFileStream is non-seekable)
+            Stream workingStream;
+            if (!csvStream.CanSeek)
+            {
+                var ms = new MemoryStream();
+                await csvStream.CopyToAsync(ms);
+                ms.Position = 0;
+                workingStream = ms;
+            }
+            else
+            {
+                csvStream.Position = 0;
+                workingStream = csvStream;
+            }
+
+            var fileSize = workingStream.Length;
             var contentType = "text/csv"; // Assuming CSV content type
-            var fileValidationResult = await _inputValidationService.ValidateCsvUploadAsync(csvStream, fileName, fileSize, contentType);
+            var fileValidationResult = await _inputValidationService.ValidateCsvUploadAsync(workingStream, fileName, fileSize, contentType);
             
             if (!fileValidationResult.IsValid)
             {
@@ -58,8 +72,11 @@ public class BulkFormRequestService : IBulkFormRequestService
                 return result;
             }
             
-            // Reset stream position after validation
-            csvStream.Position = 0;
+            // Reset working stream position after validation
+            if (workingStream.CanSeek)
+            {
+                workingStream.Position = 0;
+            }
             
             // Get form definition to validate against
             var formDefinition = await _formDefinitionService.GetFormDefinitionAsync(formDefinitionId);
@@ -78,7 +95,7 @@ public class BulkFormRequestService : IBulkFormRequestService
                 TrimOptions = TrimOptions.Trim
             };
 
-            using var reader = new StreamReader(csvStream, Encoding.UTF8);
+            using var reader = new StreamReader(workingStream, Encoding.UTF8, leaveOpen: true);
             using var csv = new CsvReader(reader, config);
 
             // Read headers

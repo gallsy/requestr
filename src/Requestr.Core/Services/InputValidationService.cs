@@ -118,10 +118,26 @@ public class InputValidationService : IInputValidationService
                 return fileValidation;
             }
 
-            // Read and validate CSV content
-            csvStream.Position = 0;
-            using var reader = new StreamReader(csvStream);
-            var content = await reader.ReadToEndAsync();
+            // Read and validate CSV content (handle non-seekable streams e.g. BrowserFileStream)
+            if (csvStream.CanSeek)
+            {
+                csvStream.Position = 0;
+            }
+
+            string content;
+            if (!csvStream.CanSeek)
+            {
+                using var tempMs = new MemoryStream();
+                await csvStream.CopyToAsync(tempMs);
+                tempMs.Position = 0;
+                using var tempReader = new StreamReader(tempMs, leaveOpen: true);
+                content = await tempReader.ReadToEndAsync();
+            }
+            else
+            {
+                using var reader = new StreamReader(csvStream, leaveOpen: true);
+                content = await reader.ReadToEndAsync();
+            }
             
             var contentValidation = InputValidator.ValidateCsvContent(content);
             
@@ -131,8 +147,11 @@ public class InputValidationService : IInputValidationService
                     fileName, string.Join(", ", contentValidation.Errors));
             }
 
-            // Reset stream position for subsequent processing
-            csvStream.Position = 0;
+            // Reset stream position for subsequent processing if possible
+            if (csvStream.CanSeek)
+            {
+                csvStream.Position = 0;
+            }
             
             return contentValidation;
         }
