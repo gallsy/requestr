@@ -200,7 +200,7 @@ public class FormDefinitionService : IFormDefinitionService
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            var sql = @"
+         var sql = @"
                 SELECT fd.Id, fd.Name, fd.Description, fd.Category, fd.DatabaseConnectionName, fd.TableName, fd.[Schema], 
                        fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, fd.WorkflowDefinitionId, 
                        COALESCE(fd.NotificationEmail, '') as NotificationEmail, 
@@ -213,7 +213,8 @@ public class FormDefinitionService : IFormDefinitionService
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.MaxLength, 
                        ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, ff.FormSectionId,
-                       ff.GridRow, ff.GridColumn, ff.GridColumnSpan
+                       ff.GridRow, ff.GridColumn, ff.GridColumnSpan,
+                       COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull
                 FROM FormDefinitions fd
                 LEFT JOIN FormSections fs ON fd.Id = fs.FormDefinitionId
                 LEFT JOIN FormFields ff ON (fd.Id = ff.FormDefinitionId AND (fs.Id = ff.FormSectionId OR ff.FormSectionId IS NULL))
