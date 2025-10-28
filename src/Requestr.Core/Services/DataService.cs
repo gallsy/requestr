@@ -413,9 +413,21 @@ public class DataService : IDataService
         var columnList = columns.ToList();
         
         if (!columnList.Any()) return record;
-        
-        // Assume the first column is the primary key
-        var primaryKeyColumn = columnList.First();
+
+        // Prefer actual primary key column(s) when available; fall back to first column
+        string primaryKeyColumn = columnList.First();
+        try
+        {
+            var pkColumns = await GetPrimaryKeyColumnsAsync(connectionStringName, tableName, schema);
+            if (pkColumns.Any())
+            {
+                primaryKeyColumn = pkColumns.First();
+            }
+        }
+        catch
+        {
+            // Ignore PK lookup failures and use the first column fallback
+        }
         var selectColumns = string.Join(", ", columnList);
         
         var dataSql = $@"
