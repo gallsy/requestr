@@ -428,7 +428,7 @@ public class DataService : IDataService
         {
             // Ignore PK lookup failures and use the first column fallback
         }
-        var selectColumns = string.Join(", ", columnList);
+        var selectColumns = string.Join(", ", columnList.Select(c => $"[{c}]"));
         
         var dataSql = $@"
             SELECT {selectColumns}
@@ -458,12 +458,7 @@ public class DataService : IDataService
 
     public async Task<List<string>> GetPrimaryKeyColumnsAsync(string databaseName, string tableName, string schema = "dbo")
     {
-        if (!_connectionStrings.ContainsKey(databaseName))
-        {
-            throw new ArgumentException($"Database connection '{databaseName}' not found");
-        }
-
-        var connectionString = _connectionStrings[databaseName];
+        var connectionString = GetConnectionString(databaseName);
 
         try
         {
