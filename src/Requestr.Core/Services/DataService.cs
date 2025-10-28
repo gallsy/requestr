@@ -349,6 +349,22 @@ public class DataService : IDataService
         using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         
+        // Normalize fully-qualified table names if user provided "schema.table"
+        if (tableName.Contains('.') )
+        {
+            var parts = tableName.Split('.', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 2)
+            {
+                // If explicit schema provided conflicts with the embedded one, prefer the embedded and warn
+                if (!string.Equals(schema, parts[0], StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning("GetRecordSummariesAsync: Overriding provided schema '{Schema}' with schema '{DetectedSchema}' embedded in tableName '{TableName}'.", schema, parts[0], tableName);
+                }
+                schema = parts[0];
+                tableName = parts[1];
+            }
+        }
+        
         // Get the first few columns to create a summary
         var columnsSql = @"
             SELECT TOP 3 COLUMN_NAME 
@@ -397,9 +413,25 @@ public class DataService : IDataService
     {
         var connectionString = GetConnectionString(connectionStringName);
         var record = new Dictionary<string, object?>();
+        var diagId = Guid.NewGuid().ToString("N");
         
         using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
+        
+        // Normalize fully-qualified table names if user provided "schema.table"
+        if (tableName.Contains('.') )
+        {
+            var parts = tableName.Split('.', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 2)
+            {
+                if (!string.Equals(schema, parts[0], StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning("[{DiagId}] GetRecordByIdAsync: Overriding provided schema '{Schema}' with schema '{DetectedSchema}' embedded in tableName '{TableName}'.", diagId, schema, parts[0], tableName);
+                }
+                schema = parts[0];
+                tableName = parts[1];
+            }
+        }
         
         // Get all columns for the table
         var columnsSql = @"
@@ -412,7 +444,11 @@ public class DataService : IDataService
         var columns = await connection.QueryAsync<string>(columnsSql, new { tableName, schema });
         var columnList = columns.ToList();
         
-        if (!columnList.Any()) return record;
+        if (!columnList.Any())
+        {
+            _logger.LogWarning("[{DiagId}] GetRecordByIdAsync: No columns discovered for {Schema}.{TableName}.", diagId, schema, tableName);
+            return record;
+        }
 
         // Prefer actual primary key column(s) when available; fall back to first column
         string primaryKeyColumn = columnList.First();
@@ -422,11 +458,16 @@ public class DataService : IDataService
             if (pkColumns.Any())
             {
                 primaryKeyColumn = pkColumns.First();
+                if (pkColumns.Count > 1)
+                {
+                    _logger.LogInformation("[{DiagId}] GetRecordByIdAsync: Composite primary key detected on {Schema}.{TableName} (Columns: {PkColumns}). Using first column '{PrimaryKeyColumn}' with single recordId.", diagId, schema, tableName, string.Join(", ", pkColumns), primaryKeyColumn);
+                }
             }
         }
         catch
         {
             // Ignore PK lookup failures and use the first column fallback
+            _logger.LogDebug("[{DiagId}] GetRecordByIdAsync: Failed to retrieve primary key metadata for {Schema}.{TableName}. Falling back to first column '{PrimaryKeyColumn}'.", diagId, schema, tableName, primaryKeyColumn);
         }
         var selectColumns = string.Join(", ", columnList.Select(c => $"[{c}]"));
         
@@ -437,6 +478,7 @@ public class DataService : IDataService
         
         try
         {
+            _logger.LogDebug("[{DiagId}] GetRecordByIdAsync: Executing SQL against {Schema}.{TableName} with PK '{PrimaryKeyColumn}' and recordId '{RecordId}'.", diagId, schema, tableName, primaryKeyColumn, recordId);
             var result = await connection.QueryFirstOrDefaultAsync<dynamic>(dataSql, new { recordId });
             if (result != null)
             {
@@ -445,11 +487,17 @@ public class DataService : IDataService
                 {
                     record[kvp.Key] = kvp.Value;
                 }
+                _logger.LogInformation("[{DiagId}] GetRecordByIdAsync: Record found for {Schema}.{TableName} where {PrimaryKeyColumn} = '{RecordId}'. Columns returned: {ColumnCount}", diagId, schema, tableName, primaryKeyColumn, recordId, record.Count);
+            }
+            else
+            {
+                _logger.LogWarning("[{DiagId}] GetRecordByIdAsync: No record found for {Schema}.{TableName} where {PrimaryKeyColumn} = '{RecordId}'.", diagId, schema, tableName, primaryKeyColumn, recordId);
             }
         }
-        catch
+        catch (Exception ex)
         {
             // If the query fails, return empty record
+            _logger.LogError(ex, "[{DiagId}] GetRecordByIdAsync: Query failed for {Schema}.{TableName} where {PrimaryKeyColumn} = '{RecordId}'. SQL may be invalid due to schema/table naming or datatype mismatch.", diagId, schema, tableName, primaryKeyColumn, recordId);
             return record;
         }
         
