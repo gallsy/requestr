@@ -1,0 +1,281 @@
+@* Field Configuration Modal Component *@
+@using Requestr.Core.Models
+@using BlazorBootstrap
+
+<Modal @ref="_modal" Title="@ModalTitle" Size="ModalSize.Large">
+    <BodyTemplate>
+        @if (Field != null)
+        {
+            <div class="row mb-2">
+                <div class="col-md-6">
+                    <label class="form-label">Field Name</label>
+                    <input type="text" class="form-control" @bind="Field.DisplayName" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Control Type</label>
+                    <select class="form-select" @bind="Field.ControlType" @bind:after="OnControlTypeChanged">
+                        @foreach (var controlOption in AvailableControlTypes)
+                        {
+                            <option value="@controlOption.Value">@controlOption.Text</option>
+                        }
+                    </select>
+                    <small class="form-text text-muted">SQL Type: @SqlType</small>
+                </div>
+            </div>
+            <div class="row mb-2">
+                <div class="col-md-6">
+                    <label class="form-label">Default Value</label>
+                    <input type="text" class="form-control" @bind="Field.DefaultValue" />
+                </div>
+                @if (SupportsValidation(Field.ControlType ?? Field.DataType))
+                {
+                    <div class="col-md-6">
+                        <label class="form-label">Validation Regex</label>
+                        <input type="text" class="form-control" @bind="Field.ValidationRegex" placeholder="Regex pattern" />
+                    </div>
+                }
+            </div>
+            @if (ShowMaxLengthOption(Field.ControlType ?? Field.DataType))
+            {
+                <div class="row mb-2">
+                    <div class="col-md-6">
+                        <label class="form-label">Max Length</label>
+                        <input type="number" class="form-control" @bind="Field.MaxLength" min="0" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Validation Message</label>
+                        <input type="text" class="form-control" @bind="Field.ValidationMessage" placeholder="Custom error message" />
+                    </div>
+                </div>
+            }
+            @if (Field.ControlType == "select" || Field.ControlType == "radio" || Field.DataType == "select" || Field.DataType == "radio")
+            {
+                <div class="row mb-2">
+                    <div class="col-12">
+                        <label class="form-label">Options (one per line)</label>
+                        <textarea class="form-control" rows="3" @bind="Field.DropdownOptions" placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
+                        <small class="form-text text-muted">Enter each option on a new line</small>
+                    </div>
+                </div>
+            }
+            <div class="row mb-2">
+                <div class="col-md-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" @bind="Field.IsRequired" />
+                        <label class="form-check-label">Required</label>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" @bind="Field.IsReadOnly" />
+                        <label class="form-check-label">Read Only</label>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" @bind="Field.IsVisible" />
+                        <label class="form-check-label">Visible</label>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" @bind="Field.IsVisibleInDataView" />
+                        <label class="form-check-label">Visible in Data View</label>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    @{
+                        var isNullable = ColumnInfo?.IsNullable ?? true;
+                        var eligibleForBlankAsNull = isNullable && !Field.IsRequired;
+                        if (Field.IsRequired && Field.TreatBlankAsNull)
+                        {
+                            Field.TreatBlankAsNull = false;
+                        }
+                    }
+                    <div class="form-check" title="Treat blank input as NULL when saved (only for nullable, non-required fields)">
+                        <input class="form-check-input" type="checkbox" @bind="Field.TreatBlankAsNull" disabled="@(!eligibleForBlankAsNull)" />
+                        <label class="form-check-label">Blank is NULL</label>
+                    </div>
+                </div>
+            </div>
+        }
+    </BodyTemplate>
+    <FooterTemplate>
+        <Button Color="ButtonColor.Secondary" @onclick="CloseAsync">Close</Button>
+    </FooterTemplate>
+</Modal>
+
+@code {
+    private Modal _modal = default!;
+
+    /// <summary>
+    /// The field being configured
+    /// </summary>
+    [Parameter] public FormField? Field { get; set; }
+
+    /// <summary>
+    /// The original SQL type of the field
+    /// </summary>
+    [Parameter] public string SqlType { get; set; } = "varchar";
+
+    /// <summary>
+    /// Column info for the field (used to check nullability)
+    /// </summary>
+    [Parameter] public ColumnInfo? ColumnInfo { get; set; }
+
+    /// <summary>
+    /// Event callback when the modal is closed
+    /// </summary>
+    [Parameter] public EventCallback OnClosed { get; set; }
+
+    private string ModalTitle => Field != null ? $"Configure Field: {Field.DisplayName}" : "Configure Field";
+
+    private List<(string Value, string Text)> AvailableControlTypes => GetAvailableControlTypes();
+
+    public async Task ShowAsync()
+    {
+        await _modal.ShowAsync();
+    }
+
+    public async Task CloseAsync()
+    {
+        await _modal.HideAsync();
+        await OnClosed.InvokeAsync();
+    }
+
+    private void OnControlTypeChanged()
+    {
+        if (Field == null) return;
+
+        // Clear validation regex if control type doesn't support it
+        if (!SupportsValidation(Field.ControlType ?? ""))
+        {
+            Field.ValidationRegex = null;
+        }
+
+        // Reset max length for controls that don't support it
+        if (!ShowMaxLengthOption(Field.ControlType ?? ""))
+        {
+            Field.MaxLength = 0;
+        }
+
+        // Set appropriate default values based on control type
+        if (string.IsNullOrEmpty(Field.DefaultValue))
+        {
+            Field.DefaultValue = Field.ControlType switch
+            {
+                "checkbox" => "false",
+                "number" or "range" => "0",
+                "date" => DateTime.Today.ToString("yyyy-MM-dd"),
+                "datetime-local" => DateTime.Now.ToString("yyyy-MM-ddTHH:mm"),
+                "time" => DateTime.Now.ToString("HH:mm"),
+                _ => ""
+            };
+        }
+    }
+
+    private bool SupportsValidation(string controlType)
+    {
+        return controlType switch
+        {
+            "text" or "email" or "tel" or "url" or "password" or "textarea" => true,
+            "number" => true,
+            _ => false
+        };
+    }
+
+    private bool ShowMaxLengthOption(string controlType)
+    {
+        return controlType switch
+        {
+            "text" or "email" or "tel" or "url" or "password" or "textarea" => true,
+            _ => false
+        };
+    }
+
+    private List<(string Value, string Text)> GetAvailableControlTypes()
+    {
+        var options = new List<(string Value, string Text)>();
+        var sqlType = SqlType?.ToLower() ?? "varchar";
+
+        switch (sqlType)
+        {
+            case var type when type.Contains("bit"):
+                options.Add(("checkbox", "Checkbox"));
+                options.Add(("select", "Dropdown (Yes/No)"));
+                options.Add(("radio", "Radio Buttons"));
+                break;
+
+            case var type when type.Contains("int") || type.Contains("decimal") || type.Contains("numeric") || 
+                              type.Contains("float") || type.Contains("real") || type.Contains("money"):
+                options.Add(("number", "Number Input"));
+                options.Add(("text", "Text Input"));
+                options.Add(("select", "Dropdown"));
+                options.Add(("checkbox", "Checkbox"));
+                options.Add(("range", "Slider"));
+                break;
+
+            case var type when type.Contains("date") && !type.Contains("datetime"):
+                options.Add(("date", "Date Picker"));
+                options.Add(("text", "Text Input"));
+                break;
+
+            case var type when type.Contains("datetime") || type.Contains("smalldatetime"):
+                options.Add(("datetime-local", "DateTime Picker"));
+                options.Add(("date", "Date Only"));
+                options.Add(("text", "Text Input"));
+                break;
+
+            case var type when type.Contains("time"):
+                options.Add(("time", "Time Picker"));
+                options.Add(("text", "Text Input"));
+                break;
+
+            case var type when type.Contains("text") || type.Contains("ntext") || 
+                              (type.Contains("varchar") && IsLongText(type)) || 
+                              (type.Contains("nvarchar") && IsLongText(type)):
+                options.Add(("textarea", "Text Area"));
+                options.Add(("text", "Text Input"));
+                break;
+
+            case var type when type.Contains("varchar") || type.Contains("nvarchar") || 
+                              type.Contains("char") || type.Contains("nchar"):
+                options.Add(("text", "Text Input"));
+                options.Add(("email", "Email Input"));
+                options.Add(("tel", "Phone Input"));
+                options.Add(("url", "URL Input"));
+                options.Add(("password", "Password Input"));
+                options.Add(("select", "Dropdown"));
+                options.Add(("radio", "Radio Buttons"));
+                options.Add(("checkbox", "Checkbox"));
+                options.Add(("textarea", "Text Area"));
+                break;
+
+            case var type when type.Contains("uniqueidentifier"):
+                options.Add(("text", "Text Input (GUID)"));
+                break;
+
+            default:
+                options.Add(("text", "Text Input"));
+                options.Add(("textarea", "Text Area"));
+                options.Add(("select", "Dropdown"));
+                options.Add(("checkbox", "Checkbox"));
+                break;
+        }
+
+        return options;
+    }
+
+    private bool IsLongText(string sqlDataType)
+    {
+        if (sqlDataType.Contains("("))
+        {
+            var lengthPart = sqlDataType.Split('(')[1].Split(')')[0];
+            if (int.TryParse(lengthPart, out int length))
+            {
+                return length > 255;
+            }
+        }
+        return false;
+    }
+}

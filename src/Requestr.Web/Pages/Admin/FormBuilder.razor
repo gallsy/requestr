@@ -113,147 +113,18 @@
             <!-- Form Details Tab -->
             @if (ActiveTab == "details")
             {
-                <div class="row">
-                    <div class="col-lg-8 mx-auto">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5 class="mb-0">
-                                    <i class="bi bi-info-circle me-2"></i>
-                                    Basic Form Information
-                                </h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label class="form-label">Form Name *</label>
-                                            <input type="text" class="form-control" @bind="_formDefinition.Name" placeholder="Enter form name" />
-                                            <small class="form-text text-muted">This name will be displayed to users</small>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label class="form-label">Status</label>
-                                            <div class="form-check form-switch">
-                                                <input class="form-check-input" type="checkbox" @bind="_formDefinition.IsActive" id="formActiveSwitch">
-                                                <label class="form-check-label" for="formActiveSwitch">
-                                                    @(_formDefinition.IsActive ? "Active" : "Inactive")
-                                                </label>
-                                            </div>
-                                            <small class="form-text text-muted">Only active forms are visible to users</small>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label class="form-label">Description</label>
-                                    <textarea class="form-control" rows="3" @bind="_formDefinition.Description" placeholder="Enter form description"></textarea>
-                                    <small class="form-text text-muted">Provide a clear description of what this form is used for</small>
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label class="form-label">Category</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" 
-                                               list="categoryOptions" 
-                                               @bind="_formDefinition.Category" 
-                                               placeholder="Select or create a category" />
-                                        <datalist id="categoryOptions">
-                                            @foreach (var category in _existingCategories)
-                                            {
-                                                <option value="@category">@category</option>
-                                            }
-                                        </datalist>
-                                    </div>
-                                    <small class="form-text text-muted">Group related forms together by assigning them to the same category</small>
-                                </div>
-                                
-                                <hr class="my-4">
-                                
-                                <h6 class="mb-3">
-                                    <i class="bi bi-database me-2"></i>
-                                    Database Configuration
-                                </h6>
-                                
-                                <div class="row">
-                                    <div class="col-md-4">
-                                        <div class="mb-3">
-                                            <label class="form-label">Database Connection *</label>
-                                            <select class="form-select" @bind="_selectedConnectionString" @bind:after="OnConnectionStringChangedAsync">
-                                                <option value="">Select a database</option>
-                                                @foreach (var conn in _connectionStrings)
-                                                {
-                                                    <option value="@conn.Key">@conn.Key</option>
-                                                }
-                                            </select>
-                                            <small class="form-text text-muted">Choose the database this form will interact with</small>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        @if (!string.IsNullOrEmpty(_selectedConnectionString))
-                                        {
-                                            <div class="mb-3">
-                                                <label class="form-label">Schema *</label>
-                                                <select class="form-select" @bind="_formDefinition.Schema" @bind:after="OnSchemaChangedAsync">
-                                                    <option value="">Select a schema</option>
-                                                    @foreach (var s in _schemas)
-                                                    {
-                                                        <option value="@s">@s</option>
-                                                    }
-                                                </select>
-                                                <small class="form-text text-muted">Pick the schema that contains your table</small>
-                                            </div>
-                                        }
-                                    </div>
-                                    <div class="col-md-4">
-                                        @if (!string.IsNullOrEmpty(_selectedConnectionString))
-                                        {
-                                            <div class="mb-3">
-                                                <label class="form-label">Table *</label>
-                                                <select class="form-select" @bind="_formDefinition.TableName" @bind:after="OnTableChangedAsync">
-                                                    <option value="">Select a table</option>
-                                                    @foreach (var table in _tables)
-                                                    {
-                                                        <option value="@table">@table</option>
-                                                    }
-                                                </select>
-                                                <small class="form-text text-muted">The table that will be modified by this form</small>
-                                            </div>
-                                        }
-                                    </div>
-                                </div>
-                                
-                                @if (!string.IsNullOrEmpty(_formDefinition.TableName))
-                                {
-                                    <div class="alert alert-info">
-                                        <i class="bi bi-info-circle me-2"></i>
-                                        <strong>Database:</strong> @_selectedConnectionString <br/>
-                                        <strong>Table:</strong> @_formDefinition.TableName <br/>
-                                        <strong>Schema:</strong> @_formDefinition.Schema
-                                        @if (_primaryKeyColumns.Any())
-                                        {
-                                            <br/><strong>Primary Key(s):</strong> @string.Join(", ", _primaryKeyColumns)
-                                        }
-                                    </div>
-                                    
-                                    @if (_hasNoPrimaryKey)
-                                    {
-                                        <div class="alert alert-warning">
-                                            <i class="bi bi-exclamation-triangle me-2"></i>
-                                            <strong>Warning:</strong> This table has no primary key defined.
-                                            <ul class="mb-0 mt-2">
-                                                <li><strong>Insert operations:</strong> ✅ Will work normally</li>
-                                                <li><strong>Update/Delete operations:</strong> ❌ Will fail - cannot uniquely identify records</li>
-                                            </ul>
-                                            <small class="text-muted">Consider adding a primary key to the table if you need Update/Delete functionality.</small>
-                                        </div>
-                                    }
-                                }
-                            </div>
-                        </div>
-                    </div>
-                    @* Removed misplaced Blank is NULL checkbox from Details tab; now shown in field configuration modal *@
-                </div>
+                <Requestr.Web.Components.FormBuilder.FormDetailsTab 
+                    FormDefinition="_formDefinition"
+                    ExistingCategories="_existingCategories"
+                    ConnectionStrings="_connectionStrings"
+                    SelectedConnectionString="@_selectedConnectionString"
+                    Schemas="_schemas"
+                    Tables="_tables"
+                    PrimaryKeyColumns="_primaryKeyColumns"
+                    HasNoPrimaryKey="_hasNoPrimaryKey"
+                    OnConnectionStringChangedCallback="OnConnectionStringChangedFromTab"
+                    OnSchemaChangedCallback="OnSchemaChangedFromTab"
+                    OnTableChangedCallback="OnTableChangedFromTab" />
             }
 
             <!-- Form Designer Tab -->
@@ -264,115 +135,12 @@
                     <div class="col-lg-3 field-palette-column">
                         @if (_tableColumns.Any())
                         {
-                            <div class="card field-palette">
-                                <div class="card-header">
-                                    <h5 class="mb-0">
-                                        <i class="bi bi-palette me-2"></i>
-                                        Field Palette
-                                    </h5>
-                                </div>
-                                <div class="card-body">
-                                    <p class="text-muted small mb-3">
-                                        <i class="bi bi-info-circle me-1"></i>
-                                        Drag fields to sections or click empty grid cells to place
-                                    </p>
-                                    
-                                    <!-- Search/Filter -->
-                                    <div class="mb-3">
-                                        <div class="input-group input-group-sm">
-                                            <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                            <input type="text" class="form-control" placeholder="Filter fields..." @bind="_fieldFilter" @oninput="FilterFields" />
-                                        </div>
-                                    </div>
-                                    
-                                    <!-- Field Statistics -->
-                                    <div class="mb-3 p-2 bg-light rounded">
-                                        <small class="text-muted">
-                                            <strong>@_filteredColumns.Count(c => !IsFieldAlreadyAdded(c.Name))</strong> available, 
-                                            <strong>@_formDefinition.Fields.Count</strong> added
-                                        </small>
-                                    </div>
-                                    
-                                    <div class="available-fields">
-                                        @foreach (var column in _filteredColumns)
-                                        {
-                                            <div class="field-item @(IsFieldAlreadyAdded(column.Name) ? "field-disabled" : "field-draggable")" 
-                                                 draggable="@(IsFieldAlreadyAdded(column.Name) ? "false" : "true")" 
-                                                 @ondragstart="@(() => OnDragStart(column))"
-                                                 @ondragend="OnDragEnd"
-                                                 @ondblclick="@(() => QuickAddField(column))"
-                                                 title="@(IsFieldAlreadyAdded(column.Name) ? "Field already added" : "Drag to section or double-click to add")">
-                                                
-                                                <div class="d-flex justify-content-between align-items-start">
-                                                    <div class="flex-grow-1">
-                                                        <div class="field-item-header d-flex align-items-center">
-                                                            <i class="bi bi-@GetFieldIcon(column.DataType) me-2 text-primary"></i>
-                                                            <strong class="field-item-name">@column.Name</strong>
-                                                        </div>
-                                                        
-                                                        <div class="field-item-details mt-1">
-                                                            <small class="text-muted d-block">@column.DataType</small>
-                                                            <div class="field-item-badges mt-1">
-                                                                @if (column.IsPrimaryKey)
-                                                                {
-                                                                    <span class="badge bg-warning text-dark">PK</span>
-                                                                }
-                                                                @if (column.IsIdentity)
-                                                                {
-                                                                    <span class="badge bg-info">Identity</span>
-                                                                }
-                                                                @if (!column.IsNullable)
-                                                                {
-                                                                    <span class="badge bg-danger">Required</span>
-                                                                }
-                                                                else
-                                                                {
-                                                                    <span class="badge bg-secondary">Optional</span>
-                                                                }
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    <div class="field-item-actions">
-                                                        @if (IsFieldAlreadyAdded(column.Name))
-                                                        {
-                                                            <i class="bi bi-check-circle text-success" title="Added"></i>
-                                                        }
-                                                        else
-                                                        {
-                                                            <div class="btn-group-vertical btn-group-sm">
-                                                                <button type="button" class="btn btn-outline-primary btn-sm" 
-                                                                        @onclick="@(() => QuickAddField(column))"
-                                                                        @onclick:stopPropagation="true"
-                                                                        @onclick:preventDefault="true"
-                                                                        title="Quick add to first section">
-                                                                    <i class="bi bi-plus"></i>
-                                                                </button>
-                                                            </div>
-                                                        }
-                                                    </div>
-                                                </div>
-                                                
-                                                <!-- Drag handle -->
-                                                @if (!IsFieldAlreadyAdded(column.Name))
-                                                {
-                                                    <div class="field-drag-handle">
-                                                        <i class="bi bi-grip-vertical"></i>
-                                                    </div>
-                                                }
-                                            </div>
-                                        }
-                                        
-                                        @if (!_filteredColumns.Any())
-                                        {
-                                            <div class="text-center text-muted p-3">
-                                                <i class="bi bi-search"></i>
-                                                <p class="mb-0 mt-2">No fields match your filter</p>
-                                            </div>
-                                        }
-                                    </div>
-                                </div>
-                            </div>
+                            <Requestr.Web.Components.FormBuilder.FieldPalette 
+                                Columns="_tableColumns"
+                                AddedFieldNames="_addedFieldNames"
+                                OnDragStart="OnDragStart"
+                                OnDragEnd="OnDragEnd"
+                                OnQuickAddField="QuickAddField" />
                         }
                         else if (!string.IsNullOrEmpty(_formDefinition.TableName))
                         {
@@ -719,612 +487,48 @@
             <!-- Permissions Tab -->
             @if (ActiveTab == "permissions")
             {
-                <div class="row">
-                    <div class="col-12">
-                        <!-- Role-Based Permissions Card -->
-                        <div class="card">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0">
-                                    <i class="bi bi-people me-2"></i>
-                                    Role-Based Permissions
-                                </h5>
-                                <div>
-                                    <button type="button" class="btn btn-outline-primary btn-sm me-2" @onclick="LoadFormPermissions">
-                                        <i class="bi bi-arrow-clockwise me-1"></i>
-                                        Refresh
-                                    </button>
-                                    <button type="button" class="btn btn-primary btn-sm" @onclick="SavePermissions" disabled="@_isLoadingPermissions">
-                                        @if (_isLoadingPermissions)
-                                        {
-                                            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                                        }
-                                        else
-                                        {
-                                            <i class="bi bi-save me-1"></i>
-                                        }
-                                        Save Permissions
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="card-body">
-                                @if (_isLoadingPermissions)
-                                {
-                                    <div class="text-center p-4">
-                                        <div class="spinner-border text-primary" role="status">
-                                            <span class="visually-hidden">Loading permissions...</span>
-                                        </div>
-                                        <p class="mt-2">Loading permissions...</p>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <p class="text-muted mb-4">Configure which Entra ID app roles can perform specific operations on this form. Permissions are organized by category for easier management.</p>
-                                    
-                                    @if (_permissionsByCategory.Any())
-                                    {
-                                        <div class="row">
-                                            <div class="col-lg-3">
-                                                <!-- Role Selection -->
-                                                <div class="card bg-light">
-                                                    <div class="card-header d-flex justify-content-between align-items-center">
-                                                        <h6 class="mb-0">Roles</h6>
-                                                        <button type="button" class="btn btn-outline-primary btn-sm" @onclick="ShowAddRoleModal">
-                                                            <i class="bi bi-plus"></i>
-                                                        </button>
-                                                    </div>
-                                                    <div class="card-body p-2">
-                                                        @if (_isAddingRole)
-                                                        {
-                                                            <div class="card mb-2 border-primary">
-                                                                <div class="card-body p-2">
-                                                                    <div class="mb-2">
-                                                                        <input type="text" 
-                                                                               class="form-control form-control-sm" 
-                                                                               placeholder="Enter role name..."
-                                                                               @bind="_newRoleName"
-                                                                               @onkeypress="@(async (e) => { if (e.Key == "Enter") await AddNewRole(); })" />
-                                                                    </div>
-                                                                    <div class="d-flex gap-1">
-                                                                        <button type="button" class="btn btn-primary btn-sm flex-fill" @onclick="AddNewRole" disabled="@(string.IsNullOrWhiteSpace(_newRoleName))">
-                                                                            <i class="bi bi-check me-1"></i>Add
-                                                                        </button>
-                                                                        <button type="button" class="btn btn-secondary btn-sm flex-fill" @onclick="CancelAddRole">
-                                                                            <i class="bi bi-x me-1"></i>Cancel
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        }
-                                                        
-                                                        <div class="list-group list-group-flush">
-                                                            @foreach (var role in _availableRoles)
-                                                            {
-                                                                <div class="list-group-item list-group-item-action @(_selectedRole == role ? "active" : "") p-0">
-                                                                    <div class="d-flex align-items-center">
-                                                                        <button type="button" 
-                                                                                class="btn btn-link flex-fill text-start border-0 @(_selectedRole == role ? "text-white" : "")"
-                                                                                @onclick="() => SelectRole(role)">
-                                                                            <div class="d-flex justify-content-between align-items-center w-100">
-                                                                                <div>
-                                                                                    <strong>@role</strong>
-                                                                                    <br />
-                                                                                    <small class="@(_selectedRole == role ? "text-white-50" : "text-muted")">
-                                                                                        @GetRolePermissionSummary(role)
-                                                                                    </small>
-                                                                                </div>
-                                                                                @if (_selectedRole == role)
-                                                                                {
-                                                                                    <i class="bi bi-check-circle text-white"></i>
-                                                                                }
-                                                                            </div>
-                                                                        </button>
-                                                                        @if (CanDeleteRole(role))
-                                                                        {
-                                                                            <button type="button" 
-                                                                                    class="btn btn-sm btn-outline-danger me-2" 
-                                                                                    title="Remove role"
-                                                                                    @onclick="() => ConfirmDeleteRole(role)">
-                                                                                <i class="bi bi-trash"></i>
-                                                                            </button>
-                                                                        }
-                                                                    </div>
-                                                                </div>
-                                                            }
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="col-lg-9">
-                                                @if (!string.IsNullOrEmpty(_selectedRole))
-                                                {
-                                                    <!-- Permission Categories -->
-                                                    <div class="row">
-                                                        @foreach (var category in _permissionsByCategory)
-                                                        {
-                                                            <div class="col-md-6 mb-4">
-                                                                <div class="card h-100">
-                                                                    <div class="card-header bg-white">
-                                                                        <h6 class="mb-0 @FormPermissionHelper.GetCategoryColorClass(category.Key)">
-                                                                            <i class="bi @FormPermissionHelper.GetCategoryIcon(category.Key) me-2"></i>
-                                                                            @category.Key
-                                                                        </h6>
-                                                                    </div>
-                                                                    <div class="card-body">
-                                                                        @foreach (var permission in category.Value)
-                                                                        {
-                                                                            var isGranted = GetPermissionState(_selectedRole, permission);
-                                                                            var isDangerous = FormPermissionHelper.IsDangerousPermission(permission);
-                                                                            var prerequisites = FormPermissionHelper.GetPrerequisitePermissions(permission);
-                                                                            var hasUnmetPrerequisites = prerequisites.Any(p => !GetPermissionState(_selectedRole, p));
-                                                                            
-                                                                            <div class="form-check mb-2">
-                                                                                <input class="form-check-input @(isDangerous ? "border-danger" : "")" 
-                                                                                       type="checkbox" 
-                                                                                       checked="@isGranted"
-                                                                                       disabled="@hasUnmetPrerequisites"
-                                                                                       @onchange="@((ChangeEventArgs e) => SetPermission(_selectedRole, permission, (bool)e.Value!))"
-                                                                                       id="perm_@(_selectedRole)_@((int)permission)" />
-                                                                                <label class="form-check-label @(hasUnmetPrerequisites ? "text-muted" : "")" 
-                                                                                       for="perm_@(_selectedRole)_@((int)permission)">
-                                                                                    <span class="@(isDangerous ? "text-danger fw-bold" : "")">
-                                                                                        @FormPermissionHelper.GetPermissionDescription(permission)
-                                                                                    </span>
-                                                                                    @if (isDangerous)
-                                                                                    {
-                                                                                        <i class="bi bi-exclamation-triangle text-danger ms-1" title="Dangerous permission - requires extra care"></i>
-                                                                                    }
-                                                                                    @if (hasUnmetPrerequisites)
-                                                                                    {
-                                                                                        <br />
-                                                                                        <small class="text-muted">
-                                                                                            Requires: @string.Join(", ", prerequisites.Select(p => FormPermissionHelper.GetPermissionDescription(p).Split(' ').Take(2).Aggregate((a, b) => a + " " + b)))
-                                                                                        </small>
-                                                                                    }
-                                                                                </label>
-                                                                            </div>
-                                                                        }
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        }
-                                                    </div>
-                                                }
-                                                else
-                                                {
-                                                    <div class="text-center p-5 text-muted">
-                                                        <i class="bi bi-arrow-left" style="font-size: 3rem;"></i>
-                                                        <p class="mt-3">Select a role from the left to configure its permissions</p>
-                                                    </div>
-                                                }
-                                            </div>
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <div class="text-center p-5">
-                                            <i class="bi bi-info-circle text-info" style="font-size: 3rem;"></i>
-                                            <p class="mt-3">No permissions have been configured yet. Save the form first to set up permissions.</p>
-                                        </div>
-                                    }
-                                }
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <Requestr.Web.Components.FormBuilder.FormPermissionsTab 
+                    IsLoading="_isLoadingPermissions"
+                    AvailableRoles="_availableRoles"
+                    SelectedRole="@_selectedRole"
+                    PermissionsByCategory="_permissionsByCategory"
+                    CurrentPermissions="_currentPermissions"
+                    OnRefreshClicked="LoadFormPermissions"
+                    OnSaveClicked="SavePermissions"
+                    OnRoleSelected="SelectRole"
+                    OnAddRole="AddNewRoleFromTab"
+                    OnDeleteRole="ConfirmDeleteRole"
+                    OnPermissionChanged="OnPermissionChangedFromTab" />
             }
 
             <!-- Workflow Tab -->
             @if (ActiveTab == "workflow")
             {
-                <div class="row">
-                    <div class="col-12">
-                        <!-- Workflow Assignment Card -->
-                        <div class="card mb-4">
-                            <div class="card-header">
-                                <h5 class="mb-0">
-                                    <i class="bi bi-diagram-3 me-2"></i>
-                                    Workflow Assignment
-                                </h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <label class="form-label">Select Workflow</label>
-                                        <select class="form-select" @bind="_selectedWorkflowId" @bind:after="OnWorkflowChanged">
-                                            <option value="">No Workflow (Auto-apply requests)</option>
-                                            @if (_availableWorkflows?.Any() == true)
-                                            {
-                                                @foreach (var workflow in _availableWorkflows)
-                                                {
-                                                    <option value="@workflow.Id">@workflow.Name</option>
-                                                }
-                                            }
-                                        </select>
-                                        <small class="form-text text-muted">
-                                            Choose a workflow to control how form requests are approved.
-                                        </small>
-                                    </div>
-                                    <div class="col-md-6">
-                                        @if (_selectedWorkflowId.HasValue)
-                                        {
-                                            <div class="alert alert-info">
-                                                <h6 class="alert-heading">
-                                                    <i class="bi bi-info-circle me-2"></i>
-                                                    Workflow Assigned
-                                                </h6>
-                                                <p class="mb-0 small">
-                                                    Form requests will follow the selected workflow for approval.
-                                                    Configure step-specific settings below.
-                                                </p>
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <div class="alert alert-warning">
-                                                <h6 class="alert-heading">
-                                                    <i class="bi bi-exclamation-triangle me-2"></i>
-                                                    No Workflow
-                                                </h6>
-                                                <p class="mb-0 small">
-                                                    Form requests will be automatically applied to the database without approval.
-                                                </p>
-                                            </div>
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Step Configuration Cards -->
-                        @if (_workflowStepConfigs?.Any() == true)
-                        {
-                            <div class="row">
-                                <div class="col-12">
-                                    <h5 class="mb-3">
-                                        <i class="bi bi-gear me-2"></i>
-                                        Step Configuration
-                                    </h5>
-                                    <p class="text-muted mb-4">Configure how each workflow step behaves for this specific form.</p>
-                                </div>
-                            </div>
-
-                            @foreach (var stepConfig in _workflowStepConfigs.Where(s => s.StepType == "approval" || s.StepType == "parallel"))
-                            {
-                                <div class="card mb-3">
-                                    <div class="card-header">
-                                        <h6 class="mb-0">
-                                            @if (stepConfig.StepType == "approval")
-                                            {
-                                                <i class="bi bi-check-circle me-2"></i>
-                                            }
-                                            else if (stepConfig.StepType == "parallel")
-                                            {
-                                                <i class="bi bi-people me-2"></i>
-                                            }
-                                            @stepConfig.StepName
-                                        </h6>
-                                    </div>
-                                    <div class="card-body">
-                                        @if (stepConfig.StepType == "approval")
-                                        {
-                                            <div class="row">
-                                                <div class="col-12">
-                                                    <h6>Field Configuration</h6>
-                                                    <p class="text-muted small">Configure field visibility, editability, and requirements for this step.</p>
-                                                    
-                                                    @if (_formDefinition?.Fields?.Any() == true)
-                                                    {
-                                                        <div class="table-responsive">
-                                                            <table class="table table-sm">
-                                                                <thead>
-                                                                    <tr>
-                                                                        <th>Field Name</th>
-                                                                        <th>Display Name</th>
-                                                                        <th>Visible</th>
-                                                                        <th>Editable</th>
-                                                                        <th>Make Required</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody>
-                                                                    @foreach (var field in _formDefinition.Fields.OrderBy(f => f.DisplayName))
-                                                                    {
-                                                                        var fieldConfig = GetOrCreateFieldConfig(stepConfig, field.Name);
-                                                                        <tr>
-                                                                            <td>@field.Name</td>
-                                                                            <td>@field.DisplayName</td>
-                                                                            <td>
-                                                                                <div class="form-check">
-                                                                                    <input class="form-check-input" type="checkbox" 
-                                                                                           checked="@fieldConfig.IsVisible" 
-                                                                                           @onchange="(e) => { fieldConfig.IsVisible = (bool)e.Value!; }" />
-                                                                                </div>
-                                                                            </td>
-                                                                            <td>
-                                                                                <div class="form-check">
-                                                                                    <input class="form-check-input" type="checkbox" 
-                                                                                           checked="@(!fieldConfig.IsReadOnly)" 
-                                                                                           @onchange="(e) => { fieldConfig.IsReadOnly = !(bool)e.Value!; }" />
-                                                                                </div>
-                                                                            </td>
-                                                                            <td>
-                                                                                <div class="form-check">
-                                                                                    <input class="form-check-input" type="checkbox" 
-                                                                                           checked="@fieldConfig.IsRequired" 
-                                                                                           @onchange="(e) => { fieldConfig.IsRequired = (bool)e.Value!; }" />
-                                                                                </div>
-                                                                            </td>
-                                                                        </tr>
-                                                                    }
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                    }
-                                                </div>
-                                            </div>
-                                        }
-                                        else if (stepConfig.StepType == "parallel")
-                                        {
-                                            <div class="row">
-                                                <div class="col-md-6">
-                                                    <div class="mb-3">
-                                                        <label class="form-label">Required Roles</label>
-                                                        <div class="border rounded p-2" style="max-height: 150px; overflow-y: auto;">
-                                                            @if (_availableRoles?.Any() == true)
-                                                            {
-                                                                @foreach (var role in _availableRoles)
-                                                                {
-                                                                    <div class="form-check">
-                                                                        <input class="form-check-input" type="checkbox" 
-                                                                               checked="@(stepConfig.RequiredRoles.Contains(role))"
-                                                                               @onchange="@((e) => ToggleRequiredRoleLocal(stepConfig, role, e.Value?.ToString() == "true"))">
-                                                                        <label class="form-check-label">@role</label>
-                                                                    </div>
-                                                                }
-                                                            }
-                                                        </div>
-                                                    </div>
-                                                    <div class="form-check">
-                                                        <input class="form-check-input" type="checkbox" 
-                                                               checked="@stepConfig.RequireAllApprovals"
-                                                               @onchange="@((e) => UpdateParallelApprovalSetting(stepConfig, e.Value?.ToString() == "true"))">
-                                                        <label class="form-check-label">Require all roles to approve</label>
-                                                        <small class="form-text text-muted d-block">
-                                                            If unchecked, approval from any one role will advance the workflow.
-                                                        </small>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        }
-                                    </div>
-                                </div>
-                            }
-                        }
-                        else if (_selectedWorkflowId.HasValue)
-                        {
-                            <div class="alert alert-info">
-                                <h6 class="alert-heading">
-                                    <i class="bi bi-info-circle me-2"></i>
-                                    No Configurable Steps
-                                </h6>
-                                <p class="mb-0">
-                                    The selected workflow doesn't have any approval steps that require configuration.
-                                </p>
-                            </div>
-                        }
-                    </div>
-                </div>
+                <Requestr.Web.Components.FormBuilder.FormWorkflowTab 
+                    SelectedWorkflowId="_selectedWorkflowId"
+                    AvailableWorkflows="_availableWorkflows"
+                    WorkflowStepConfigs="@_workflowStepConfigs?.Select(s => new Requestr.Web.Components.FormBuilder.FormWorkflowTab.WorkflowStepConfigModel { StepId = s.StepId, StepIdString = s.StepIdString, StepName = s.StepName, StepType = s.StepType, RequiredRoles = s.RequiredRoles, RequireAllApprovals = s.RequireAllApprovals, FieldConfigurations = s.FieldConfigurations.ToDictionary(k => k.Key, v => new Requestr.Web.Components.FormBuilder.FormWorkflowTab.FieldConfigurationModel { FieldName = v.Value.FieldName, IsVisible = v.Value.IsVisible, IsReadOnly = v.Value.IsReadOnly, IsRequired = v.Value.IsRequired }) }).ToList()"
+                    FormFields="_formDefinition?.Fields?.ToList()"
+                    AvailableRoles="_availableRoles"
+                    OnWorkflowChanged="OnWorkflowChangedFromTab" />
             }
 
             <!-- Notifications Tab -->
             @if (ActiveTab == "notifications")
             {
-                <div class="row">
-                    <div class="col-lg-8 mx-auto">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5 class="mb-0">
-                                    <i class="bi bi-bell me-2"></i>
-                                    Notification Settings
-                                </h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="alert alert-info">
-                                    <h6 class="alert-heading">
-                                        <i class="bi bi-info-circle me-2"></i>
-                                        Form Notifications
-                                    </h6>
-                                    <p class="mb-0">Configure email notifications for form events. Optionally enter an email address to be notified when requests are created or completed for this form.</p>
-                                </div>
-
-                                <div class="mb-4">
-                                    <label class="form-label">Notification Email Address (Optional)</label>
-                                    <input type="email" class="form-control" 
-                                           value="@(_formDefinition.NotificationEmail ?? "")"
-                                           @onchange="@((ChangeEventArgs e) => _formDefinition.NotificationEmail = e.Value?.ToString())"
-                                           placeholder="Enter email address to receive notifications...">
-                                    <small class="form-text text-muted">
-                                        Leave blank to disable form-level notifications. This email will receive notifications for the events selected below.
-                                    </small>
-                                </div>
-
-                                <div class="mb-3">
-                                    <h6 class="mb-3">Notification Events</h6>
-                                    <div class="form-check mb-2">
-                                        <input class="form-check-input" type="checkbox" 
-                                               @bind="_formDefinition.NotifyOnCreation"
-                                               id="notifyOnCreation">
-                                        <label class="form-check-label" for="notifyOnCreation">
-                                            <strong>Request Created</strong>
-                                        </label>
-                                        <div class="text-muted small">
-                                            Send notification when a new request is submitted using this form.
-                                        </div>
-                                    </div>
-                                    <div class="form-check mb-2">
-                                        <input class="form-check-input" type="checkbox" 
-                                               @bind="_formDefinition.NotifyOnCompletion"
-                                               id="notifyOnCompletion">
-                                        <label class="form-check-label" for="notifyOnCompletion">
-                                            <strong>Request Completed</strong>
-                                        </label>
-                                        <div class="text-muted small">
-                                            Send notification when a request is fully approved and applied to the database.
-                                        </div>
-                                    </div>
-                                </div>
-
-                                @if (!string.IsNullOrEmpty(_formDefinition.NotificationEmail))
-                                {
-                                    <div class="alert alert-success">
-                                        <h6 class="alert-heading">
-                                            <i class="bi bi-check-circle me-2"></i>
-                                            Notifications Active
-                                        </h6>
-                                        <p class="mb-0">
-                                            <strong>@_formDefinition.NotificationEmail</strong> will receive notifications for:
-                                            @if (_formDefinition.NotifyOnCreation || _formDefinition.NotifyOnCompletion)
-                                            {
-                                                <ul class="mb-0 mt-1">
-                                                    @if (_formDefinition.NotifyOnCreation)
-                                                    {
-                                                        <li>New request submissions</li>
-                                                    }
-                                                    @if (_formDefinition.NotifyOnCompletion)
-                                                    {
-                                                        <li>Request completions</li>
-                                                    }
-                                                </ul>
-                                            }
-                                            else
-                                            {
-                                                <br><em>No events selected</em>
-                                            }
-                                        </p>
-                                    </div>
-                                }
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <Requestr.Web.Components.FormBuilder.FormNotificationsTab FormDefinition="_formDefinition" />
             }
         </div>
     }
 </div>
 
 <!-- Field Configuration Modal -->
-<Modal @ref="fieldConfigModal" Title="@GetFieldConfigModalTitle()" Size="ModalSize.Large">
-    <BodyTemplate>
-        @if (_selectedField != null)
-        {
-            <div class="row mb-2">
-                <div class="col-md-6">
-                    <label class="form-label">Field Name</label>
-                            <input type="text" class="form-control" @bind="_selectedField.DisplayName" />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Control Type</label>
-                            <select class="form-select" @bind="_selectedField.ControlType" @bind:after="() => OnControlTypeChanged(_selectedField)">
-                                @foreach (var controlOption in GetAvailableControlTypes(_selectedField))
-                                {
-                                    <option value="@controlOption.Value">@controlOption.Text</option>
-                                }
-                            </select>
-                            <small class="form-text text-muted">SQL Type: @GetOriginalSqlType(_selectedField)</small>
-                        </div>
-                    </div>
-                    <div class="row mb-2">
-                        <div class="col-md-6">
-                            <label class="form-label">Default Value</label>
-                            <input type="text" class="form-control" @bind="_selectedField.DefaultValue" />
-                        </div>
-                        @if (SupportsValidation(_selectedField.ControlType ?? _selectedField.DataType))
-                        {
-                            <div class="col-md-6">
-                                <label class="form-label">Validation Regex</label>
-                                <input type="text" class="form-control" @bind="_selectedField.ValidationRegex" placeholder="Regex pattern" />
-                            </div>
-                        }
-                    </div>
-                    @if (ShowMaxLengthOption(_selectedField.ControlType ?? _selectedField.DataType))
-                    {
-                        <div class="row mb-2">
-                            <div class="col-md-6">
-                                <label class="form-label">Max Length</label>
-                                <input type="number" class="form-control" @bind="_selectedField.MaxLength" min="0" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Validation Message</label>
-                                <input type="text" class="form-control" @bind="_selectedField.ValidationMessage" placeholder="Custom error message" />
-                            </div>
-                        </div>
-                    }
-                    @if (_selectedField.ControlType == "select" || _selectedField.ControlType == "radio" || _selectedField.DataType == "select" || _selectedField.DataType == "radio")
-                    {
-                        <div class="row mb-2">
-                            <div class="col-12">
-                                <label class="form-label">Options (one per line)</label>
-                                <textarea class="form-control" rows="3" @bind="_selectedField.DropdownOptions" placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
-                                <small class="form-text text-muted">Enter each option on a new line</small>
-                            </div>
-                        </div>
-                    }
-                    <div class="row mb-2">
-                        <div class="col-md-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" @bind="_selectedField.IsRequired" />
-                                <label class="form-check-label">Required</label>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" @bind="_selectedField.IsReadOnly" />
-                                <label class="form-check-label">Read Only</label>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" @bind="_selectedField.IsVisible" />
-                                <label class="form-check-label">Visible</label>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" @bind="_selectedField.IsVisibleInDataView" />
-                                <label class="form-check-label">Visible in Data View</label>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            @if (_selectedField != null)
-                            {
-                                var selNameCfg = _selectedField.Name;
-                                var colCfg = _tableColumns.FirstOrDefault(c => string.Equals(c.Name, selNameCfg, StringComparison.OrdinalIgnoreCase));
-                                var isNullableCfg = colCfg?.IsNullable ?? true; // default true until loaded
-                                var eligibleCfg = isNullableCfg && !_selectedField.IsRequired;
-                                if (_selectedField.IsRequired && _selectedField.TreatBlankAsNull)
-                                {
-                                    _selectedField.TreatBlankAsNull = false; // enforce rule
-                                }
-                                <div class="form-check" title="Treat blank input as NULL when saved (only for nullable, non-required fields)">
-                                    <input class="form-check-input" type="checkbox" @bind="_selectedField.TreatBlankAsNull" disabled="@(!eligibleCfg)" />
-                                    <label class="form-check-label">Blank is NULL</label>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" disabled />
-                                    <label class="form-check-label text-muted">Blank is NULL</label>
-                                </div>
-                            }
-                        </div>
-                    </div>
-        }
-    </BodyTemplate>
-    <FooterTemplate>
-        <Button Color="ButtonColor.Secondary" @onclick="CloseFieldConfig">Close</Button>
-    </FooterTemplate>
-</Modal>
+<Requestr.Web.Components.FormBuilder.FieldConfigurationModal 
+    @ref="_fieldConfigModal"
+    Field="_selectedField"
+    SqlType="@(_selectedField != null ? GetOriginalSqlType(_selectedField) : "varchar")"
+    ColumnInfo="@GetColumnInfoForField(_selectedField)"
+    OnClosed="OnFieldConfigClosed" />
 
 @code {
     [Parameter] public int? FormId { get; set; }
@@ -1349,6 +553,9 @@
     private bool _showGridGuides = false;
     private FormField? _selectedFieldForPositioning;
 
+    // Computed property for field names that have been added to the form
+    private HashSet<string> _addedFieldNames => _formDefinition.Fields.Select(f => f.Name).ToHashSet();
+
     // Resize-related fields
     private bool _isResizing = false;
     private FormField? _resizingField;
@@ -1358,7 +565,7 @@
     // Section-related drag and drop fields
     private FormSection? _dragTargetSection;
     private FormField? _selectedField;
-    private Modal fieldConfigModal = default!;
+    private Requestr.Web.Components.FormBuilder.FieldConfigurationModal _fieldConfigModal = default!;
 
     // Permission-related fields
     private bool _isLoadingPermissions = false;
@@ -1688,7 +895,13 @@
         
         StateHasChanged();
     }
-    
+
+    // Wrapper method for FormPermissionsTab component callback
+    private void OnPermissionChangedFromTab((string roleName, FormPermissionType permissionType, bool isGranted) args)
+    {
+        SetPermission(args.roleName, args.permissionType, args.isGranted);
+    }
+
     private string GetRolePermissionSummary(string roleName)
     {
         if (_currentPermissions.TryGetValue(roleName, out var permissions))
@@ -1703,14 +916,7 @@
     #endregion
 
     #region Role Management Methods
-    
-    private void ShowAddRoleModal()
-    {
-        _isAddingRole = true;
-        _newRoleName = "";
-        StateHasChanged();
-    }
-    
+
     private async Task AddNewRole()
     {
         if (string.IsNullOrWhiteSpace(_newRoleName) || !FormId.HasValue)
@@ -1757,14 +963,14 @@
             toastService.ShowError($"Error adding role: {ex.Message}");
         }
     }
-    
-    private void CancelAddRole()
+
+    // Wrapper method for FormPermissionsTab component callback
+    private async Task AddNewRoleFromTab(string roleName)
     {
-        _isAddingRole = false;
-        _newRoleName = "";
-        StateHasChanged();
+        _newRoleName = roleName;
+        await AddNewRole();
     }
-    
+
     private bool CanDeleteRole(string roleName)
     {
         // Prevent deletion of core system roles
@@ -1890,6 +1096,25 @@
             _tableColumns.Clear();
             StateHasChanged();
         }
+    }
+
+    // Wrapper methods for FormDetailsTab component callbacks
+    private async Task OnConnectionStringChangedFromTab(string connectionString)
+    {
+        _selectedConnectionString = connectionString;
+        await OnConnectionStringChangedAsync();
+    }
+
+    private async Task OnSchemaChangedFromTab(string schema)
+    {
+        _formDefinition.Schema = schema;
+        await OnSchemaChangedAsync();
+    }
+
+    private async Task OnTableChangedFromTab(string tableName)
+    {
+        _formDefinition.TableName = tableName;
+        await OnTableChangedAsync();
     }
 
     private void OnDragStart(ColumnInfo column)
@@ -2346,6 +1571,13 @@
         }
     }
 
+    // Wrapper method for FormWorkflowTab component callback
+    private async Task OnWorkflowChangedFromTab(int? workflowId)
+    {
+        _selectedWorkflowId = workflowId;
+        await OnWorkflowChanged();
+    }
+
     private async Task LoadWorkflowStepConfigurations()
     {
         if (!_selectedWorkflowId.HasValue) return;
@@ -2712,18 +1944,19 @@
     private async Task ConfigureField(FormField field)
     {
         _selectedField = field;
-        await fieldConfigModal.ShowAsync();
+        await _fieldConfigModal.ShowAsync();
     }
 
-    private async Task CloseFieldConfig()
+    private void OnFieldConfigClosed()
     {
         _selectedField = null;
-        await fieldConfigModal.HideAsync();
+        StateHasChanged();
     }
 
-    private string GetFieldConfigModalTitle()
+    private ColumnInfo? GetColumnInfoForField(FormField? field)
     {
-        return _selectedField != null ? $"Configure Field: {_selectedField.DisplayName}" : "Configure Field";
+        if (field == null) return null;
+        return _tableColumns.FirstOrDefault(c => string.Equals(c.Name, field.Name, StringComparison.OrdinalIgnoreCase));
     }
 
     private void MigrateLegacyFields()

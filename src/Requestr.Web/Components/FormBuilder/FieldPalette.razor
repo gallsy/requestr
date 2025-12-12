@@ -1,0 +1,205 @@
+@* Field Palette Component - Left sidebar in Form Designer showing available database columns *@
+@using Requestr.Core.Models
+
+<div class="card field-palette">
+    <div class="card-header">
+        <h5 class="mb-0">Field Palette</h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">
+            Drag fields to sections or click empty grid cells to place
+        </p>
+        
+        <!-- Search/Filter -->
+        <div class="mb-3">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" class="form-control" placeholder="Filter fields..." 
+                       @bind="_fieldFilter" 
+                       @oninput="OnFilterChanged" />
+            </div>
+        </div>
+        
+        <!-- Field Statistics -->
+        <div class="mb-3 p-2 bg-light rounded">
+            <small class="text-muted">
+                <strong>@_filteredColumns.Count(c => !IsFieldAlreadyAdded(c.Name))</strong> available, 
+                <strong>@AddedFieldNames.Count</strong> added
+            </small>
+        </div>
+        
+        <div class="available-fields">
+            @foreach (var column in _filteredColumns)
+            {
+                var isAdded = IsFieldAlreadyAdded(column.Name);
+                <div class="field-item @(isAdded ? "field-disabled" : "field-draggable")" 
+                     draggable="@(isAdded ? "false" : "true")" 
+                     @ondragstart="@(() => OnDragStartInternal(column))"
+                     @ondragend="OnDragEndInternal"
+                     @ondblclick="@(() => OnQuickAdd(column))"
+                     title="@(isAdded ? "Field already added" : "Drag to section or double-click to add")">
+                    
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="field-item-header d-flex align-items-center">
+                                <i class="bi bi-@GetFieldIcon(column.DataType) me-2 text-primary"></i>
+                                <strong class="field-item-name">@column.Name</strong>
+                            </div>
+                            
+                            <div class="field-item-details mt-1">
+                                <small class="text-muted d-block">@column.DataType</small>
+                                <div class="field-item-badges mt-1">
+                                    @if (column.IsPrimaryKey)
+                                    {
+                                        <span class="badge bg-warning text-dark">PK</span>
+                                    }
+                                    @if (column.IsIdentity)
+                                    {
+                                        <span class="badge bg-info">Identity</span>
+                                    }
+                                    @if (!column.IsNullable)
+                                    {
+                                        <span class="badge bg-danger">Required</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Optional</span>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="field-item-actions">
+                            @if (isAdded)
+                            {
+                                <i class="bi bi-check-circle text-success" title="Added"></i>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-outline-primary btn-sm" 
+                                        @onclick="@(() => OnQuickAdd(column))"
+                                        @onclick:stopPropagation="true"
+                                        @onclick:preventDefault="true"
+                                        title="Quick add to first section">
+                                    <i class="bi bi-plus"></i>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                    
+                    <!-- Drag handle -->
+                    @if (!isAdded)
+                    {
+                        <div class="field-drag-handle">
+                            <i class="bi bi-grip-vertical"></i>
+                        </div>
+                    }
+                </div>
+            }
+            
+            @if (!_filteredColumns.Any())
+            {
+                <div class="text-center text-muted p-3">
+                    <i class="bi bi-search"></i>
+                    <p class="mb-0 mt-2">No fields match your filter</p>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _fieldFilter = "";
+    private List<ColumnInfo> _filteredColumns = new();
+
+    /// <summary>
+    /// All available columns from the database table
+    /// </summary>
+    [Parameter] public List<ColumnInfo> Columns { get; set; } = new();
+
+    /// <summary>
+    /// Names of fields that have already been added to the form
+    /// </summary>
+    [Parameter] public HashSet<string> AddedFieldNames { get; set; } = new();
+
+    /// <summary>
+    /// Event callback when a column drag starts
+    /// </summary>
+    [Parameter] public EventCallback<ColumnInfo> OnDragStart { get; set; }
+
+    /// <summary>
+    /// Event callback when drag ends
+    /// </summary>
+    [Parameter] public EventCallback OnDragEnd { get; set; }
+
+    /// <summary>
+    /// Event callback when a column is double-clicked for quick add
+    /// </summary>
+    [Parameter] public EventCallback<ColumnInfo> OnQuickAddField { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        FilterColumns();
+    }
+
+    private void OnFilterChanged(ChangeEventArgs e)
+    {
+        _fieldFilter = e.Value?.ToString() ?? "";
+        FilterColumns();
+    }
+
+    private void FilterColumns()
+    {
+        if (string.IsNullOrWhiteSpace(_fieldFilter))
+        {
+            _filteredColumns = Columns.ToList();
+        }
+        else
+        {
+            var filter = _fieldFilter.ToLower();
+            _filteredColumns = Columns
+                .Where(c => c.Name.ToLower().Contains(filter) || 
+                           c.DataType.ToLower().Contains(filter))
+                .ToList();
+        }
+    }
+
+    private bool IsFieldAlreadyAdded(string columnName)
+    {
+        return AddedFieldNames.Contains(columnName);
+    }
+
+    private async Task OnDragStartInternal(ColumnInfo column)
+    {
+        await OnDragStart.InvokeAsync(column);
+    }
+
+    private async Task OnDragEndInternal()
+    {
+        await OnDragEnd.InvokeAsync();
+    }
+
+    private async Task OnQuickAdd(ColumnInfo column)
+    {
+        if (!IsFieldAlreadyAdded(column.Name))
+        {
+            await OnQuickAddField.InvokeAsync(column);
+        }
+    }
+
+    private string GetFieldIcon(string dataType)
+    {
+        var type = dataType.ToLower();
+        return type switch
+        {
+            var t when t.Contains("int") => "123",
+            var t when t.Contains("decimal") || t.Contains("numeric") || t.Contains("float") || t.Contains("money") => "percent",
+            var t when t.Contains("bit") => "toggle-on",
+            var t when t.Contains("date") || t.Contains("time") => "calendar",
+            var t when t.Contains("text") || t.Contains("ntext") => "text-paragraph",
+            var t when t.Contains("varchar") || t.Contains("char") => "fonts",
+            var t when t.Contains("uniqueidentifier") => "key",
+            _ => "input-cursor-text"
+        };
+    }
+}

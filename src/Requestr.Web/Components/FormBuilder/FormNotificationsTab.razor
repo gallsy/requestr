@@ -1,0 +1,86 @@
+@* Form Notifications Tab - Email notification settings *@
+@using Requestr.Core.Models
+
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Notification Settings</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <h6 class="alert-heading">Form Notifications</h6>
+                    <p class="mb-0">Configure email notifications for form events. Optionally enter an email address to be notified when requests are created or completed for this form.</p>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label">Notification Email Address (Optional)</label>
+                    <input type="email" class="form-control" 
+                           value="@(FormDefinition.NotificationEmail ?? "")"
+                           @onchange="@((ChangeEventArgs e) => FormDefinition.NotificationEmail = e.Value?.ToString())"
+                           placeholder="Enter email address to receive notifications...">
+                    <small class="form-text text-muted">
+                        Leave blank to disable form-level notifications. This email will receive notifications for the events selected below.
+                    </small>
+                </div>
+
+                <div class="mb-3">
+                    <h6 class="mb-3">Notification Events</h6>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" 
+                               @bind="FormDefinition.NotifyOnCreation"
+                               id="notifyOnCreation">
+                        <label class="form-check-label" for="notifyOnCreation">
+                            <strong>Request Created</strong>
+                        </label>
+                        <div class="text-muted small">
+                            Send notification when a new request is submitted using this form.
+                        </div>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" 
+                               @bind="FormDefinition.NotifyOnCompletion"
+                               id="notifyOnCompletion">
+                        <label class="form-check-label" for="notifyOnCompletion">
+                            <strong>Request Completed</strong>
+                        </label>
+                        <div class="text-muted small">
+                            Send notification when a request is fully approved and applied to the database.
+                        </div>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(FormDefinition.NotificationEmail))
+                {
+                    <div class="alert alert-success">
+                        <h6 class="alert-heading">Notifications Active</h6>
+                        <p class="mb-0">
+                            <strong>@FormDefinition.NotificationEmail</strong> will receive notifications for:
+                            @if (FormDefinition.NotifyOnCreation || FormDefinition.NotifyOnCompletion)
+                            {
+                                <ul class="mb-0 mt-1">
+                                    @if (FormDefinition.NotifyOnCreation)
+                                    {
+                                        <li>New request submissions</li>
+                                    }
+                                    @if (FormDefinition.NotifyOnCompletion)
+                                    {
+                                        <li>Request completions</li>
+                                    }
+                                </ul>
+                            }
+                            else
+                            {
+                                <br><em>No events selected</em>
+                            }
+                        </p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public FormDefinition FormDefinition { get; set; } = new();
+}
