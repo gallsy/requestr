@@ -259,9 +259,9 @@
             <!-- Form Designer Tab -->
             @if (ActiveTab == "designer")
             {
-                <div class="row">
+                <div class="row form-designer-row">
                     <!-- Available Fields Panel -->
-                    <div class="col-lg-3">
+                    <div class="col-lg-3 field-palette-column">
                         @if (_tableColumns.Any())
                         {
                             <div class="card field-palette">
@@ -299,8 +299,7 @@
                                             <div class="field-item @(IsFieldAlreadyAdded(column.Name) ? "field-disabled" : "field-draggable")" 
                                                  draggable="@(IsFieldAlreadyAdded(column.Name) ? "false" : "true")" 
                                                  @ondragstart="@(() => OnDragStart(column))"
-                                                 @onmousedown:preventDefault="@(!IsFieldAlreadyAdded(column.Name))"
-                                                 @onselectstart:preventDefault="@(!IsFieldAlreadyAdded(column.Name))"
+                                                 @ondragend="OnDragEnd"
                                                  @ondblclick="@(() => QuickAddField(column))"
                                                  title="@(IsFieldAlreadyAdded(column.Name) ? "Field already added" : "Drag to section or double-click to add")">
                                                 
@@ -344,6 +343,8 @@
                                                             <div class="btn-group-vertical btn-group-sm">
                                                                 <button type="button" class="btn btn-outline-primary btn-sm" 
                                                                         @onclick="@(() => QuickAddField(column))"
+                                                                        @onclick:stopPropagation="true"
+                                                                        @onclick:preventDefault="true"
                                                                         title="Quick add to first section">
                                                                     <i class="bi bi-plus"></i>
                                                                 </button>
@@ -1396,9 +1397,22 @@
         public bool IsRequired { get; set; } = false;
     }
 
-    private void SetActiveTab(string tab)
+    private async Task SetActiveTab(string tab)
     {
         ActiveTab = tab;
+        
+        // Initialize sticky palette when switching to designer tab
+        if (tab == "designer")
+        {
+            // Small delay to ensure DOM is updated
+            await Task.Delay(50);
+            await JSRuntime.InvokeVoidAsync("formBuilderInterop.initStickyPalette");
+        }
+        else
+        {
+            // Cleanup sticky palette when leaving designer tab
+            await JSRuntime.InvokeVoidAsync("formBuilderInterop.destroyStickyPalette");
+        }
         
         // Load permissions when switching to permissions tab
         if (tab == "permissions" && FormId.HasValue)
@@ -1519,6 +1533,16 @@
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && ActiveTab == "designer")
+        {
+            // Initialize sticky palette after first render if on designer tab
+            await Task.Delay(100); // Allow DOM to fully render
+            await JSRuntime.InvokeVoidAsync("formBuilderInterop.initStickyPalette");
         }
     }
 
@@ -1871,6 +1895,16 @@
     private void OnDragStart(ColumnInfo column)
     {
         _draggedColumn = column;
+        StateHasChanged();
+    }
+
+    private void OnDragEnd()
+    {
+        // Clear dragged column if drop didn't happen
+        _draggedColumn = null;
+        _isDragOver = false;
+        _dragTargetSection = null;
+        StateHasChanged();
     }
 
     private void OnDragOver(DragEventArgs e)

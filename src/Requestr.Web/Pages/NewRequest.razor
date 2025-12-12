@@ -76,7 +76,7 @@ else
             <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
                 @foreach (var form in forms)
                 {
-                    <div class="col slide-up-delay">
+                    <div class="col">
                         <div class="card h-100 form-card">
                             <div class="card-header">
                                 <h5 class="card-title mb-0">@form.Name</h5>
@@ -269,27 +269,13 @@ else
 
 <style>
     .form-card {
-        transition: all 0.2s ease;
         border-radius: var(--border-radius);
         overflow: hidden;
-        box-shadow: var(--card-shadow);
         border: 1px solid var(--border-color);
     }
 
-    .form-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
-    }
-
-    .form-card .card-header {
-        background-color: var(--primary);
-        color: white;
-        padding: 1rem;
-        border-bottom: none;
-    }
-
     .form-details {
-        margin-top: 1.5rem;
+        margin-top: 1rem;
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
@@ -298,29 +284,11 @@ else
     .form-detail-item {
         display: flex;
         align-items: center;
-        color: var(--secondary);
-        font-size: 0.9rem;
+        color: var(--text-muted);
+        font-size: 0.875rem;
     }
 
-    .slide-up-delay {
-        opacity: 0;
-        transform: translateY(20px);
-        animation: slideUp 0.5s ease forwards;
-    }
 
-    .slide-up-delay:nth-child(1) { animation-delay: 0.1s; }
-    .slide-up-delay:nth-child(2) { animation-delay: 0.2s; }
-    .slide-up-delay:nth-child(3) { animation-delay: 0.3s; }
-    .slide-up-delay:nth-child(4) { animation-delay: 0.4s; }
-    .slide-up-delay:nth-child(5) { animation-delay: 0.5s; }
-    .slide-up-delay:nth-child(6) { animation-delay: 0.6s; }
-
-    @@keyframes slideUp {
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
     
     .category-header {
         display: flex;
