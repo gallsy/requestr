@@ -23,8 +23,7 @@
 }
 else if (_formDefinition == null)
 {
-    <EmptyState IconName="IconName.ExclamationTriangle" 
-                Title="Form Not Found" 
+    <EmptyState Title="Form Not Found" 
                 Description="The requested form could not be found or you don't have permission to access it.">
         <Action>
             <Button Color="ButtonColor.Primary" @onclick="@(() => Navigation.NavigateTo("/"))">
@@ -36,8 +35,7 @@ else if (_formDefinition == null)
 else
 {
     <PageHeader Title="@_formDefinition.Name" 
-                Description="@_formDefinition.Description"
-                Icon="IconName.FileText">
+                Description="@_formDefinition.Description">
         <Actions>
             @if (RequestId.HasValue)
             {
@@ -53,22 +51,19 @@ else
                     <div class="card-body">
                         @if (!string.IsNullOrEmpty(_errorMessage))
                         {
-                            <StandardAlert AlertColor="AlertColor.Danger" 
-                                         IconName="IconName.ExclamationTriangle"
+                            <StandardAlert AlertType="danger" 
                                          Message="@_errorMessage" />
                         }
                         
                         @if (!string.IsNullOrEmpty(_successMessage))
                         {
-                            <StandardAlert AlertColor="AlertColor.Success" 
-                                         IconName="IconName.CheckCircle"
+                            <StandardAlert AlertType="success" 
                                          Message="@_successMessage" />
                         }
 
                         @if (!_canCreateRequests && !_canUpdateRequests && !_canDeleteRequests)
                         {
-                            <StandardAlert AlertColor="AlertColor.Warning" 
-                                         IconName="IconName.ExclamationTriangle"
+                            <StandardAlert AlertType="warning" 
                                          Title="Access Restricted"
                                          Dismissable="false">
                                 You don't have permission to submit requests for this form. Please contact your administrator if you need access.

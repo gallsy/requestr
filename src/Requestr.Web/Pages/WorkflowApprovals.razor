@@ -16,18 +16,9 @@
 
 <PageTitle>Workflow Approvals | Requestr</PageTitle>
 
+<PageHeader Title="Approvals" Description="Review and process form requests awaiting approval" />
+
 <div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h1 class="display-5">
-                        <i class="bi bi-diagram-3 me-3 text-primary"></i>
-                        Approvals
-                    </h1>
-                    <p class="lead">Review and process form requests awaiting approval</p>
-                </div>
-            </div>
 
             <!-- Advanced Filters -->
             <div class="card mb-4">
@@ -102,15 +93,13 @@
 
             @if (!string.IsNullOrEmpty(SuccessMessage))
             {
-                <StandardAlert AlertColor="AlertColor.Success" 
-                             IconName="IconName.CheckCircle"
+                <StandardAlert AlertType="success" 
                              Message="@SuccessMessage" />
             }
 
             @if (!string.IsNullOrEmpty(ErrorMessage))
             {
-                <StandardAlert AlertColor="AlertColor.Danger" 
-                             IconName="IconName.ExclamationTriangle"
+                <StandardAlert AlertType="danger" 
                              Message="@ErrorMessage" />
             }
 
@@ -118,29 +107,12 @@
                 <div class="card-body">
                     @if (IsLoading)
                     {
-                        <div class="text-center py-5">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2">Loading approvals...</p>
-                        </div>
+                        <LoadingSpinner Message="Loading approvals..." />
                     }
                     else if (FilteredRequests?.Any() != true)
                     {
-                        <div class="text-center py-5">
-                            <i class="bi bi-check-circle display-1 text-success mb-3"></i>
-                            <h6 class="text-muted">No pending approvals</h6>
-                            <p class="text-muted small">
-                                @if (string.IsNullOrEmpty(SelectedFormFilter))
-                                {
-                                    <text>All approvals have been processed.</text>
-                                }
-                                else
-                                {
-                                    <text>No requests match your current filters.</text>
-                                }
-                            </p>
-                        </div>
+                        <EmptyState Title="No pending approvals" 
+                                    Description="@GetEmptyStateDescription()" />
                     }
                     else
                     {
@@ -196,8 +168,6 @@
                 </div>
             </div>
         </div>
-    </div>
-</div>
 
 @code {
     private List<FormRequest>? AllRequests;
@@ -212,6 +182,11 @@
     private string? ErrorMessage;
     private ClaimsPrincipal? User;
     private List<string> UserRoles = new();
+
+    private string GetEmptyStateDescription() => 
+        string.IsNullOrEmpty(SelectedFormFilter) 
+            ? "All approvals have been processed." 
+            : "No requests match your current filters.";
 
     protected override async Task OnInitializedAsync()
     {

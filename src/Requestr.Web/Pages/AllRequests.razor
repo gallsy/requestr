@@ -19,43 +19,33 @@
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
 <PageTitle>Requests Management | @Branding.ApplicationName</PageTitle>
 
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h1 class="display-5">
-                        <i class="bi bi-list-check me-3"></i>
-                        All Requests
-                    </h1>
-                    <p class="lead">View and manage @(_isAdmin ? "all" : "your accessible") data requests</p>
-                </div>
-            </div>
+<PageHeader Title="All Requests" Description="@($"View and manage {(_isAdmin ? "all" : "your accessible")} data requests")" />
 
-            <!-- Advanced Filters -->
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h6 class="mb-0">
-                        <i class="bi bi-funnel me-2"></i>
-                        Filters
-                        <button class="btn btn-sm btn-link p-0 ms-2" @onclick="ToggleAdvancedFilters">
-                            <i class="bi bi-@(_showAdvancedFilters ? "chevron-up" : "chevron-down")"></i>
-                        </button>
-                    </h6>
+<div class="container-fluid">
+    <!-- Advanced Filters -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h6 class="mb-0">
+                <i class="bi bi-funnel me-2"></i>
+                Filters
+                <button class="btn btn-sm btn-link p-0 ms-2" @onclick="ToggleAdvancedFilters">
+                    <i class="bi bi-@(_showAdvancedFilters ? "chevron-up" : "chevron-down")"></i>
+                </button>
+            </h6>
+        </div>
+        <div class="card-body @(_showAdvancedFilters ? "" : "d-none")">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Request Type</label>
+                    <select class="form-select form-select-sm" @bind="SelectedRequestTypeFilter" @bind:after="ApplyFilters">
+                        <option value="">All Request Types</option>
+                        <option value="Individual">Individual Requests</option>
+                        <option value="Bulk">Bulk Requests</option>
+                    </select>
                 </div>
-                <div class="card-body @(_showAdvancedFilters ? "" : "d-none")">
-                    <div class="row g-3">
-                        <div class="col-md-3">
-                            <label class="form-label">Request Type</label>
-                            <select class="form-select form-select-sm" @bind="SelectedRequestTypeFilter" @bind:after="ApplyFilters">
-                                <option value="">All Request Types</option>
-                                <option value="Individual">Individual Requests</option>
-                                <option value="Bulk">Bulk Requests</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Status</label>
-                            <select class="form-select form-select-sm" @bind="SelectedStatusFilter" @bind:after="ApplyFilters">
+                <div class="col-md-3">
+                    <label class="form-label">Status</label>
+                    <select class="form-select form-select-sm" @bind="SelectedStatusFilter" @bind:after="ApplyFilters">
                                 <option value="">All Status</option>
                                 <option value="Pending">Pending</option>
                                 <option value="Approved">Approved</option>
@@ -141,41 +131,19 @@
 
             @if (IsLoading)
             {
-                <div class="text-center py-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-2">Loading requests...</p>
-                </div>
+                <LoadingSpinner Message="Loading requests..." />
             }
             else if ((FilteredRequests?.Any() != true) && (FilteredBulkRequests?.Any() != true))
             {
-                <div class="card">
-                    <div class="card-body">
-                        <div class="text-center py-5">
-                            <i class="bi bi-inbox display-1 text-muted mb-3"></i>
-                            <h6 class="text-muted">No requests found</h6>
-                            <p class="text-muted small">
-                                @if (HasActiveFilters())
-                                {
-                                    <text>No requests match your current filters. Try adjusting your filter criteria.</text>
-                                }
-                                else if (_isAdmin)
-                                {
-                                    <text>No requests have been made yet.</text>
-                                }
-                                else
-                                {
-                                    <text>You haven't made any requests yet or don't have access to approve any requests.</text>
-                                }
-                            </p>
-                            <a href="/forms" class="btn btn-primary">
-                                <i class="bi bi-plus-lg me-2"></i>
-                                Create New Request
-                            </a>
-                        </div>
-                    </div>
-                </div>
+                <EmptyState Title="No requests found" 
+                            Description="@(HasActiveFilters() ? "No requests match your current filters. Try adjusting your filter criteria." : _isAdmin ? "No requests have been made yet." : "You haven't made any requests yet or don't have access to approve any requests.")">
+                    <Action>
+                        <a href="/forms" class="btn btn-primary">
+                            <i class="bi bi-plus-lg me-2"></i>
+                            Create New Request
+                        </a>
+                    </Action>
+                </EmptyState>
             }
             else
             {
@@ -331,8 +299,6 @@
                 </div>
             }
         </div>
-    </div>
-</div>
 
 @code {
     private List<FormRequest>? AllFormRequests;

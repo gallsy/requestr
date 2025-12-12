@@ -21,8 +21,7 @@
 }
 else if (_bulkRequest == null)
 {
-    <EmptyState IconName=IconName.ExclamationTriangle 
-                Title="Bulk Request Not Found" 
+    <EmptyState Title="Bulk Request Not Found" 
                 Description="The requested bulk request could not be found or you don't have permission to access it.">
         <Action>
             <Button Color="ButtonColor.Primary" @onclick="@(() => Navigation.NavigateTo("/requests"))">
@@ -34,8 +33,7 @@ else if (_bulkRequest == null)
 else
 {
     <PageHeader Title="Bulk Request Details" 
-                Description="@($"Bulk Request #{_bulkRequest.Id}")"
-                Icon=IconName.Files>
+                Description="@($"Bulk Request #{_bulkRequest.Id}")">
         <Actions>
             @if (_isFromApprovals)
             {
@@ -60,16 +58,14 @@ else
 
                 @if (!string.IsNullOrEmpty(_errorMessage))
                 {
-                    <StandardAlert AlertColor="AlertColor.Danger" 
-                                 IconName=IconName.ExclamationTriangleFill
+                    <StandardAlert AlertType="danger" 
                                  Message="@_errorMessage" />
                 }
 
                 @if (!string.IsNullOrEmpty(_conflictWarning))
                 {
                     <div class="mb-4">
-                        <StandardAlert AlertColor="AlertColor.Warning" 
-                                     IconName=IconName.ExclamationTriangle
+                        <StandardAlert AlertType="warning" 
                                      Title="Data Conflicts Detected">
                             <div style="white-space: pre-line;">@_conflictWarning</div>
                         </StandardAlert>
@@ -181,8 +177,7 @@ else
                                 </h5>
                             </div>
                             <div class="card-body">
-                                <StandardAlert AlertColor="AlertColor.Warning" 
-                                             IconName=IconName.ExclamationTriangle
+                                <StandardAlert AlertType="warning" 
                                              Dismissable="false">
                                     This bulk request has a workflow (Instance #@_bulkRequest.WorkflowInstanceId) but the workflow FormRequest could not be found.
                                 </StandardAlert>

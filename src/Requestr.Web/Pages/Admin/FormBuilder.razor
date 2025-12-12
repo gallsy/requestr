@@ -25,38 +25,28 @@
 
 @* Form Builder *@
 
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1 class="h3">@(FormId.HasValue ? "Edit Form" : "Create New Form")</h1>
-                <div>
-                    <button type="button" class="btn btn-secondary me-2" @onclick="Cancel">Cancel</button>
-                    <button type="button" class="btn btn-primary" @onclick="SaveForm" disabled="@_isLoading">
-                        <i class="bi bi-save me-1"></i>
-                        @if (_isLoading)
-                        {
-                            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                            <text>Saving...</text>
-                        }
-                        else
-                        {
-                            <text>Save Form</text>
-                        }
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
+<PageHeader Title="@(FormId.HasValue ? "Edit Form" : "Create New Form")">
+    <Actions>
+        <button type="button" class="btn btn-secondary me-2" @onclick="Cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" @onclick="SaveForm" disabled="@_isSaving">
+            <i class="bi bi-save me-1"></i>
+            @if (_isSaving)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                <text>Saving...</text>
+            }
+            else
+            {
+                <text>Save Form</text>
+            }
+        </button>
+    </Actions>
+</PageHeader>
 
+<div class="container-fluid">
     @if (_isLoading)
     {
-        <div class="text-center p-5">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <p class="mt-2">Loading...</p>
-        </div>
+        <LoadingSpinner Message="Loading form..." />
     }
     else
     {
@@ -544,6 +534,7 @@
     private bool _hasNoPrimaryKey = false;
     private string _selectedConnectionString = "";
     private bool _isLoading = true;
+    private bool _isSaving = false;
     private ColumnInfo? _draggedColumn;
     private FormField? _draggedField;
     private Dictionary<string, string> _fieldOriginalSqlTypes = new(); // Track original SQL types for each field
@@ -1205,7 +1196,7 @@
     {
         try
         {
-            _isLoading = true;
+            _isSaving = true;
             
             // Validate form
             if (string.IsNullOrWhiteSpace(_formDefinition.Name))
@@ -1305,7 +1296,7 @@
         }
         finally
         {
-            _isLoading = false;
+            _isSaving = false;
         }
     }
 

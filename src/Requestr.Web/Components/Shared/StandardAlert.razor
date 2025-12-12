@@ -1,47 +1,40 @@
-@* Standardized alert component using Blazor Bootstrap *@
-@using BlazorBootstrap
+@* Standardized alert component using Bootstrap *@
 
-<Alert Color="@AlertColor" Dismissable="@Dismissable" @ref="alertRef">
-    <div class="d-flex align-items-center">
-        @if (IconName.HasValue)
+@if (_isVisible)
+{
+    <div class="alert alert-@GetAlertClass() @(Dismissable ? "alert-dismissible" : "") fade show" role="alert">
+        @if (!string.IsNullOrEmpty(Title))
         {
-            <Icon Name="IconName.Value" class="me-2" />
-        }
-        <div class="flex-grow-1">
-            @if (!string.IsNullOrEmpty(Title))
-            {
-                <strong>@Title</strong>
-                @if (!string.IsNullOrEmpty(Message))
-                {
-                    <br />
-                }
-            }
+            <strong>@Title</strong>
             @if (!string.IsNullOrEmpty(Message))
             {
-                @Message
+                <br />
             }
-            @ChildContent
-        </div>
+        }
+        @if (!string.IsNullOrEmpty(Message))
+        {
+            @Message
+        }
+        @ChildContent
+        @if (Dismissable)
+        {
+            <button type="button" class="btn-close" @onclick="Close" aria-label="Close"></button>
+        }
     </div>
-</Alert>
+}
 
 @code {
-    private Alert alertRef = default!;
+    private bool _isVisible = true;
 
     /// <summary>
-    /// Alert color/type
+    /// Alert type (primary, secondary, success, danger, warning, info)
     /// </summary>
-    [Parameter] public AlertColor AlertColor { get; set; } = AlertColor.Primary;
+    [Parameter] public string AlertType { get; set; } = "primary";
 
     /// <summary>
     /// Whether the alert can be dismissed
     /// </summary>
     [Parameter] public bool Dismissable { get; set; } = true;
-
-    /// <summary>
-    /// Bootstrap icon name
-    /// </summary>
-    [Parameter] public IconName? IconName { get; set; }
 
     /// <summary>
     /// Alert title (optional)
@@ -58,11 +51,22 @@
     /// </summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>
-    /// Programmatically close the alert
-    /// </summary>
-    public async Task CloseAsync()
+    private string GetAlertClass() => AlertType.ToLower() switch
     {
-        await alertRef.CloseAsync();
+        "primary" => "primary",
+        "secondary" => "secondary",
+        "success" => "success",
+        "danger" => "danger",
+        "warning" => "warning",
+        "info" => "info",
+        "light" => "light",
+        "dark" => "dark",
+        _ => "primary"
+    };
+
+    private void Close()
+    {
+        _isVisible = false;
+        StateHasChanged();
     }
 }

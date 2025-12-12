@@ -18,20 +18,9 @@
 
 <script src="~/js/notifications.js"></script>
 
+<PageHeader Title="Notification Settings" Description="Configure system-wide email settings and notification templates" />
+
 <div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h1 class="display-5">
-                        <i class="bi bi-envelope-at me-2"></i>
-                        Notification Settings
-                    </h1>
-                    <p class="lead">Configure system-wide email settings and notification templates</p>
-                </div>
-            </div>
-        </div>
-    </div>
 
     @if (_isLoading)
     {
@@ -118,7 +107,7 @@
                                         @if (_emailConfig.Provider == EmailProvider.SMTP)
                                         {
                                             <!-- SMTP Settings -->
-                                            <StandardAlert AlertColor="AlertColor.Info" 
+                                            <StandardAlert AlertType="info" 
                                                            IconName="IconName.InfoCircleFill">
                                                 Configure your SMTP server settings below
                                             </StandardAlert>
@@ -160,7 +149,7 @@
                                         else if (_emailConfig.Provider == EmailProvider.SendGrid)
                                         {
                                             <!-- SendGrid Settings -->
-                                            <StandardAlert AlertColor="AlertColor.Info" 
+                                            <StandardAlert AlertType="info" 
                                                            IconName="IconName.InfoCircleFill">
                                                 Enter your SendGrid API key below. You can find this in your SendGrid dashboard.
                                             </StandardAlert>

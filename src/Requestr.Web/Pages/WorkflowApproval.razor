@@ -28,8 +28,7 @@
 }
 else if (_workflowInstance == null || _currentStep == null || _formRequest == null)
 {
-    <EmptyState IconName=IconName.ExclamationTriangle 
-                Title="Workflow Step Not Found" 
+    <EmptyState Title="Workflow Step Not Found" 
                 Description="The requested workflow step could not be found or you don't have permission to access it.">
         <Action>
             <Button Color="ButtonColor.Primary" @onclick="@(() => Navigation.NavigateTo("/"))">
@@ -41,8 +40,7 @@ else if (_workflowInstance == null || _currentStep == null || _formRequest == nu
 else
 {
     <PageHeader Title="Approve a request" 
-                Description="@(_formRequest.FormDefinition?.Name + " Request")"
-                Icon="IconName.Diagram3">
+                Description="@(_formRequest.FormDefinition?.Name + " Request")">
     </PageHeader>
 
     <div class="container">
@@ -87,22 +85,19 @@ else
                     <div class="card-body">
                         @if (!string.IsNullOrEmpty(_errorMessage))
                         {
-                            <StandardAlert AlertColor="AlertColor.Danger" 
-                                         IconName=IconName.ExclamationTriangle
+                            <StandardAlert AlertType="danger" 
                                          Message="@_errorMessage" />
                         }
                         
                         @if (!string.IsNullOrEmpty(_successMessage))
                         {
-                            <StandardAlert AlertColor="AlertColor.Success" 
-                                         IconName=IconName.CheckCircle
+                            <StandardAlert AlertType="success" 
                                          Message="@_successMessage" />
                         }
 
                         @if (IsStepCompleted)
                         {
-                            <StandardAlert AlertColor="AlertColor.Info" 
-                                         IconName=IconName.InfoCircle
+                            <StandardAlert AlertType="info" 
                                          Dismissable="false">
                                 <strong>Read-Only View:</strong> This approval step has been completed and cannot be modified.
                                 @if (!string.IsNullOrEmpty(_currentStep.CompletedByName))
@@ -114,8 +109,7 @@ else
 
                         @if (_hasConflicts)
                         {
-                            <StandardAlert AlertColor="AlertColor.Warning" 
-                                         IconName=IconName.ExclamationTriangle
+                            <StandardAlert AlertType="warning" 
                                          Title="Data Conflicts Detected"
                                          Dismissable="false">
                                 <div style="white-space: pre-line;">@(string.Join("\n", _conflictMessages))</div>
@@ -418,8 +412,7 @@ else
                             }
                             else
                             {
-                                <StandardAlert AlertColor="AlertColor.Warning" 
-                                             IconName=IconName.ExclamationTriangle
+                                <StandardAlert AlertType="warning" 
                                              Dismissable="false">
                                     You do not have permission to approve this step. This step is assigned to: 
                                     <strong>@string.Join(", ", _currentStepDefinition?.AssignedRoles ?? new List<string>())</strong>

@@ -157,44 +157,22 @@
     }
 </style>
 
+<PageHeader Title="@(workflow?.Name ?? "Workflow Designer")" Description="@workflow?.Description">
+    <Actions>
+        <button class="btn btn-outline-primary" @onclick="SaveWorkflow">
+            <i class="bi bi-save me-1"></i> Save
+        </button>
+        <button class="btn btn-secondary" @onclick="GoBack">
+            <i class="bi bi-arrow-left me-1"></i> Back
+        </button>
+    </Actions>
+</PageHeader>
+
 <div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <nav aria-label="breadcrumb">
-                        <ol class="breadcrumb">
-                            <li class="breadcrumb-item"><a href="/admin/workflows">Workflows</a></li>
-                            <li class="breadcrumb-item active">@(workflow?.Name ?? "Designer")</li>
-                        </ol>
-                    </nav>
-                    <h1 class="display-6">
-                        <i class="bi bi-diagram-2 me-3"></i>
-                        @(workflow?.Name ?? "Workflow Designer")
-                    </h1>
-                    @if (!string.IsNullOrEmpty(workflow?.Description))
-                    {
-                        <p class="lead text-muted">@workflow.Description</p>
-                    }
-                </div>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-outline-primary" @onclick="SaveWorkflow">
-                        <i class="bi bi-save"></i> Save
-                    </button>
-                    <button class="btn btn-secondary" @onclick="GoBack">
-                        <i class="bi bi-arrow-left"></i> Back
-                    </button>
-                </div>
-            </div>
 
             @if (workflow == null)
             {
-                <div class="text-center p-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-2">Loading workflow...</p>
-                </div>
+                <LoadingSpinner Message="Loading workflow..." />
             }
             else
             {
@@ -552,8 +530,6 @@
                 }
             }
         </div>
-    </div>
-</div>
 
 @code {
     [Parameter] public int WorkflowId { get; set; }

@@ -30,8 +30,7 @@
 }
 else if (_request == null)
 {
-    <EmptyState IconName=IconName.ExclamationTriangle 
-                Title="Request Not Found" 
+    <EmptyState Title="Request Not Found" 
                 Description="The requested form request could not be found or you don't have permission to access it.">
         <Action>
             <Button Color="ButtonColor.Primary" @onclick="@(() => Navigation.NavigateTo("/"))">
@@ -43,8 +42,7 @@ else if (_request == null)
 else
 {
     <PageHeader Title="Request Details" 
-                Description="@($"Request #{RequestId} - {_request.FormDefinition?.Name}")"
-                Icon=IconName.FileText>
+                Description="@($"Request #{RequestId} - {_request.FormDefinition?.Name}")">
         <Actions>
             @if (_request.Status == RequestStatus.Pending && CanEditRequest())
             {
@@ -67,8 +65,7 @@ else
 
                 @if (!string.IsNullOrEmpty(_conflictWarning))
                 {
-                    <StandardAlert AlertColor="AlertColor.Warning" 
-                                 IconName=IconName.ExclamationTriangle
+                    <StandardAlert AlertType="warning" 
                                  Title="Data Conflicts Detected">
                         <div style="white-space: pre-line;">@_conflictWarning</div>
                     </StandardAlert>
@@ -303,8 +300,7 @@ else
                                                                     }
                                                                     catch (Exception ex)
                                                                     {
-                                                                        <StandardAlert AlertColor="AlertColor.Warning" 
-                                                                                     IconName=IconName.ExclamationTriangle
+                                                                        <StandardAlert AlertType="warning" 
                                                                                      Dismissable="false">
                                                                             <small>Unable to parse field changes: @ex.Message</small>
                                                                         </StandardAlert>
@@ -351,8 +347,7 @@ else
                                     else if (_request.Status == RequestStatus.Failed && CanRetryRequest())
                                     {
                                         <div class="d-grid gap-2">
-                                            <StandardAlert AlertColor="AlertColor.Warning" 
-                                                         IconName=IconName.ExclamationTriangle
+                                            <StandardAlert AlertType="warning" 
                                                          Title="Application Failed"
                                                          Dismissable="false">
                                                 <small>@_request.FailureMessage</small>
@@ -368,8 +363,7 @@ else
                                     }
                                     else
                                     {
-                                        <StandardAlert AlertColor="AlertColor.Info" 
-                                                     IconName=IconName.InfoCircle
+                                        <StandardAlert AlertType="info" 
                                                      Dismissable="false">
                                             This request has already been @_request.Status.ToString().ToLower().
                                         </StandardAlert>
@@ -451,8 +445,7 @@ else
                         </p>
                         @if (_isApproval)
                         {
-                            <StandardAlert AlertColor="AlertColor.Warning" 
-                                         IconName=IconName.ExclamationTriangle
+                            <StandardAlert AlertType="warning" 
                                          Title="Admin Action:"
                                          Dismissable="false">
                                 This will force apply the request and stop any active workflows.
@@ -460,8 +453,7 @@ else
                         }
                         else
                         {
-                            <StandardAlert AlertColor="AlertColor.Warning" 
-                                         IconName=IconName.ExclamationTriangle
+                            <StandardAlert AlertType="warning" 
                                          Title="Admin Action:"
                                          Dismissable="false">
                                 This will cancel the request and stop any active workflows.

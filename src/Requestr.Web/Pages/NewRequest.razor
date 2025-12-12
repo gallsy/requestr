@@ -12,8 +12,7 @@
 <PageTitle>Create New Request | @Branding.ApplicationName</PageTitle>
 
 <PageHeader Title="New Request" 
-            Description="Choose a form below to submit a new request."
-            Icon="IconName.PlusCircle" />
+            Description="Choose a form below to submit a new request." />
 
 @if (_isLoading)
 {
@@ -21,8 +20,7 @@
 }
 else if (_forms == null || !_forms.Any())
 {
-    <EmptyState IconName="IconName.Inbox" 
-                Title="No Forms Available" 
+    <EmptyState Title="No Forms Available" 
                 Description="There are no active forms available for you to submit.">
         <Action>
             <Button Color="ButtonColor.Primary" @onclick="@(() => NavigationManager.NavigateTo("/"))">
@@ -135,8 +133,7 @@ else
                                 <DynamicAuthorizeView FormDefinitionId="@form.Id" 
                                                       AnyPermissions="new[] { FormPermissionType.CreateRequest, FormPermissionType.BulkUploadCsv, FormPermissionType.ViewData }">
                                     <NotAuthorized>
-                                        <StandardAlert AlertColor="AlertColor.Warning" 
-                                                     IconName="IconName.Lock"
+                                        <StandardAlert AlertType="warning" 
                                                      Dismissable="false">
                                             <small class="text-muted">
                                                 You don't have permissions to access this form. Contact your administrator.
