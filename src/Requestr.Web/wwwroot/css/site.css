@@ -174,6 +174,21 @@ small, .small, .text-muted {
 /* ============================================
    Sidebar Navigation
    ============================================ */
+.sidebar-header {
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.nav-section-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    padding: 1rem 0.875rem 0.5rem;
+    margin-top: 0.5rem;
+}
+
 .sidebar .nav-link,
 .sidebar-nav-link {
     color: var(--text-color);
