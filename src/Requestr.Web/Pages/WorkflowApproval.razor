@@ -39,13 +39,20 @@ else if (_workflowInstance == null || _currentStep == null || _formRequest == nu
 }
 else
 {
-    <PageHeader Title="Approve a request" 
-                Description="@(_formRequest.FormDefinition?.Name + " Request")">
+    <PageHeader Title="@(_formRequest.FormDefinition?.Name ?? "Approve Request")" 
+                Description="Review and approve or reject this request">
     </PageHeader>
 
     <div class="container">
         <div class="row justify-content-center">
             <div class="col-lg-10">
+                <!-- Form Context Banner -->
+                <RequestContextBanner FormName="@(_formRequest.FormDefinition?.Name ?? "Unknown Form")"
+                                     TableName="@(_formRequest.FormDefinition?.TableName)"
+                                     RequestType="@_formRequest.RequestType"
+                                     Status="@_formRequest.Status"
+                                     RecordCount="@(IsBulkRequest && _bulkFormRequest != null ? _bulkFormRequest.Items?.Count ?? 1 : 1)" />
+
                 <!-- Progress Indicator -->
                 <div class="card mb-4">
                     <div class="card-body">
@@ -117,21 +124,6 @@ else
                         }
 
                         <!-- Request Summary -->
-                        <div class="row mb-4">
-                            <div class="col-md-6">
-                                <strong>Request Type:</strong>
-                                <span class="badge bg-@GetRequestTypeBadgeColor(_formRequest.RequestType) ms-2">
-                                    @_formRequest.RequestType.ToString()
-                                </span>
-                            </div>
-                            <div class="col-md-6">
-                                <strong>Current Status:</strong>
-                                <span class="badge bg-@GetStatusBadgeColor(_formRequest.Status) ms-2">
-                                    @_formRequest.Status
-                                </span>
-                            </div>
-                        </div>
-
                         @if (!string.IsNullOrEmpty(_formRequest.Comments))
                         {
                             <div class="mb-4">

@@ -1147,3 +1147,148 @@ button.nav-link.active {
     0% { background-position: 200% 0; }
     100% { background-position: -200% 0; }
 }
+
+/* ============================================
+   Bulk Request Items
+   ============================================ */
+.bulk-items-list {
+    /* No height limit - let it expand naturally */
+}
+
+.bulk-item-row {
+    transition: all 0.2s ease;
+}
+
+.bulk-item-header {
+    border: 1px solid var(--border-color);
+    transition: background-color 0.15s ease;
+}
+
+.bulk-item-header:hover {
+    filter: brightness(0.97);
+}
+
+[data-theme="dark"] .bulk-item-header:hover {
+    filter: brightness(1.05);
+}
+
+.bulk-item-details {
+    background-color: var(--card-bg);
+    animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.bulk-item-details dl {
+    font-size: 0.9rem;
+}
+
+.bulk-item-details dt {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.bulk-item-details dd {
+    color: var(--text-color);
+    word-break: break-word;
+}
+
+.key-fields {
+    font-size: 0.85rem;
+    max-width: 400px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ============================================
+   Field Values (Individual Requests)
+   ============================================ */
+.field-value-row {
+    transition: all 0.2s ease;
+}
+
+.field-value-header {
+    border: 1px solid var(--border-color);
+    transition: background-color 0.15s ease;
+}
+
+.field-value-header:hover {
+    filter: brightness(0.97);
+}
+
+[data-theme="dark"] .field-value-header:hover {
+    filter: brightness(1.05);
+}
+
+.field-value-details {
+    background-color: var(--card-bg);
+    animation: slideDown 0.2s ease;
+}
+
+/* ============================================
+   Request Context Banner
+   ============================================ */
+.request-context-banner {
+    border-left: 4px solid var(--primary);
+}
+
+.request-context-banner .context-icon {
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--border-radius);
+}
+
+/* ============================================
+   Bulk Summary Card
+   ============================================ */
+.bulk-summary-card .metric-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.bulk-summary-card .metric-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* ============================================
+   Status Explainer
+   ============================================ */
+.status-explainer {
+    border-left: 3px solid var(--info);
+}
+
+.status-explainer.status-pending {
+    border-left-color: var(--warning);
+}
+
+.status-explainer.status-approved {
+    border-left-color: var(--success);
+}
+
+.status-explainer.status-rejected {
+    border-left-color: var(--danger);
+}
+
+.status-explainer.status-applied {
+    border-left-color: var(--primary);
+}
+
+.status-explainer.status-failed {
+    border-left-color: var(--danger);
+}

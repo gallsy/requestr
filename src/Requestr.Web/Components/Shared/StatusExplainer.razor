@@ -1,0 +1,119 @@
+@* Component to explain current request status in plain language *@
+@using Requestr.Core.Models
+
+@if (!string.IsNullOrEmpty(Message))
+{
+    <div class="status-explainer @GetExplainerClass() mb-4">
+        <div class="d-flex align-items-start gap-3">
+            <div class="status-explainer-icon">
+                <i class="bi @GetIcon()"></i>
+            </div>
+            <div class="flex-grow-1">
+                <strong class="d-block mb-1">@Title</strong>
+                <span class="text-muted">@Message</span>
+                @if (ChildContent != null)
+                {
+                    <div class="mt-2">
+                        @ChildContent
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public RequestStatus Status { get; set; }
+    [Parameter] public string? CurrentStepName { get; set; }
+    [Parameter] public string? AssignedTo { get; set; }
+    [Parameter] public bool HasWorkflow { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private string Title => Status switch
+    {
+        RequestStatus.Pending when HasWorkflow => "Awaiting Approval",
+        RequestStatus.Pending => "Processing",
+        RequestStatus.Approved => "Approved",
+        RequestStatus.Rejected => "Rejected",
+        RequestStatus.Applied => "Complete",
+        RequestStatus.Failed => "Failed",
+        _ => "Status"
+    };
+
+    private string Message => Status switch
+    {
+        RequestStatus.Pending when HasWorkflow && !string.IsNullOrEmpty(CurrentStepName) => 
+            $"This request is currently at the \"{CurrentStepName}\" step" + 
+            (!string.IsNullOrEmpty(AssignedTo) ? $", assigned to {AssignedTo}." : "."),
+        RequestStatus.Pending when HasWorkflow => 
+            "This request is in a workflow awaiting the next approval step.",
+        RequestStatus.Pending => 
+            "This request is being processed.",
+        RequestStatus.Approved => 
+            "This request has been approved and the changes have been applied to the database.",
+        RequestStatus.Rejected => 
+            "This request was rejected and no changes were made.",
+        RequestStatus.Applied => 
+            "This request has been completed and the changes are now in the database.",
+        RequestStatus.Failed => 
+            "This request failed to apply. An administrator can retry the operation.",
+        _ => ""
+    };
+
+    private string GetIcon() => Status switch
+    {
+        RequestStatus.Pending => "bi-hourglass-split",
+        RequestStatus.Approved => "bi-check-circle-fill",
+        RequestStatus.Rejected => "bi-x-circle-fill",
+        RequestStatus.Applied => "bi-check2-all",
+        RequestStatus.Failed => "bi-exclamation-triangle-fill",
+        _ => "bi-info-circle"
+    };
+
+    private string GetExplainerClass() => Status switch
+    {
+        RequestStatus.Pending => "status-pending",
+        RequestStatus.Approved => "status-success",
+        RequestStatus.Rejected => "status-danger",
+        RequestStatus.Applied => "status-success",
+        RequestStatus.Failed => "status-danger",
+        _ => "status-info"
+    };
+}
+
+<style>
+    .status-explainer {
+        padding: 1rem 1.25rem;
+        border-radius: var(--border-radius);
+        border-left: 4px solid;
+    }
+
+    .status-explainer-icon {
+        font-size: 1.25rem;
+        margin-top: 2px;
+    }
+
+    .status-pending {
+        background: rgba(245, 158, 11, 0.1);
+        border-color: #f59e0b;
+    }
+    .status-pending .status-explainer-icon { color: #f59e0b; }
+
+    .status-success {
+        background: rgba(16, 185, 129, 0.1);
+        border-color: #10b981;
+    }
+    .status-success .status-explainer-icon { color: #10b981; }
+
+    .status-danger {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: #ef4444;
+    }
+    .status-danger .status-explainer-icon { color: #ef4444; }
+
+    .status-info {
+        background: rgba(6, 182, 212, 0.1);
+        border-color: #06b6d4;
+    }
+    .status-info .status-explainer-icon { color: #06b6d4; }
+</style>
