@@ -46,49 +46,20 @@ else
     <div class="container">
         <div class="row justify-content-center">
             <div class="col-lg-10">
-                <!-- Form Context Banner -->
-                <RequestContextBanner FormName="@(_formRequest.FormDefinition?.Name ?? "Unknown Form")"
-                                     TableName="@(_formRequest.FormDefinition?.TableName)"
-                                     RequestType="@_formRequest.RequestType"
-                                     Status="@_formRequest.Status"
-                                     RecordCount="@(IsBulkRequest && _bulkFormRequest != null ? _bulkFormRequest.Items?.Count ?? 1 : 1)" />
+                <!-- Unified Summary Card -->
+                <WorkflowApprovalSummaryCard FormName="@(_formRequest.FormDefinition?.Name ?? "Unknown Form")"
+                                             TableName="@(_formRequest.FormDefinition?.TableName)"
+                                             RequestType="@_formRequest.RequestType"
+                                             Status="@_formRequest.Status"
+                                             RecordCount="@(IsBulkRequest && _bulkFormRequest != null ? _bulkFormRequest.Items?.Count ?? 1 : 1)"
+                                             CurrentStep="@_currentStepIndex"
+                                             TotalSteps="@_totalSteps"
+                                             StepDescription="@_currentStepDefinition?.Description"
+                                             RequestedByName="@_formRequest.RequestedByName"
+                                             RequestedAt="@_formRequest.RequestedAt" />
 
-                <!-- Progress Indicator -->
-                <div class="card mb-4">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <small class="text-muted">
-                                Requested by @_formRequest.RequestedByName on @_formRequest.RequestedAt.ToString("MMM dd, yyyy HH:mm")
-                            </small>
-                            <span class="badge bg-info fs-6">
-                                Step @(_currentStepIndex) of @_totalSteps
-                            </span>
-                        </div>
-                        <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-info" 
-                                 style="width: @((_currentStepIndex / (double)_totalSteps) * 100)%"
-                                 role="progressbar">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Current Step Details -->
+                <!-- Request Details -->
                 <div class="card">
-                    <div class="card-header">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h5 class="mb-1">@_currentStepDefinition?.Name</h5>
-                                @if (!string.IsNullOrEmpty(_currentStepDefinition?.Description))
-                                {
-                                    <p class="text-muted mb-0">@_currentStepDefinition.Description</p>
-                                }
-                            </div>
-                            <span class="badge bg-@GetStepStatusBadgeColor(_currentStep.Status) fs-6">
-                                @_currentStep.Status
-                            </span>
-                        </div>
-                    </div>
                     <div class="card-body">
                         @if (!string.IsNullOrEmpty(_errorMessage))
                         {
