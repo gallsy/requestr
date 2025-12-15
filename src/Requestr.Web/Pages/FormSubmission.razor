@@ -175,6 +175,7 @@ else
                                                         {
                                                             <input type="datetime-local" 
                                                                    class="form-control"
+                                                                   step="1"
                                                                    value="@GetDateTimeValue(field.Name)"
                                                                    @onchange="@((e) => SetFieldValue(field.Name, e.Value))"
                                                                                                                                      disabled="@IsFieldDisabled(field)" />
@@ -285,6 +286,7 @@ else
                                             {
                                                 <input type="datetime-local" 
                                                        class="form-control"
+                                                       step="1"
                                                        value="@GetDateTimeValue(field.Name)"
                                                        @onchange="@((e) => SetFieldValue(field.Name, e.Value))"
                                                                                                              disabled="@IsFieldDisabled(field)" />
@@ -546,10 +548,10 @@ else
                             }
                             else if (controlType == "datetime-local" && raw != null)
                             {
-                                // Format datetime values for HTML datetime-local input
+                                // Format datetime values for HTML datetime-local input (include seconds)
                                 if (DateTime.TryParse(raw.ToString(), out var dateTimeValue))
                                 {
-                                    _fieldValues[field.Name] = dateTimeValue.ToString("yyyy-MM-ddTHH:mm");
+                                    _fieldValues[field.Name] = dateTimeValue.ToString("yyyy-MM-ddTHH:mm:ss");
                                 }
                                 else
                                 {
@@ -626,10 +628,10 @@ else
                         }
                         else if (controlType == "datetime-local" && fieldValue.Value != null)
                         {
-                            // Format datetime values for HTML datetime-local input
+                            // Format datetime values for HTML datetime-local input (include seconds)
                             if (DateTime.TryParse(fieldValue.Value.ToString(), out var dateTimeValue))
                             {
-                                _fieldValues[fieldValue.Key] = dateTimeValue.ToString("yyyy-MM-ddTHH:mm");
+                                _fieldValues[fieldValue.Key] = dateTimeValue.ToString("yyyy-MM-ddTHH:mm:ss");
                             }
                             else
                             {
@@ -698,7 +700,7 @@ else
                     }
                     else if (controlType == "datetime-local" && DateTime.TryParse(value, out var dateTimeValue))
                     {
-                        _fieldValues[fieldName] = dateTimeValue.ToString("yyyy-MM-ddTHH:mm");
+                        _fieldValues[fieldName] = dateTimeValue.ToString("yyyy-MM-ddTHH:mm:ss");
                     }
                     else if (controlType == "time")
                     {
@@ -781,14 +783,33 @@ else
             foreach (var kv in _fieldValues)
             {
                 var fld = _formDefinition.Fields.FirstOrDefault(f => f.Name == kv.Key);
+                var value = kv.Value;
+                
+                // Normalize datetime values to proper SQL format
+                if (fld != null)
+                {
+                    var controlType = fld.ControlType?.ToLower() ?? "";
+                    var dataType = fld.DataType?.ToLower() ?? "";
+                    
+                    if ((controlType == "datetime-local" || controlType == "date") && 
+                        (dataType.Contains("datetime") || dataType.Contains("date")))
+                    {
+                        if (!string.IsNullOrEmpty(value) && DateTime.TryParse(value, out var dtValue))
+                        {
+                            // Format consistently for SQL Server compatibility
+                            value = dtValue.ToString("yyyy-MM-dd HH:mm:ss.fff");
+                        }
+                    }
+                }
+                
                 if (fld != null && fld.TreatBlankAsNull && !fld.IsRequired)
                 {
-                    var v = kv.Value?.Trim();
+                    var v = value?.Trim();
                     allFieldValues[kv.Key] = string.IsNullOrEmpty(v) ? null : v;
                 }
                 else
                 {
-                    allFieldValues[kv.Key] = kv.Value;
+                    allFieldValues[kv.Key] = value;
                 }
             }
             foreach (var checkboxValue in _checkboxValues)
@@ -881,7 +902,8 @@ else
         {
             if (DateTime.TryParse(value.ToString(), out var dateTimeValue))
             {
-                return dateTimeValue.ToString("yyyy-MM-ddTHH:mm");
+                // Include seconds to preserve precision from database
+                return dateTimeValue.ToString("yyyy-MM-ddTHH:mm:ss");
             }
         }
         return string.Empty;

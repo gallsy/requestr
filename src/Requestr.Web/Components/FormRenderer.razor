@@ -118,6 +118,7 @@ else
                                 {
                                     <input type="datetime-local" 
                                            class="form-control"
+                                           step="1"
                                            value="@GetDateTimeValue(field.Name)"
                                            @onchange="@((e) => HandleFieldValueChange(field.Name, e.Value))"
                                            disabled="@isReadOnly" />
@@ -500,7 +501,8 @@ else
 
         if (DateTime.TryParse(value.ToString(), out DateTime dateValue))
         {
-            return dateValue.ToString("yyyy-MM-ddTHH:mm");
+            // Include seconds to preserve precision from database
+            return dateValue.ToString("yyyy-MM-ddTHH:mm:ss");
         }
 
         return value.ToString() ?? "";

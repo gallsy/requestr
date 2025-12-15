@@ -194,12 +194,13 @@ else
                                             @for (int i = 0; i < _uploadResult.ValidationResults.Count; i++)
                                             {
                                                 var result = _uploadResult.ValidationResults[i];
-                                                var isSelected = _selectedRows.Contains(i);
+                                                var rowKey = result.RowNumber; // keep selection keyed by CSV row number to avoid index drift
+                                                var isSelected = _selectedRows.Contains(rowKey);
                                                 <tr class="@(result.IsValid ? "" : "table-danger")">
                                                     <td>
                                                         @if (result.IsValid)
                                                         {
-                                                            <input type="checkbox" @onchange="@(e => OnRowSelectionChanged(i, e))" checked="@isSelected" />
+                                                            <input type="checkbox" @onchange="@(e => OnRowSelectionChanged(rowKey, e))" checked="@isSelected" />
                                                         }
                                                     </td>
                                                     <td>@result.RowNumber</td>
@@ -369,16 +370,16 @@ else
         }
     }
 
-    private void OnRowSelectionChanged(int rowIndex, ChangeEventArgs e)
+    private void OnRowSelectionChanged(int rowNumber, ChangeEventArgs e)
     {
-        var isChecked = (bool)(e.Value ?? false);
+        var isChecked = e.Value is bool b ? b : bool.TryParse(e.Value?.ToString(), out var parsed) && parsed;
         if (isChecked)
         {
-            _selectedRows.Add(rowIndex);
+            _selectedRows.Add(rowNumber);
         }
         else
         {
-            _selectedRows.Remove(rowIndex);
+            _selectedRows.Remove(rowNumber);
         }
         
         _selectedRowCount = _selectedRows.Count;
@@ -405,9 +406,10 @@ else
         {
             for (int i = 0; i < _uploadResult.ValidationResults.Count; i++)
             {
-                if (_uploadResult.ValidationResults[i].IsValid)
+                var validationResult = _uploadResult.ValidationResults[i];
+                if (validationResult.IsValid)
                 {
-                    _selectedRows.Add(i);
+                    _selectedRows.Add(validationResult.RowNumber);
                 }
             }
         }
@@ -461,9 +463,19 @@ else
 
             var formRequestDtos = new List<CreateFormRequestDto>();
 
-            foreach (var rowIndex in _selectedRows)
+            foreach (var rowNumber in _selectedRows)
             {
-                var parsedData = _uploadResult.ValidationResults[rowIndex].ParsedData;
+                // Safety guard: ensure the selected row number exists in validation results
+                var validationResult = _uploadResult.ValidationResults
+                    .FirstOrDefault(v => v.RowNumber == rowNumber);
+                if (validationResult == null)
+                {
+                    ToastService.ShowError($"Selected row {rowNumber} could not be matched. Please re-upload the file and try again.");
+                    Logger.LogWarning("BulkUpload: Selected row number {RowNumber} not found. ValidationResultsCount={Count}", rowNumber, _uploadResult.ValidationResults.Count);
+                    return;
+                }
+
+                var parsedData = validationResult.ParsedData;
                 var originalValues = new Dictionary<string, object?>();
 
                 // For Update/Delete operations, lookup the original values from the database
@@ -506,7 +518,7 @@ else
                     }
                     catch (Exception ex)
                     {
-                        ToastService.ShowError($"Error looking up original values for row {rowIndex + 1}: {ex.Message}");
+                        ToastService.ShowError($"Error looking up original values for row {rowNumber}: {ex.Message}");
                         return;
                     }
                 }

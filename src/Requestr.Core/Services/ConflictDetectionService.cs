@@ -268,13 +268,32 @@ public class ConflictDetectionService : IConflictDetectionService
         // Convert JsonElement to appropriate type
         return jsonElement.ValueKind switch
         {
-            JsonValueKind.String => jsonElement.GetString(),
-            JsonValueKind.Number => jsonElement.TryGetInt32(out var intVal) ? intVal : jsonElement.GetDouble(),
+            JsonValueKind.String => TryParseJsonString(jsonElement.GetString()),
+            JsonValueKind.Number => jsonElement.TryGetInt64(out var longVal) ? longVal : 
+                                   jsonElement.TryGetDouble(out var doubleVal) ? doubleVal : 
+                                   jsonElement.GetDecimal(),
             JsonValueKind.True => true,
             JsonValueKind.False => false,
             JsonValueKind.Null => null,
             _ => jsonElement.ToString()
         };
+    }
+
+    /// <summary>
+    /// Attempts to parse a JSON string value into a more specific type (DateTime, etc.)
+    /// </summary>
+    private object? TryParseJsonString(string? value)
+    {
+        if (value == null) return null;
+        
+        // Try parsing as DateTime (ISO 8601 format from JSON serialization)
+        if (DateTime.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, 
+            System.Globalization.DateTimeStyles.RoundtripKind, out var dateTime))
+        {
+            return dateTime;
+        }
+        
+        return value;
     }
 
     private bool AreValuesEqual(object? value1, object? value2)
@@ -289,11 +308,81 @@ public class ConflictDetectionService : IConflictDetectionService
         if (value1 == null && value2 == null) return true;
         if (value1 == null || value2 == null) return false;
 
+        // Convert JsonElements to proper types
+        value1 = ConvertJsonElementToValue(value1);
+        value2 = ConvertJsonElementToValue(value2);
+        
+        // Re-check nulls after conversion
+        if (value1 == null && value2 == null) return true;
+        if (value1 == null || value2 == null) return false;
+
+        // Handle DateTime comparisons with precision tolerance
+        var dt1 = TryGetDateTime(value1);
+        var dt2 = TryGetDateTime(value2);
+        if (dt1.HasValue && dt2.HasValue)
+        {
+            // Compare with 1 second tolerance to handle precision differences
+            // between SQL Server datetime (~3.33ms precision) and datetime2 (100ns precision)
+            // and JSON serialization rounding
+            return Math.Abs((dt1.Value - dt2.Value).TotalSeconds) < 1;
+        }
+
+        // Handle numeric comparisons (to avoid string comparison issues with decimals)
+        if (TryGetDecimal(value1, out var dec1) && TryGetDecimal(value2, out var dec2))
+        {
+            return dec1 == dec2;
+        }
+
         // Convert to strings for comparison to handle type differences
         var str1 = value1.ToString()?.Trim();
         var str2 = value2.ToString()?.Trim();
 
         return string.Equals(str1, str2, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Attempts to extract a DateTime from various value types
+    /// </summary>
+    private DateTime? TryGetDateTime(object? value)
+    {
+        if (value == null) return null;
+        
+        if (value is DateTime dt)
+            return dt;
+        
+        if (value is DateTimeOffset dto)
+            return dto.DateTime;
+        
+        if (value is string str && DateTime.TryParse(str, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var parsed))
+        {
+            return parsed;
+        }
+        
+        return null;
+    }
+
+    /// <summary>
+    /// Attempts to extract a decimal from various numeric types
+    /// </summary>
+    private bool TryGetDecimal(object? value, out decimal result)
+    {
+        result = 0;
+        if (value == null) return false;
+        
+        return value switch
+        {
+            decimal d => (result = d) == d,
+            int i => (result = i) == i,
+            long l => (result = l) == l,
+            short s => (result = s) == s,
+            byte b => (result = b) == b,
+            double dbl when !double.IsNaN(dbl) && !double.IsInfinity(dbl) => (result = (decimal)dbl) == (decimal)dbl,
+            float f when !float.IsNaN(f) && !float.IsInfinity(f) => (result = (decimal)f) == (decimal)f,
+            string str when decimal.TryParse(str, System.Globalization.NumberStyles.Any, 
+                System.Globalization.CultureInfo.InvariantCulture, out var parsed) => (result = parsed) == parsed,
+            _ => false
+        };
     }
 
     private string FormatValueForDisplay(object? value)
