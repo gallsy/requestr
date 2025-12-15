@@ -113,6 +113,12 @@ else
                                                             {
                                                                 <span class="text-danger">*</span>
                                                             }
+                                                            @if (!string.IsNullOrEmpty(field.HelpText))
+                                                            {
+                                                                <Tooltip Title="@field.HelpText" Placement="TooltipPlacement.Top">
+                                                                    <i class="bi bi-info-circle text-muted ms-1 field-help-icon"></i>
+                                                                </Tooltip>
+                                                            }
                                                         </label>
                                                         
                                                         @{ 
@@ -216,6 +222,12 @@ else
                                                 @if (field.IsRequired)
                                                 {
                                                     <span class="text-danger">*</span>
+                                                }
+                                                @if (!string.IsNullOrEmpty(field.HelpText))
+                                                {
+                                                    <Tooltip Title="@field.HelpText" Placement="TooltipPlacement.Top">
+                                                        <i class="bi bi-info-circle text-muted ms-1 field-help-icon"></i>
+                                                    </Tooltip>
                                                 }
                                             </label>
                                             

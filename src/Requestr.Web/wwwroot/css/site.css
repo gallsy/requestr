@@ -319,6 +319,19 @@ textarea:focus {
     margin-bottom: 0.375rem;
 }
 
+/* Field help icon (info tooltip) */
+.field-help-icon {
+    cursor: help;
+    font-size: 0.875rem;
+    vertical-align: middle;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+.field-help-icon:hover {
+    opacity: 1;
+}
+
 input::placeholder,
 textarea::placeholder {
     color: var(--text-muted);

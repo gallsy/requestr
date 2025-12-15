@@ -70,6 +70,7 @@ public class FormField : BaseEntity
     public string? DropdownOptions { get; set; } // JSON array of options for select controls
     public int DisplayOrder { get; set; }
     public bool TreatBlankAsNull { get; set; } = false;
+    public string? HelpText { get; set; } // Tooltip text shown via info icon on the field label
     
     // Grid positioning properties
     public int? FormSectionId { get; set; }

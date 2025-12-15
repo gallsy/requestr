@@ -242,7 +242,7 @@ public class FormDefinitionService : IFormDefinitionService
                        ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, ff.FormSectionId,
                        ff.GridRow, ff.GridColumn, ff.GridColumnSpan,
-                       COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull
+                       COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull, ff.HelpText
                 FROM FormDefinitions fd
                 LEFT JOIN FormSections fs ON fd.Id = fs.FormDefinitionId
                 LEFT JOIN FormFields ff ON (fd.Id = ff.FormDefinitionId AND (fs.Id = ff.FormSectionId OR ff.FormSectionId IS NULL))
@@ -327,6 +327,7 @@ public class FormDefinitionService : IFormDefinitionService
                         DropdownOptions = (string?)row.DropdownOptions,
                         DisplayOrder = (int)row.DisplayOrder,
                         TreatBlankAsNull = Convert.ToBoolean(row.TreatBlankAsNull ?? 0),
+                        HelpText = (string?)row.HelpText,
                         FormSectionId = (int?)row.FormSectionId,
                         GridRow = (int)(row.GridRow ?? 1),
                         GridColumn = (int)(row.GridColumn ?? 1),
@@ -413,8 +414,8 @@ public class FormDefinitionService : IFormDefinitionService
                 if (formDefinition.Fields.Any())
                 {
                     var fieldSql = @"
-                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan, TreatBlankAsNull)
-                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan, @TreatBlankAsNull)";
+                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan, TreatBlankAsNull, HelpText)
+                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan, @TreatBlankAsNull, @HelpText)";
 
                     foreach (var field in formDefinition.Fields)
                     {
@@ -519,8 +520,8 @@ public class FormDefinitionService : IFormDefinitionService
                 if (formDefinition.Fields.Any())
                 {
                     var fieldSql = @"
-                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan, TreatBlankAsNull)
-                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan, @TreatBlankAsNull)";
+                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan, TreatBlankAsNull, HelpText)
+                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan, @TreatBlankAsNull, @HelpText)";
 
                     foreach (var field in formDefinition.Fields)
                     {
