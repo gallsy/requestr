@@ -186,11 +186,11 @@
                                                     <div class="d-flex justify-content-between align-items-center">
                                                         <div class="flex-grow-1">
                                                             <div class="row">
-                                                                <div class="col-md-4">
+                                                                <div class="col-md-5">
                                                                     <label class="form-label small">Section Title</label>
                                                                     <input type="text" class="form-control form-control-sm" @bind="section.Name" placeholder="Section title..." />
                                                                 </div>
-                                                                <div class="col-md-3">
+                                                                <div class="col-md-4">
                                                                     <label class="form-label small">Max Columns</label>
                                                                     <select class="form-select form-select-sm" @bind="section.MaxColumns">
                                                                         <option value="1">1 Column</option>
@@ -205,27 +205,15 @@
                                                                     <label class="form-label small">Display Order</label>
                                                                     <input type="number" class="form-control form-control-sm" @bind="section.DisplayOrder" min="1" />
                                                                 </div>
-                                                                <div class="col-md-2 d-flex align-items-end">
-                                                                    <div class="form-check">
-                                                                        <input class="form-check-input" type="checkbox" @bind="section.IsCollapsible" />
-                                                                        <label class="form-check-label small">Collapsible</label>
-                                                                    </div>
+                                                            </div>
+                                                            <div class="row mt-2">
+                                                                <div class="col-12">
+                                                                    <label class="form-label small">Description <span class="text-muted">(shown to users above the form fields)</span></label>
+                                                                    <textarea class="form-control form-control-sm" rows="2" @bind="section.Description" placeholder="Add helpful instructions or context for users filling out this section..."></textarea>
                                                                 </div>
                                                             </div>
-                                                            @if (!string.IsNullOrEmpty(section.Description))
-                                                            {
-                                                                <div class="row mt-2">
-                                                                    <div class="col-12">
-                                                                        <label class="form-label small">Description (Optional)</label>
-                                                                        <input type="text" class="form-control form-control-sm" @bind="section.Description" placeholder="Section description..." />
-                                                                    </div>
-                                                                </div>
-                                                            }
                                                         </div>
                                                         <div class="section-actions ms-3">
-                                                            <button type="button" class="btn btn-outline-secondary btn-sm me-2" @onclick="() => ToggleSectionDescription(section)">
-                                                                <i class="bi bi-card-text"></i>
-                                                            </button>
                                                             <button type="button" class="btn btn-danger btn-sm" @onclick="() => RemoveSection(section)">
                                                                 <i class="bi bi-trash"></i>
                                                             </button>
@@ -1915,19 +1903,6 @@
             {
                 orderedSections[i].DisplayOrder = i + 1;
             }
-        }
-        StateHasChanged();
-    }
-
-    private void ToggleSectionDescription(FormSection section)
-    {
-        if (string.IsNullOrEmpty(section.Description))
-        {
-            section.Description = "";
-        }
-        else
-        {
-            section.Description = null;
         }
         StateHasChanged();
     }
