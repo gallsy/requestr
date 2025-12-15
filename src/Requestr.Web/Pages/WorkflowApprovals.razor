@@ -118,13 +118,14 @@
                     {
                         <div class="table-responsive">
                             <table class="table table-hover">
-                                <thead>
+                                <thead class="table-dark">
                                     <tr>
+                                        <th>ID</th>
                                         <th>Form</th>
-                                        <th>Request Type</th>
+                                        <th>Type</th>
+                                        <th>Status</th>
                                         <th>Requested By</th>
-                                        <th>Workflow Progress</th>
-                                        <th>Requested At</th>
+                                        <th>Date</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
@@ -133,30 +134,25 @@
                                     {
                                         <tr>
                                             <td>
-                                                <div class="fw-medium">@request.FormDefinition?.Name</div>
-                                                <small class="text-muted">@request.FormDefinition?.Description</small>
+                                                <strong>#@request.Id</strong>
                                             </td>
+                                            <td>@request.FormDefinition?.Name</td>
                                             <td>
                                                 <span class="badge bg-@(GetRequestTypeBadgeColor(request.RequestType))">
-                                                    @request.RequestType.ToString().ToUpper()
+                                                    @request.RequestType
                                                 </span>
                                             </td>
                                             <td>
-                                                <div class="fw-medium">@request.RequestedByName</div>
-                                                <small class="text-muted">@request.RequestedBy</small>
+                                                <span class="badge @GetStatusBadgeClass(request.Status)">@request.Status</span>
                                             </td>
+                                            <td>@request.RequestedByName</td>
                                             <td>
-                                                <WorkflowProgressDisplay FormRequestId="request.Id" ShowCompact="true" AutoLoad="true" />
-                                            </td>
-                                            <td>
-                                                <div>@request.RequestedAt.ToString("MM/dd/yyyy")</div>
-                                                <small class="text-muted">@request.RequestedAt.ToString("HH:mm")</small>
+                                                <small>@request.RequestedAt.ToString("MMM dd, yyyy")</small>
                                             </td>
                                             <td>
                                                 <button class="btn btn-sm btn-outline-primary" 
                                                         @onclick="() => ViewRequest(request.Id)">
-                                                    <i class="bi bi-eye me-1"></i>
-                                                    View Request
+                                                    <i class="bi bi-eye"></i>
                                                 </button>
                                             </td>
                                         </tr>
@@ -427,6 +423,19 @@
             RequestType.Update => "warning",
             RequestType.Delete => "danger",
             _ => "secondary"
+        };
+    }
+
+    private string GetStatusBadgeClass(RequestStatus status)
+    {
+        return status switch
+        {
+            RequestStatus.Pending => "bg-warning text-dark",
+            RequestStatus.Approved => "bg-success",
+            RequestStatus.Rejected => "bg-danger",
+            RequestStatus.Applied => "bg-success",
+            RequestStatus.Failed => "bg-danger",
+            _ => "bg-secondary"
         };
     }
 

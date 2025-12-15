@@ -153,12 +153,13 @@
                             <table class="table table-hover">
                                 <thead class="table-dark">
                                     <tr>
-                                        <th style="width: 80px;">ID</th>
-                                        <th style="width: 200px;">Request</th>
-                                        <th style="width: 120px;">Status</th>
-                                        <th style="width: 180px;">Requested</th>
-                                        <th style="width: 200px;">Workflow</th>
-                                        <th style="width: 100px;">Actions</th>
+                                        <th>ID</th>
+                                        <th>Form</th>
+                                        <th>Type</th>
+                                        <th>Status</th>
+                                        <th>Requested By</th>
+                                        <th>Date</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -171,50 +172,25 @@
                                                 var bulkRequest = row.Bulk;
                                                 <tr>
                                                     <td>
-                                                        <div>
-                                                            <strong>#@bulkRequest.Id</strong>
-                                                            <small class="d-block text-muted">Bulk</small>
-                                                        </div>
+                                                        <strong>#@bulkRequest.Id-Bulk</strong>
                                                     </td>
+                                                    <td>@bulkRequest.FormDefinition?.Name</td>
                                                     <td>
-                                                        <div>
-                                                            <div class="fw-bold">@bulkRequest.FormDefinition?.Name</div>
-                                                            <small class="text-muted d-block">
-                                                                <span class="badge @GetRequestTypeBadgeColor(bulkRequest.RequestType) me-1">
-                                                                    @GetRequestTypeDisplayName(bulkRequest.RequestType)
-                                                                </span>
-                                                                @bulkRequest.SelectedRows of @bulkRequest.TotalRows records
-                                                            </small>
-                                                        </div>
+                                                        <span class="badge @GetRequestTypeBadgeColor(bulkRequest.RequestType)">
+                                                            @GetRequestTypeDisplayName(bulkRequest.RequestType)
+                                                        </span>
+                                                        <small class="text-muted ms-1">@bulkRequest.SelectedRows rows</small>
                                                     </td>
                                                     <td>
                                                         <span class="badge @GetStatusBadgeClass(bulkRequest.Status)">@bulkRequest.Status</span>
                                                     </td>
+                                                    <td>@bulkRequest.RequestedByName</td>
                                                     <td>
-                                                        <div>
-                                                            <div class="fw-bold">@bulkRequest.RequestedByName</div>
-                                                            <small class="text-muted">
-                                                                @bulkRequest.RequestedAt.ToString("MMM dd, yyyy")
-                                                                @if (bulkRequest.ApprovedAt.HasValue)
-                                                                {
-                                                                    <text><br />Updated: @bulkRequest.ApprovedAt.Value.ToString("MMM dd")</text>
-                                                                }
-                                                            </small>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        @if (bulkRequest.WorkflowFormRequestId.HasValue)
-                                                        {
-                                                            <WorkflowProgressDisplay FormRequestId="bulkRequest.WorkflowFormRequestId.Value" ShowCompact="true" AutoLoad="true" />
-                                                        }
-                                                        else
-                                                        {
-                                                            <small class="text-muted">No workflow</small>
-                                                        }
+                                                        <small>@bulkRequest.RequestedAt.ToString("MMM dd, yyyy")</small>
                                                     </td>
                                                     <td>
                                                         <a href="/bulk-requests/@bulkRequest.Id" class="btn btn-sm btn-outline-primary">
-                                                            <i class="bi bi-eye me-1"></i> View
+                                                            <i class="bi bi-eye"></i>
                                                         </a>
                                                     </td>
                                                 </tr>
@@ -224,43 +200,24 @@
                                                 var request = row.Request;
                                                 <tr>
                                                     <td>
-                                                        <div>
-                                                            <strong>#@request.Id</strong>
-                                                            <small class="d-block text-muted">Individual</small>
-                                                        </div>
+                                                        <strong>#@request.Id</strong>
                                                     </td>
+                                                    <td>@request.FormDefinition?.Name</td>
                                                     <td>
-                                                        <div>
-                                                            <div class="fw-bold">@request.FormDefinition?.Name</div>
-                                                            <small class="text-muted d-block">
-                                                                <span class="badge @GetRequestTypeBadgeColor(request.RequestType) me-1">
-                                                                    @GetRequestTypeDisplayName(request.RequestType)
-                                                                </span>
-                                                                <i class="bi bi-table"></i> @request.FormDefinition?.TableName
-                                                            </small>
-                                                        </div>
+                                                        <span class="badge @GetRequestTypeBadgeColor(request.RequestType)">
+                                                            @GetRequestTypeDisplayName(request.RequestType)
+                                                        </span>
                                                     </td>
                                                     <td>
                                                         <span class="badge @GetStatusBadgeClass(request.Status)">@request.Status</span>
                                                     </td>
+                                                    <td>@request.RequestedByName</td>
                                                     <td>
-                                                        <div>
-                                                            <div class="fw-bold">@request.RequestedByName</div>
-                                                            <small class="text-muted">
-                                                                @request.RequestedAt.ToString("MMM dd, yyyy")
-                                                                @if (request.ApprovedAt.HasValue)
-                                                                {
-                                                                    <text><br />Updated: @request.ApprovedAt.Value.ToString("MMM dd")</text>
-                                                                }
-                                                            </small>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <WorkflowProgressDisplay FormRequestId="request.Id" ShowCompact="true" AutoLoad="true" />
+                                                        <small>@request.RequestedAt.ToString("MMM dd, yyyy")</small>
                                                     </td>
                                                     <td>
                                                         <a href="/requests/@request.Id" class="btn btn-sm btn-outline-primary">
-                                                            <i class="bi bi-eye me-1"></i> View
+                                                            <i class="bi bi-eye"></i>
                                                         </a>
                                                     </td>
                                                 </tr>
