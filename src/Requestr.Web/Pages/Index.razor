@@ -15,18 +15,14 @@
 <PageTitle>Dashboard | @Branding.ApplicationName</PageTitle>
 
 <PageHeader Title="@($"Welcome to {Branding.ApplicationName}")" 
-            Description="Manage your data requests and approvals."
-            Icon="IconName.HouseDoorFill" />
+            Description="Manage your data requests and approvals." />
 
 <div class="row gy-4">
     <!-- Available Forms -->
     <div class="col-lg-6 col-md-12">
-        <div class="card h-100 slide-up">
+        <div class="card h-100">
             <div class="card-header">
-                <h5 class="card-title mb-0 text-white">
-                    <i class="bi bi-clipboard-data me-2"></i>
-                    Available Forms
-                </h5>
+                <h5 class="card-title mb-0">Available Forms</h5>
             </div>
             <div class="card-body">
                 @if (AvailableForms == null)
@@ -35,8 +31,7 @@
                 }
                 else if (!AvailableForms.Any())
                 {
-                    <EmptyState IconName="IconName.Inbox" 
-                                Title="No forms available" 
+                    <EmptyState Title="No forms available" 
                                 Description="Check back later or contact your administrator." />
                 }
                 else
@@ -89,12 +84,9 @@
 
     <!-- Pending Requests -->
     <div class="col-lg-6 col-md-12">
-        <div class="card h-100 slide-up">
+        <div class="card h-100">
             <div class="card-header">
-                <h5 class="card-title mb-0 text-white">
-                    <i class="bi bi-clock-history me-2"></i>
-                    My Pending Requests
-                </h5>
+                <h5 class="card-title mb-0">My Pending Requests</h5>
             </div>
             <div class="card-body">
                 @if (PendingRequests == null)
@@ -103,8 +95,7 @@
                 }
                 else if (!PendingRequests.Any())
                 {
-                    <EmptyState IconName="IconName.CheckCircle" 
-                                Title="No pending requests" 
+                    <EmptyState Title="No pending requests" 
                                 Description="All caught up! Great work." />
                 }
                 else
@@ -157,12 +148,9 @@
 
     <div class="row mt-4">
         <div class="col-12">
-            <div class="card slide-up">
-        <div class="card-header">
-                    <h5 class="card-title mb-0">
-                        <i class="bi bi-diagram-3 me-2"></i>
-            My In‑Progress Approvals
-                    </h5>
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">My In‑Progress Approvals</h5>
                 </div>
                 <div class="card-body">
                     @if (PendingWorkflowSteps == null)
@@ -171,8 +159,7 @@
                     }
                     else if (!PendingWorkflowSteps.Any())
                     {
-                        <EmptyState IconName="IconName.CheckCircle" 
-                                    Title="No approvals in progress" 
+                        <EmptyState Title="No approvals in progress" 
                                     Description="You have no workflow steps requiring your action at this time." />
                     }
                     else

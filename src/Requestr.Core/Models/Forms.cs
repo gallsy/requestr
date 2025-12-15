@@ -1,6 +1,6 @@
 namespace Requestr.Core.Models;
 
-public class FormDefinition : AuditableEntity
+public class FormDefinition : AuditableEntity, ISoftDeletable
 {
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
@@ -13,6 +13,11 @@ public class FormDefinition : AuditableEntity
     public List<string> ApproverRoles { get; set; } = new(); // Legacy - will be replaced by workflow system
     public bool RequiresApproval { get; set; } = true;
     public bool IsActive { get; set; } = true;
+    
+    // Soft delete support
+    public bool IsDeleted { get; set; } = false;
+    public DateTime? DeletedAt { get; set; }
+    public string? DeletedBy { get; set; }
     
     // Workflow system integration
     public int? WorkflowDefinitionId { get; set; }
@@ -65,6 +70,7 @@ public class FormField : BaseEntity
     public string? DropdownOptions { get; set; } // JSON array of options for select controls
     public int DisplayOrder { get; set; }
     public bool TreatBlankAsNull { get; set; } = false;
+    public string? HelpText { get; set; } // Tooltip text shown via info icon on the field label
     
     // Grid positioning properties
     public int? FormSectionId { get; set; }

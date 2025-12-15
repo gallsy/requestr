@@ -41,6 +41,7 @@ public class FormDefinitionService : IFormDefinitionService
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
+                WHERE fd.IsDeleted = 0
                 ORDER BY fd.Name, ff.DisplayOrder";
 
             var rows = await connection.QueryAsync(sql);
@@ -66,6 +67,7 @@ public class FormDefinitionService : IFormDefinitionService
                         UpdatedAt = (DateTime?)row.UpdatedAt,
                         UpdatedBy = (string?)row.UpdatedBy,
                         Fields = new List<FormField>(),
+                        FormPermissions = new List<FormPermission>(),
                         ApproverRoles = JsonSerializer.Deserialize<List<string>>((string)(row.ApproverRolesJson ?? "[]")) ?? new List<string>()
                     };
                     formDict[(int)row.Id] = form;
@@ -98,6 +100,32 @@ public class FormDefinitionService : IFormDefinitionService
                 }
             }
 
+            // Fetch permissions for all forms
+            var permissionsSql = @"
+                SELECT FormDefinitionId, RoleName, PermissionType, IsGranted
+                FROM FormPermissions
+                WHERE FormDefinitionId IN @FormIds AND IsGranted = 1";
+            
+            var formIds = formDict.Keys.ToList();
+            if (formIds.Any())
+            {
+                var permissions = await connection.QueryAsync(permissionsSql, new { FormIds = formIds });
+                foreach (var perm in permissions)
+                {
+                    var formId = (int)perm.FormDefinitionId;
+                    if (formDict.ContainsKey(formId))
+                    {
+                        formDict[formId].FormPermissions.Add(new FormPermission
+                        {
+                            FormDefinitionId = formId,
+                            RoleName = (string)perm.RoleName,
+                            PermissionType = (FormPermissionType)perm.PermissionType,
+                            IsGranted = (bool)perm.IsGranted
+                        });
+                    }
+                }
+            }
+
             return formDict.Values.ToList();
         }
         catch (Exception ex)
@@ -126,7 +154,7 @@ public class FormDefinitionService : IFormDefinitionService
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
-                WHERE fd.IsActive = 1
+                WHERE fd.IsActive = 1 AND fd.IsDeleted = 0
                 ORDER BY fd.Name, ff.DisplayOrder";
 
             var rows = await connection.QueryAsync(sql);
@@ -214,11 +242,11 @@ public class FormDefinitionService : IFormDefinitionService
                        ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, ff.FormSectionId,
                        ff.GridRow, ff.GridColumn, ff.GridColumnSpan,
-                       COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull
+                       COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull, ff.HelpText
                 FROM FormDefinitions fd
                 LEFT JOIN FormSections fs ON fd.Id = fs.FormDefinitionId
                 LEFT JOIN FormFields ff ON (fd.Id = ff.FormDefinitionId AND (fs.Id = ff.FormSectionId OR ff.FormSectionId IS NULL))
-                WHERE fd.Id = @Id AND fd.IsActive = 1
+                WHERE fd.Id = @Id AND fd.IsDeleted = 0
                 ORDER BY fs.DisplayOrder, ff.GridRow, ff.GridColumn, ff.DisplayOrder";
 
             var rows = await connection.QueryAsync(sql, new { Id = id });
@@ -299,6 +327,7 @@ public class FormDefinitionService : IFormDefinitionService
                         DropdownOptions = (string?)row.DropdownOptions,
                         DisplayOrder = (int)row.DisplayOrder,
                         TreatBlankAsNull = Convert.ToBoolean(row.TreatBlankAsNull ?? 0),
+                        HelpText = (string?)row.HelpText,
                         FormSectionId = (int?)row.FormSectionId,
                         GridRow = (int)(row.GridRow ?? 1),
                         GridColumn = (int)(row.GridColumn ?? 1),
@@ -385,8 +414,8 @@ public class FormDefinitionService : IFormDefinitionService
                 if (formDefinition.Fields.Any())
                 {
                     var fieldSql = @"
-                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan, TreatBlankAsNull)
-                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan, @TreatBlankAsNull)";
+                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan, TreatBlankAsNull, HelpText)
+                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan, @TreatBlankAsNull, @HelpText)";
 
                     foreach (var field in formDefinition.Fields)
                     {
@@ -491,8 +520,8 @@ public class FormDefinitionService : IFormDefinitionService
                 if (formDefinition.Fields.Any())
                 {
                     var fieldSql = @"
-                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan, TreatBlankAsNull)
-                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan, @TreatBlankAsNull)";
+                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, MaxLength, IsRequired, IsReadOnly, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan, TreatBlankAsNull, HelpText)
+                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @MaxLength, @IsRequired, @IsReadOnly, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan, @TreatBlankAsNull, @HelpText)";
 
                     foreach (var field in formDefinition.Fields)
                     {
@@ -534,7 +563,11 @@ public class FormDefinitionService : IFormDefinitionService
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            var sql = "UPDATE FormDefinitions SET IsActive = 0 WHERE Id = @Id";
+            var sql = @"UPDATE FormDefinitions 
+                        SET IsDeleted = 1, 
+                            DeletedAt = GETUTCDATE(), 
+                            DeletedBy = 'System'
+                        WHERE Id = @Id";
             var rowsAffected = await connection.ExecuteAsync(sql, new { Id = id });
 
             return rowsAffected > 0;
@@ -561,7 +594,7 @@ public class FormDefinitionService : IFormDefinitionService
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
-                WHERE fd.IsActive = 1
+                WHERE fd.IsActive = 1 AND fd.IsDeleted = 0
                 ORDER BY fd.Name, ff.DisplayOrder";
 
             var rows = await connection.QueryAsync(sql);

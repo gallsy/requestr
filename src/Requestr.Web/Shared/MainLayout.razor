@@ -7,24 +7,20 @@
 
 <div class="page @(_isSidebarOpen ? "sidebar-open" : null)" data-theme="@(_isDarkMode ? "dark" : "light")">
     <div class="sidebar p-3">
-        <div class="d-flex align-items-center mb-4">
-            <i class="bi bi-clipboard-data me-2"></i>
-            <h5 class="mb-0">@Branding.ApplicationName</h5>
+        <div class="sidebar-header mb-4">
+            <h5 class="mb-0 fw-semibold">@Branding.ApplicationName</h5>
         </div>
         
         <nav class="nav flex-column">
             <NavLink class="nav-link sidebar-nav-link" href="" Match="NavLinkMatch.All">
-                <i class="bi bi-house-door-fill me-2"></i>
                 Home
             </NavLink>
             
             <NavLink class="nav-link sidebar-nav-link" href="/forms">
-                <i class="bi bi-plus-circle me-2"></i>
                 New Request
             </NavLink>
             
             <NavLink class="nav-link sidebar-nav-link" href="requests">
-                <i class="bi bi-list-check me-2"></i>
                 All Requests
             </NavLink>
             
@@ -37,8 +33,11 @@
                     @if (hasAdminRole || UserHasPendingWorkflowSteps)
                     {
                         <NavLink class="nav-link sidebar-nav-link" href="approvals">
-                            <i class="bi bi-diagram-3 me-2"></i>
                             Approvals
+                            @if (UserHasPendingWorkflowSteps)
+                            {
+                                <span class="badge bg-primary ms-auto">!</span>
+                            }
                         </NavLink>
                     }
                 </Authorized>
@@ -46,39 +45,16 @@
             
             <AuthorizeView Roles="Admin">
                 <Authorized>
-                    <div class="nav-item">
-                        <a class="nav-link sidebar-nav-link d-flex align-items-center" 
-                           data-bs-toggle="collapse" 
-                           href="#adminCollapse" 
-                           role="button" 
-                           aria-expanded="@_isAdminExpanded" 
-                           aria-controls="adminCollapse"
-                           @onclick="ToggleAdminSection">
-                            <i class="bi bi-gear-fill me-2"></i>
-                            Admin
-                            <i class="bi @(_isAdminExpanded ? "bi-chevron-up" : "bi-chevron-down") ms-auto"></i>
-                        </a>
-                        <div class="collapse @(_isAdminExpanded ? "show" : "")" id="adminCollapse">
-                            <div class="nav-submenu">
-                                <NavLink class="nav-link sidebar-nav-link ms-3" href="admin/forms">
-                                    <i class="bi bi-clipboard-data me-2"></i>
-                                    Manage Forms
-                                </NavLink>
-                                <NavLink class="nav-link sidebar-nav-link ms-3" href="admin/workflows">
-                                    <i class="bi bi-diagram-2 me-2"></i>
-                                    Manage Workflows
-                                </NavLink>
-                                <NavLink class="nav-link sidebar-nav-link ms-3" href="workflow-diagnostics">
-                                    <i class="bi bi-tools me-2"></i>
-                                    Workflow Diagnostics
-                                </NavLink>
-                                <NavLink class="nav-link sidebar-nav-link ms-3" href="admin/notifications">
-                                    <i class="bi bi-envelope-at me-2"></i>
-                                    Notifications
-                                </NavLink>
-                            </div>
-                        </div>
-                    </div>
+                    <div class="nav-section-label">Admin</div>
+                    <NavLink class="nav-link sidebar-nav-link" href="admin/forms">
+                        Manage Forms
+                    </NavLink>
+                    <NavLink class="nav-link sidebar-nav-link" href="admin/workflows">
+                        Manage Workflows
+                    </NavLink>
+                    <NavLink class="nav-link sidebar-nav-link" href="admin/notifications">
+                        Notifications
+                    </NavLink>
                 </Authorized>
             </AuthorizeView>
         </nav>
@@ -111,7 +87,6 @@
 
 @code {
     private bool _isDarkMode;
-    private bool _isAdminExpanded = false;
     private bool _isSidebarOpen = false;
     private bool UserHasPendingWorkflowSteps = false;
     private string? CurrentUserId;
@@ -159,11 +134,6 @@
     {
         _isDarkMode = ThemeService.IsDarkMode;
         InvokeAsync(StateHasChanged);
-    }
-
-    private void ToggleAdminSection()
-    {
-        _isAdminExpanded = !_isAdminExpanded;
     }
 
     private void ToggleSidebar()

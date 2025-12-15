@@ -1,0 +1,165 @@
+@* Form Details Tab - Basic form information and database configuration *@
+@using Requestr.Core.Models
+
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Basic Form Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Form Name *</label>
+                            <input type="text" class="form-control" @bind="FormDefinition.Name" placeholder="Enter form name" />
+                            <small class="form-text text-muted">This name will be displayed to users</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Status</label>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" @bind="FormDefinition.IsActive" id="formActiveSwitch">
+                                <label class="form-check-label" for="formActiveSwitch">
+                                    @(FormDefinition.IsActive ? "Active" : "Inactive")
+                                </label>
+                            </div>
+                            <small class="form-text text-muted">Only active forms are visible to users</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control" rows="3" @bind="FormDefinition.Description" placeholder="Enter form description"></textarea>
+                    <small class="form-text text-muted">Provide a clear description of what this form is used for</small>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Category</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" 
+                               list="categoryOptions" 
+                               @bind="FormDefinition.Category" 
+                               placeholder="Select or create a category" />
+                        <datalist id="categoryOptions">
+                            @foreach (var category in ExistingCategories)
+                            {
+                                <option value="@category">@category</option>
+                            }
+                        </datalist>
+                    </div>
+                    <small class="form-text text-muted">Group related forms together by assigning them to the same category</small>
+                </div>
+                
+                <hr class="my-4">
+                
+                <h6 class="mb-3">Database Configuration</h6>
+                
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label">Database Connection *</label>
+                            <select class="form-select" value="@SelectedConnectionString" @onchange="OnConnectionStringChanged">
+                                <option value="">Select a database</option>
+                                @foreach (var conn in ConnectionStrings)
+                                {
+                                    <option value="@conn.Key">@conn.Key</option>
+                                }
+                            </select>
+                            <small class="form-text text-muted">Choose the database this form will interact with</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        @if (!string.IsNullOrEmpty(SelectedConnectionString))
+                        {
+                            <div class="mb-3">
+                                <label class="form-label">Schema *</label>
+                                <select class="form-select" value="@FormDefinition.Schema" @onchange="OnSchemaChanged">
+                                    <option value="">Select a schema</option>
+                                    @foreach (var s in Schemas)
+                                    {
+                                        <option value="@s">@s</option>
+                                    }
+                                </select>
+                                <small class="form-text text-muted">Pick the schema that contains your table</small>
+                            </div>
+                        }
+                    </div>
+                    <div class="col-md-4">
+                        @if (!string.IsNullOrEmpty(SelectedConnectionString))
+                        {
+                            <div class="mb-3">
+                                <label class="form-label">Table *</label>
+                                <select class="form-select" value="@FormDefinition.TableName" @onchange="OnTableChanged">
+                                    <option value="">Select a table</option>
+                                    @foreach (var table in Tables)
+                                    {
+                                        <option value="@table">@table</option>
+                                    }
+                                </select>
+                                <small class="form-text text-muted">The table that will be modified by this form</small>
+                            </div>
+                        }
+                    </div>
+                </div>
+                
+                @if (!string.IsNullOrEmpty(FormDefinition.TableName))
+                {
+                    <div class="alert alert-info">
+                        <strong>Database:</strong> @SelectedConnectionString <br/>
+                        <strong>Table:</strong> @FormDefinition.TableName <br/>
+                        <strong>Schema:</strong> @FormDefinition.Schema
+                        @if (PrimaryKeyColumns.Any())
+                        {
+                            <br/><strong>Primary Key(s):</strong> @string.Join(", ", PrimaryKeyColumns)
+                        }
+                    </div>
+                    
+                    @if (HasNoPrimaryKey)
+                    {
+                        <div class="alert alert-warning">
+                            <strong>Warning:</strong> This table has no primary key defined.
+                            <ul class="mb-0 mt-2">
+                                <li><strong>Insert operations:</strong> Will work normally</li>
+                                <li><strong>Update/Delete operations:</strong> Will fail - cannot uniquely identify records</li>
+                            </ul>
+                            <small class="text-muted">Consider adding a primary key to the table if you need Update/Delete functionality.</small>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public FormDefinition FormDefinition { get; set; } = new();
+    [Parameter] public List<string> ExistingCategories { get; set; } = new();
+    [Parameter] public Dictionary<string, string> ConnectionStrings { get; set; } = new();
+    [Parameter] public string SelectedConnectionString { get; set; } = "";
+    [Parameter] public List<string> Schemas { get; set; } = new();
+    [Parameter] public List<string> Tables { get; set; } = new();
+    [Parameter] public List<string> PrimaryKeyColumns { get; set; } = new();
+    [Parameter] public bool HasNoPrimaryKey { get; set; }
+    
+    [Parameter] public EventCallback<string> OnConnectionStringChangedCallback { get; set; }
+    [Parameter] public EventCallback<string> OnSchemaChangedCallback { get; set; }
+    [Parameter] public EventCallback<string> OnTableChangedCallback { get; set; }
+
+    private async Task OnConnectionStringChanged(ChangeEventArgs e)
+    {
+        await OnConnectionStringChangedCallback.InvokeAsync(e.Value?.ToString() ?? "");
+    }
+
+    private async Task OnSchemaChanged(ChangeEventArgs e)
+    {
+        await OnSchemaChangedCallback.InvokeAsync(e.Value?.ToString() ?? "");
+    }
+
+    private async Task OnTableChanged(ChangeEventArgs e)
+    {
+        await OnTableChangedCallback.InvokeAsync(e.Value?.ToString() ?? "");
+    }
+}

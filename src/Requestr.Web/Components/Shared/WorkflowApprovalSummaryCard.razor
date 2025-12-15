@@ -1,0 +1,101 @@
+@* Unified summary card for workflow approval - combines context, progress, and step info *@
+@using Requestr.Core.Models
+
+<div class="card mb-4">
+    <div class="card-body">
+        <!-- Header: Form name and badges -->
+        <div class="d-flex align-items-start justify-content-between mb-3">
+            <div>
+                <h4 class="mb-2">@FormName</h4>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="badge @GetRequestTypeBadgeClass()">
+                        @GetRequestTypeLabel()
+                    </span>
+                    <span class="badge @GetStatusBadgeClass()">
+                        @Status
+                    </span>
+                    @if (!string.IsNullOrEmpty(TableName))
+                    {
+                        <span class="text-muted small">
+                            <i class="bi bi-table me-1"></i>@TableName
+                        </span>
+                    }
+                    @if (RecordCount > 1)
+                    {
+                        <span class="badge bg-secondary">
+                            @RecordCount records
+                        </span>
+                    }
+                </div>
+            </div>
+            <span class="badge bg-info fs-6">
+                Step @CurrentStep of @TotalSteps
+            </span>
+        </div>
+
+        <!-- Progress bar -->
+        <div class="progress mb-3" style="height: 6px;">
+            <div class="progress-bar bg-info" 
+                 style="width: @((CurrentStep / (double)TotalSteps) * 100)%"
+                 role="progressbar">
+            </div>
+        </div>
+
+        <!-- Step description if available -->
+        @if (!string.IsNullOrEmpty(StepDescription))
+        {
+            <p class="text-muted mb-3">@StepDescription</p>
+        }
+
+        <!-- Metadata footer -->
+        <div class="d-flex justify-content-between align-items-center text-muted small border-top pt-3">
+            <span>
+                <i class="bi bi-person me-1"></i>
+                Requested by @RequestedByName
+            </span>
+            <span>
+                <i class="bi bi-clock me-1"></i>
+                @RequestedAt.ToString("MMM dd, yyyy HH:mm")
+            </span>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string FormName { get; set; } = string.Empty;
+    [Parameter] public string? TableName { get; set; }
+    [Parameter] public RequestType RequestType { get; set; }
+    [Parameter] public RequestStatus Status { get; set; }
+    [Parameter] public int RecordCount { get; set; } = 1;
+    [Parameter] public int CurrentStep { get; set; }
+    [Parameter] public int TotalSteps { get; set; }
+    [Parameter] public string? StepDescription { get; set; }
+    [Parameter] public string RequestedByName { get; set; } = string.Empty;
+    [Parameter] public DateTime RequestedAt { get; set; }
+
+    private string GetRequestTypeLabel() => RequestType switch
+    {
+        RequestType.Insert => "Insert",
+        RequestType.Update => "Update",
+        RequestType.Delete => "Delete",
+        _ => "Request"
+    };
+
+    private string GetRequestTypeBadgeClass() => RequestType switch
+    {
+        RequestType.Insert => "bg-success",
+        RequestType.Update => "bg-primary",
+        RequestType.Delete => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private string GetStatusBadgeClass() => Status switch
+    {
+        RequestStatus.Pending => "bg-warning text-dark",
+        RequestStatus.Approved => "bg-success",
+        RequestStatus.Rejected => "bg-danger",
+        RequestStatus.Applied => "bg-success",
+        RequestStatus.Failed => "bg-danger",
+        _ => "bg-secondary"
+    };
+}

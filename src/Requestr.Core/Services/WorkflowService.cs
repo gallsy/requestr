@@ -256,7 +256,7 @@ public class WorkflowService : IWorkflowService
 
             _logger.LogDebug("Inserting workflow definition into database");
             workflowId = await connection.QuerySingleAsync<int>(workflowSql, new {
-                FormDefinitionId = workflowDefinition.FormDefinitionId,
+                FormDefinitionId = workflowDefinition.FormDefinitionId > 0 ? workflowDefinition.FormDefinitionId : (int?)null,
                 workflowDefinition.Name,
                 workflowDefinition.Description,
                 workflowDefinition.Version,

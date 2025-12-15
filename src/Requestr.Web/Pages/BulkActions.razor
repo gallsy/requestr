@@ -16,76 +16,47 @@
 
 @if (_isLoading)
 {
-    <div class="text-center p-5">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
-        </div>
-        <p class="mt-2">Loading form definition...</p>
-    </div>
+    <LoadingSpinner Message="Loading form definition..." />
 }
 else if (_formDefinition == null)
 {
-    <div class="card">
-        <div class="card-body">
-            <div class="text-center p-5">
-                <i class="bi bi-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
-                <h4 class="mt-3">Form Definition Not Found</h4>
-                <p class="text-muted">The requested form definition could not be found or you don't have permission to access it.</p>
-                <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">
-                    Back to Home
-                </button>
-            </div>
-        </div>
-    </div>
+    <EmptyState Title="Form Definition Not Found" 
+                Description="The requested form definition could not be found or you don't have permission to access it.">
+        <Action>
+            <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">
+                Back to Home
+            </button>
+        </Action>
+    </EmptyState>
 }
 else
 {
+    <PageHeader Title="@($"Bulk Actions: {_formDefinition.Name}")">
+        <Actions>
+            <a href="/data-view/@FormDefinitionId" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-2"></i>
+                Back to Data View
+            </a>
+        </Actions>
+    </PageHeader>
+
     <div class="container-fluid">
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <StandardAlert AlertType="danger" 
+                           Message="@_errorMessage" 
+                           Dismissable="true" />
+        }
+
+        @if (!string.IsNullOrEmpty(_successMessage))
+        {
+            <StandardAlert AlertType="success" 
+                           Message="@_successMessage" 
+                           Dismissable="true" />
+        }
+
+        <!-- Bulk Action Options -->
         <div class="row">
-            <div class="col-12">
-                <!-- Header -->
-                <div class="d-flex justify-content-between align-items-center mb-4">
-                    <div>
-                        <h1 class="display-6">
-                            <i class="bi bi-collection me-3"></i>
-                            Bulk Actions: @_formDefinition.Name
-                        </h1>
-                        <nav aria-label="breadcrumb">
-                            <ol class="breadcrumb">
-                                <li class="breadcrumb-item"><a href="/">Home</a></li>
-                                <li class="breadcrumb-item"><a href="/data-view/@FormDefinitionId">Data View</a></li>
-                                <li class="breadcrumb-item active" aria-current="page">Bulk Actions</li>
-                            </ol>
-                        </nav>
-                    </div>
-                    <div>
-                        <a href="/data-view/@FormDefinitionId" class="btn btn-outline-secondary">
-                            <i class="bi bi-arrow-left me-2"></i>
-                            Back to Data View
-                        </a>
-                    </div>
-                </div>
-
-                @if (!string.IsNullOrEmpty(_errorMessage))
-                {
-                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        @_errorMessage
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" @onclick="() => _errorMessage = string.Empty"></button>
-                    </div>
-                }
-
-                @if (!string.IsNullOrEmpty(_successMessage))
-                {
-                    <div class="alert alert-success alert-dismissible fade show" role="alert">
-                        <i class="bi bi-check-circle-fill me-2"></i>
-                        @_successMessage
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" @onclick="() => _successMessage = string.Empty"></button>
-                    </div>
-                }
-
-                <!-- Bulk Action Options -->
-                <div class="row">
                     <div class="col-md-6">
                         <div class="card mb-4">
                             <div class="card-header bg-primary text-white">
@@ -136,18 +107,11 @@ else
                     <div class="card-body">
                         @if (_recentBulkRequests == null)
                         {
-                            <div class="d-flex justify-content-center py-4">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                            </div>
+                            <LoadingSpinner />
                         }
                         else if (!_recentBulkRequests.Any())
                         {
-                            <div class="text-center py-4">
-                                <i class="bi bi-inbox text-muted" style="font-size: 2rem;"></i>
-                                <p class="text-muted mt-2">No recent bulk requests found.</p>
-                            </div>
+                            <EmptyState Title="No recent bulk requests" Description="No recent bulk requests found." />
                         }
                         else
                         {
@@ -196,8 +160,6 @@ else
                         }
                     </div>
                 </div>
-            </div>
-        </div>
     </div>
 }
 

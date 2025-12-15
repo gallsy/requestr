@@ -1,8 +1,6 @@
 @* Standardized empty state component *@
-@using BlazorBootstrap
 
 <div class="text-center py-5">
-    <Icon Name="@IconName" class="text-muted mb-3" style="font-size: 4rem;" />
     <h3 class="text-muted">@Title</h3>
     @if (!string.IsNullOrEmpty(Description))
     {
@@ -17,11 +15,6 @@
 </div>
 
 @code {
-    /// <summary>
-    /// Bootstrap icon to display
-    /// </summary>
-    [Parameter] public IconName IconName { get; set; } = IconName.ExclamationTriangle;
-
     /// <summary>
     /// Title for the empty state
     /// </summary>

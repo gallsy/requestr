@@ -1,0 +1,247 @@
+@* Form Workflow Tab - Workflow assignment and step configuration *@
+@using Requestr.Core.Models
+
+<div class="row">
+    <div class="col-12">
+        <!-- Workflow Assignment Card -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Workflow Assignment</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <label class="form-label">Select Workflow</label>
+                        <select class="form-select" value="@SelectedWorkflowId" @onchange="OnWorkflowSelectionChanged">
+                            <option value="">No Workflow (Auto-apply requests)</option>
+                            @if (AvailableWorkflows?.Any() == true)
+                            {
+                                @foreach (var workflow in AvailableWorkflows)
+                                {
+                                    <option value="@workflow.Id">@workflow.Name</option>
+                                }
+                            }
+                        </select>
+                        <small class="form-text text-muted">
+                            Choose a workflow to control how form requests are approved.
+                        </small>
+                    </div>
+                    <div class="col-md-6">
+                        @if (SelectedWorkflowId.HasValue)
+                        {
+                            <div class="alert alert-info">
+                                <h6 class="alert-heading">Workflow Assigned</h6>
+                                <p class="mb-0 small">
+                                    Form requests will follow the selected workflow for approval.
+                                    Configure step-specific settings below.
+                                </p>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-warning">
+                                <h6 class="alert-heading">No Workflow</h6>
+                                <p class="mb-0 small">
+                                    Form requests will be automatically applied to the database without approval.
+                                </p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step Configuration Cards -->
+        @if (WorkflowStepConfigs?.Any() == true)
+        {
+            <div class="row">
+                <div class="col-12">
+                    <h5 class="mb-3">Step Configuration</h5>
+                    <p class="text-muted mb-4">Configure how each workflow step behaves for this specific form.</p>
+                </div>
+            </div>
+
+            @foreach (var stepConfig in WorkflowStepConfigs.Where(s => s.StepType == "approval" || s.StepType == "parallel"))
+            {
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h6 class="mb-0">@stepConfig.StepName</h6>
+                    </div>
+                    <div class="card-body">
+                        @if (stepConfig.StepType == "approval")
+                        {
+                            <div class="row">
+                                <div class="col-12">
+                                    <h6>Field Configuration</h6>
+                                    <p class="text-muted small">Configure field visibility, editability, and requirements for this step.</p>
+                                    
+                                    @if (FormFields?.Any() == true)
+                                    {
+                                        <div class="table-responsive">
+                                            <table class="table table-sm">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Field Name</th>
+                                                        <th>Display Name</th>
+                                                        <th>Visible</th>
+                                                        <th>Editable</th>
+                                                        <th>Make Required</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var field in FormFields.OrderBy(f => f.DisplayName))
+                                                    {
+                                                        var fieldConfig = GetOrCreateFieldConfig(stepConfig, field.Name);
+                                                        <tr>
+                                                            <td>@field.Name</td>
+                                                            <td>@field.DisplayName</td>
+                                                            <td>
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox" 
+                                                                           checked="@fieldConfig.IsVisible" 
+                                                                           @onchange="(e) => { fieldConfig.IsVisible = (bool)e.Value!; }" />
+                                                                </div>
+                                                            </td>
+                                                            <td>
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox" 
+                                                                           checked="@(!fieldConfig.IsReadOnly)" 
+                                                                           @onchange="(e) => { fieldConfig.IsReadOnly = !(bool)e.Value!; }" />
+                                                                </div>
+                                                            </td>
+                                                            <td>
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox" 
+                                                                           checked="@fieldConfig.IsRequired" 
+                                                                           @onchange="(e) => { fieldConfig.IsRequired = (bool)e.Value!; }" />
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        else if (stepConfig.StepType == "parallel")
+                        {
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Required Roles</label>
+                                        <div class="border rounded p-2" style="max-height: 150px; overflow-y: auto;">
+                                            @if (AvailableRoles?.Any() == true)
+                                            {
+                                                @foreach (var role in AvailableRoles)
+                                                {
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" 
+                                                               checked="@(stepConfig.RequiredRoles.Contains(role))"
+                                                               @onchange="@((e) => ToggleRequiredRole(stepConfig, role, (bool)(e.Value ?? false)))">
+                                                        <label class="form-check-label">@role</label>
+                                                    </div>
+                                                }
+                                            }
+                                        </div>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" 
+                                               checked="@stepConfig.RequireAllApprovals"
+                                               @onchange="@((e) => UpdateParallelApprovalSetting(stepConfig, (bool)(e.Value ?? false)))">
+                                        <label class="form-check-label">Require all roles to approve</label>
+                                        <small class="form-text text-muted d-block">
+                                            If unchecked, approval from any one role will advance the workflow.
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+        else if (SelectedWorkflowId.HasValue)
+        {
+            <div class="alert alert-info">
+                <h6 class="alert-heading">No Configurable Steps</h6>
+                <p class="mb-0">
+                    The selected workflow doesn't have any approval steps that require configuration.
+                </p>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public int? SelectedWorkflowId { get; set; }
+    [Parameter] public List<WorkflowDefinition>? AvailableWorkflows { get; set; }
+    [Parameter] public List<WorkflowStepConfigModel>? WorkflowStepConfigs { get; set; }
+    [Parameter] public List<FormField>? FormFields { get; set; }
+    [Parameter] public List<string>? AvailableRoles { get; set; }
+    [Parameter] public EventCallback<int?> OnWorkflowChanged { get; set; }
+
+    // Model for step configuration UI (must match parent)
+    public class WorkflowStepConfigModel
+    {
+        public int StepId { get; set; }
+        public string StepIdString { get; set; } = "";
+        public string StepName { get; set; } = "";
+        public string StepType { get; set; } = "";
+        public List<string> RequiredRoles { get; set; } = new();
+        public bool RequireAllApprovals { get; set; } = true;
+        public Dictionary<string, FieldConfigurationModel> FieldConfigurations { get; set; } = new();
+    }
+
+    public class FieldConfigurationModel
+    {
+        public string FieldName { get; set; } = "";
+        public bool IsVisible { get; set; } = true;
+        public bool IsReadOnly { get; set; } = false;
+        public bool IsRequired { get; set; } = false;
+    }
+
+    private async Task OnWorkflowSelectionChanged(ChangeEventArgs e)
+    {
+        int? workflowId = null;
+        if (int.TryParse(e.Value?.ToString(), out var id))
+        {
+            workflowId = id;
+        }
+        await OnWorkflowChanged.InvokeAsync(workflowId);
+    }
+
+    private FieldConfigurationModel GetOrCreateFieldConfig(WorkflowStepConfigModel stepConfig, string fieldName)
+    {
+        if (!stepConfig.FieldConfigurations.TryGetValue(fieldName, out var config))
+        {
+            config = new FieldConfigurationModel
+            {
+                FieldName = fieldName,
+                IsVisible = true,
+                IsReadOnly = false,
+                IsRequired = false
+            };
+            stepConfig.FieldConfigurations[fieldName] = config;
+        }
+        return config;
+    }
+
+    private void ToggleRequiredRole(WorkflowStepConfigModel stepConfig, string role, bool isChecked)
+    {
+        if (isChecked && !stepConfig.RequiredRoles.Contains(role))
+        {
+            stepConfig.RequiredRoles.Add(role);
+        }
+        else if (!isChecked && stepConfig.RequiredRoles.Contains(role))
+        {
+            stepConfig.RequiredRoles.Remove(role);
+        }
+    }
+
+    private void UpdateParallelApprovalSetting(WorkflowStepConfigModel stepConfig, bool requireAll)
+    {
+        stepConfig.RequireAllApprovals = requireAll;
+    }
+}

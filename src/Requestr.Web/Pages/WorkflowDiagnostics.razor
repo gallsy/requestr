@@ -13,41 +13,32 @@
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
 <PageTitle>Workflow Diagnostics | @Branding.ApplicationName</PageTitle>
 
+<PageHeader Title="Workflow Diagnostics" Description="Identify and fix workflow completion issues">
+    <Actions>
+        <button class="btn btn-primary" @onclick="RefreshData">
+            <i class="bi bi-arrow-clockwise me-1"></i>
+            Refresh
+        </button>
+        <button class="btn btn-success" @onclick="ProcessAllStuckRequests" disabled="@IsProcessing">
+            @if (IsProcessing)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                <text>Processing...</text>
+            }
+            else
+            {
+                <i class="bi bi-gear-fill me-1"></i>
+                <text>Fix All Issues</text>
+            }
+        </button>
+    </Actions>
+</PageHeader>
+
 <div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h1 class="display-5">
-                        <i class="bi bi-tools me-3 text-warning"></i>
-                        Workflow Diagnostics
-                    </h1>
-                    <p class="lead">Identify and fix workflow completion issues</p>
-                </div>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-primary" @onclick="RefreshData">
-                        <i class="bi bi-arrow-clockwise me-1"></i>
-                        Refresh
-                    </button>
-                    <button class="btn btn-success" @onclick="ProcessAllStuckRequests" disabled="@IsProcessing">
-                        <i class="bi bi-gear-fill me-1"></i>
-                        @if (IsProcessing)
-                        {
-                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                            <text>Processing...</text>
-                        }
-                        else
-                        {
-                            <text>Fix All Issues</text>
-                        }
-                    </button>
-                </div>
-            </div>
 
             @if (!string.IsNullOrEmpty(StatusMessage))
             {
-                <StandardAlert AlertColor="@(IsSuccess ? AlertColor.Success : AlertColor.Danger)" 
-                             IconName="@(IsSuccess ? IconName.CheckCircleFill : IconName.ExclamationTriangleFill)"
+                <StandardAlert AlertType="@(IsSuccess ? "success" : "danger")" 
                              Message="@StatusMessage" />
             }
 
@@ -205,9 +196,7 @@
                     </Button>
                 </FooterTemplate>
             </Modal>
-        </div>
     </div>
-</div>
 
 @code {
     private List<FormRequest>? StuckRequests;

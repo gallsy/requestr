@@ -28,8 +28,7 @@
 }
 else if (_workflowInstance == null || _currentStep == null || _formRequest == null)
 {
-    <EmptyState IconName=IconName.ExclamationTriangle 
-                Title="Workflow Step Not Found" 
+    <EmptyState Title="Workflow Step Not Found" 
                 Description="The requested workflow step could not be found or you don't have permission to access it.">
         <Action>
             <Button Color="ButtonColor.Primary" @onclick="@(() => Navigation.NavigateTo("/"))">
@@ -40,69 +39,43 @@ else if (_workflowInstance == null || _currentStep == null || _formRequest == nu
 }
 else
 {
-    <PageHeader Title="Approve a request" 
-                Description="@(_formRequest.FormDefinition?.Name + " Request")"
-                Icon="IconName.Diagram3">
+    <PageHeader Title="@(_formRequest.FormDefinition?.Name ?? "Approve Request")" 
+                Description="Review and approve or reject this request">
     </PageHeader>
 
     <div class="container">
         <div class="row justify-content-center">
             <div class="col-lg-10">
-                <!-- Progress Indicator -->
-                <div class="card mb-4">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <small class="text-muted">
-                                Requested by @_formRequest.RequestedByName on @_formRequest.RequestedAt.ToString("MMM dd, yyyy HH:mm")
-                            </small>
-                            <span class="badge bg-info fs-6">
-                                Step @(_currentStepIndex) of @_totalSteps
-                            </span>
-                        </div>
-                        <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-info" 
-                                 style="width: @((_currentStepIndex / (double)_totalSteps) * 100)%"
-                                 role="progressbar">
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <!-- Unified Summary Card -->
+                <WorkflowApprovalSummaryCard FormName="@(_formRequest.FormDefinition?.Name ?? "Unknown Form")"
+                                             TableName="@(_formRequest.FormDefinition?.TableName)"
+                                             RequestType="@_formRequest.RequestType"
+                                             Status="@_formRequest.Status"
+                                             RecordCount="@(IsBulkRequest && _bulkFormRequest != null ? _bulkFormRequest.Items?.Count ?? 1 : 1)"
+                                             CurrentStep="@_currentStepIndex"
+                                             TotalSteps="@_totalSteps"
+                                             StepDescription="@_currentStepDefinition?.Description"
+                                             RequestedByName="@_formRequest.RequestedByName"
+                                             RequestedAt="@_formRequest.RequestedAt" />
 
-                <!-- Current Step Details -->
+                <!-- Request Details -->
                 <div class="card">
-                    <div class="card-header">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h5 class="mb-1">@_currentStepDefinition?.Name</h5>
-                                @if (!string.IsNullOrEmpty(_currentStepDefinition?.Description))
-                                {
-                                    <p class="text-muted mb-0">@_currentStepDefinition.Description</p>
-                                }
-                            </div>
-                            <span class="badge bg-@GetStepStatusBadgeColor(_currentStep.Status) fs-6">
-                                @_currentStep.Status
-                            </span>
-                        </div>
-                    </div>
                     <div class="card-body">
                         @if (!string.IsNullOrEmpty(_errorMessage))
                         {
-                            <StandardAlert AlertColor="AlertColor.Danger" 
-                                         IconName=IconName.ExclamationTriangle
+                            <StandardAlert AlertType="danger" 
                                          Message="@_errorMessage" />
                         }
                         
                         @if (!string.IsNullOrEmpty(_successMessage))
                         {
-                            <StandardAlert AlertColor="AlertColor.Success" 
-                                         IconName=IconName.CheckCircle
+                            <StandardAlert AlertType="success" 
                                          Message="@_successMessage" />
                         }
 
                         @if (IsStepCompleted)
                         {
-                            <StandardAlert AlertColor="AlertColor.Info" 
-                                         IconName=IconName.InfoCircle
+                            <StandardAlert AlertType="info" 
                                          Dismissable="false">
                                 <strong>Read-Only View:</strong> This approval step has been completed and cannot be modified.
                                 @if (!string.IsNullOrEmpty(_currentStep.CompletedByName))
@@ -114,8 +87,7 @@ else
 
                         @if (_hasConflicts)
                         {
-                            <StandardAlert AlertColor="AlertColor.Warning" 
-                                         IconName=IconName.ExclamationTriangle
+                            <StandardAlert AlertType="warning" 
                                          Title="Data Conflicts Detected"
                                          Dismissable="false">
                                 <div style="white-space: pre-line;">@(string.Join("\n", _conflictMessages))</div>
@@ -123,21 +95,6 @@ else
                         }
 
                         <!-- Request Summary -->
-                        <div class="row mb-4">
-                            <div class="col-md-6">
-                                <strong>Request Type:</strong>
-                                <span class="badge bg-@GetRequestTypeBadgeColor(_formRequest.RequestType) ms-2">
-                                    @_formRequest.RequestType.ToString()
-                                </span>
-                            </div>
-                            <div class="col-md-6">
-                                <strong>Current Status:</strong>
-                                <span class="badge bg-@GetStatusBadgeColor(_formRequest.Status) ms-2">
-                                    @_formRequest.Status
-                                </span>
-                            </div>
-                        </div>
-
                         @if (!string.IsNullOrEmpty(_formRequest.Comments))
                         {
                             <div class="mb-4">
@@ -363,18 +320,13 @@ else
                             else
                             {
                                 <!-- Individual Request Form -->
-                                <div class="mb-4">
-                                    <h6>Request Form</h6>
-                                    <div class="border rounded p-3">
-                                        <FormRenderer FormDefinition="_formRequest.FormDefinition"
-                                                      FieldValues="_workflowFieldValues"
-                                                      DisplayMode="@(IsStepCompleted ? FormDisplayMode.ReadOnly : FormDisplayMode.Approval)"
-                                                      WorkflowStepId="_currentStepDefinition.Id"
-                                                      CurrentRequestType="_formRequest.RequestType"
-                                                      TableColumns="_tableColumns"
-                                                      OnFieldValueChanged="OnWorkflowFieldChanged" />
-                                    </div>
-                                </div>
+                                <FormRenderer FormDefinition="_formRequest.FormDefinition"
+                                              FieldValues="_workflowFieldValues"
+                                              DisplayMode="@(IsStepCompleted ? FormDisplayMode.ReadOnly : FormDisplayMode.Approval)"
+                                              WorkflowStepId="_currentStepDefinition.Id"
+                                              CurrentRequestType="_formRequest.RequestType"
+                                              TableColumns="_tableColumns"
+                                              OnFieldValueChanged="OnWorkflowFieldChanged" />
                             }
                         }
 
@@ -418,8 +370,7 @@ else
                             }
                             else
                             {
-                                <StandardAlert AlertColor="AlertColor.Warning" 
-                                             IconName=IconName.ExclamationTriangle
+                                <StandardAlert AlertType="warning" 
                                              Dismissable="false">
                                     You do not have permission to approve this step. This step is assigned to: 
                                     <strong>@string.Join(", ", _currentStepDefinition?.AssignedRoles ?? new List<string>())</strong>

@@ -1,23 +1,17 @@
 @* Standardized page header component *@
 
-<div class="page-header slide-up">
-    <div class="d-flex justify-content-between align-items-center">
+<div class="page-header mb-4">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
         <div>
-            <h1 class="display-5">
-                @if (Icon.HasValue)
-                {
-                    <Icon Name="Icon.Value" class="me-3" />
-                }
-                @Title
-            </h1>
+            <h1 class="h3 mb-1">@Title</h1>
             @if (!string.IsNullOrEmpty(Description))
             {
-                <p class="lead">@Description</p>
+                <p class="text-muted mb-0">@Description</p>
             }
         </div>
         @if (Actions != null)
         {
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 flex-shrink-0">
                 @Actions
             </div>
         }
@@ -34,11 +28,6 @@
     /// Optional description/subtitle for the page
     /// </summary>
     [Parameter] public string? Description { get; set; }
-
-    /// <summary>
-    /// Bootstrap icon name
-    /// </summary>
-    [Parameter] public IconName? Icon { get; set; }
 
     /// <summary>
     /// Action buttons to display on the right side

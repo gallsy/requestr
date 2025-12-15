@@ -1,0 +1,137 @@
+@* Prominent banner showing form context for requests *@
+@using Requestr.Core.Models
+
+<div class="request-context-banner mb-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+        <div class="d-flex align-items-center gap-3">
+            <div class="request-type-icon @GetRequestTypeClass()">
+                <i class="bi @GetRequestTypeIcon()"></i>
+            </div>
+            <div>
+                <h4 class="mb-1">@FormName</h4>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="badge @GetRequestTypeBadgeClass() fs-6">
+                        @GetRequestTypeLabel()
+                    </span>
+                    @if (!string.IsNullOrEmpty(TableName))
+                    {
+                        <span class="text-muted">
+                            <i class="bi bi-table me-1"></i>@TableName
+                        </span>
+                    }
+                    @if (RecordCount > 1)
+                    {
+                        <span class="badge bg-info">
+                            @RecordCount records
+                        </span>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge @GetStatusBadgeClass() fs-6 px-3 py-2">
+                <i class="bi @GetStatusIcon() me-1"></i>
+                @Status
+            </span>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string FormName { get; set; } = string.Empty;
+    [Parameter] public string? TableName { get; set; }
+    [Parameter] public RequestType RequestType { get; set; }
+    [Parameter] public RequestStatus Status { get; set; }
+    [Parameter] public int RecordCount { get; set; } = 1;
+
+    private string GetRequestTypeIcon() => RequestType switch
+    {
+        RequestType.Insert => "bi-plus-circle-fill",
+        RequestType.Update => "bi-pencil-fill",
+        RequestType.Delete => "bi-trash-fill",
+        _ => "bi-file-earmark"
+    };
+
+    private string GetRequestTypeClass() => RequestType switch
+    {
+        RequestType.Insert => "request-type-insert",
+        RequestType.Update => "request-type-update",
+        RequestType.Delete => "request-type-delete",
+        _ => "request-type-default"
+    };
+
+    private string GetRequestTypeBadgeClass() => RequestType switch
+    {
+        RequestType.Insert => "bg-success",
+        RequestType.Update => "bg-primary",
+        RequestType.Delete => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private string GetRequestTypeLabel() => RequestType switch
+    {
+        RequestType.Insert => "New Record",
+        RequestType.Update => "Update Record",
+        RequestType.Delete => "Delete Record",
+        _ => RequestType.ToString()
+    };
+
+    private string GetStatusBadgeClass() => Status switch
+    {
+        RequestStatus.Pending => "bg-warning text-dark",
+        RequestStatus.Approved => "bg-success",
+        RequestStatus.Rejected => "bg-danger",
+        RequestStatus.Applied => "bg-info",
+        RequestStatus.Failed => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private string GetStatusIcon() => Status switch
+    {
+        RequestStatus.Pending => "bi-hourglass-split",
+        RequestStatus.Approved => "bi-check-circle",
+        RequestStatus.Rejected => "bi-x-circle",
+        RequestStatus.Applied => "bi-check2-all",
+        RequestStatus.Failed => "bi-exclamation-triangle",
+        _ => "bi-circle"
+    };
+}
+
+<style>
+    .request-context-banner {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        padding: 1.25rem 1.5rem;
+    }
+
+    .request-type-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+    }
+
+    .request-type-insert {
+        background: rgba(16, 185, 129, 0.15);
+        color: #10b981;
+    }
+
+    .request-type-update {
+        background: rgba(59, 130, 246, 0.15);
+        color: #3b82f6;
+    }
+
+    .request-type-delete {
+        background: rgba(239, 68, 68, 0.15);
+        color: #ef4444;
+    }
+
+    .request-type-default {
+        background: rgba(107, 114, 128, 0.15);
+        color: #6b7280;
+    }
+</style>
