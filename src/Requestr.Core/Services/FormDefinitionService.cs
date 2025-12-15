@@ -67,6 +67,7 @@ public class FormDefinitionService : IFormDefinitionService
                         UpdatedAt = (DateTime?)row.UpdatedAt,
                         UpdatedBy = (string?)row.UpdatedBy,
                         Fields = new List<FormField>(),
+                        FormPermissions = new List<FormPermission>(),
                         ApproverRoles = JsonSerializer.Deserialize<List<string>>((string)(row.ApproverRolesJson ?? "[]")) ?? new List<string>()
                     };
                     formDict[(int)row.Id] = form;
@@ -96,6 +97,32 @@ public class FormDefinitionService : IFormDefinitionService
                         TreatBlankAsNull = Convert.ToBoolean(row.TreatBlankAsNull)
                     };
                     formDict[(int)row.Id].Fields.Add(field);
+                }
+            }
+
+            // Fetch permissions for all forms
+            var permissionsSql = @"
+                SELECT FormDefinitionId, RoleName, PermissionType, IsGranted
+                FROM FormPermissions
+                WHERE FormDefinitionId IN @FormIds AND IsGranted = 1";
+            
+            var formIds = formDict.Keys.ToList();
+            if (formIds.Any())
+            {
+                var permissions = await connection.QueryAsync(permissionsSql, new { FormIds = formIds });
+                foreach (var perm in permissions)
+                {
+                    var formId = (int)perm.FormDefinitionId;
+                    if (formDict.ContainsKey(formId))
+                    {
+                        formDict[formId].FormPermissions.Add(new FormPermission
+                        {
+                            FormDefinitionId = formId,
+                            RoleName = (string)perm.RoleName,
+                            PermissionType = (FormPermissionType)perm.PermissionType,
+                            IsGranted = (bool)perm.IsGranted
+                        });
+                    }
                 }
             }
 
