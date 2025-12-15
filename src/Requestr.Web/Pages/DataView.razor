@@ -74,7 +74,7 @@ else
                             <div class="col-md-6">
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                    <input type="text" class="form-control" placeholder="Search..." @bind="_searchTerm" @onkeypress="@OnSearchKeyPress">
+                                    <input type="text" class="form-control" placeholder="Search..." @bind="_searchTerm" @bind:event="oninput" @onkeypress="@OnSearchKeyPress">
                                     <button class="btn btn-outline-secondary" type="button" @onclick="Search">
                                         <i class="bi bi-search"></i> Search
                                     </button>
@@ -85,15 +85,6 @@ else
                                     <button class="btn btn-secondary" @onclick="ClearSearch">
                                         <i class="bi bi-x-circle"></i> Clear
                                     </button>
-                                    <button class="btn btn-primary" @onclick="RefreshData">
-                                        <i class="bi bi-arrow-clockwise"></i> Refresh
-                                    </button>
-                                    @if (_canUploadCsv)
-                                    {
-                                        <button class="btn btn-success" @onclick="ShowCsvUploadModal">
-                                            <i class="bi bi-upload"></i> Upload CSV
-                                        </button>
-                                    }
                                 </div>
                             </div>
                         </div>
@@ -181,6 +172,10 @@ else
                                             <th style="width: 40px;">
                                                 <input type="checkbox" class="form-check-input" @onchange="ToggleSelectAll">
                                             </th>
+                                            <th style='@GetColumnWidthStyle("__actions")' class="resizable-header" data-column="__actions">
+                                                <span>Actions</span>
+                                                <span class="resize-handle" @onmousedown='(e) => BeginResize(e, "__actions")'></span>
+                                            </th>
                                             @foreach (var column in _dataResult.Columns)
                                             {
                                                 <th class="resizable-header" data-column="@column" style="@GetColumnWidthStyle(column)">
@@ -188,10 +183,6 @@ else
                                                     <span class="resize-handle" @onmousedown="(e) => BeginResize(e, column)"></span>
                                                 </th>
                                             }
-                                            <th style='@GetColumnWidthStyle("__actions")' class="resizable-header" data-column="__actions">
-                                                <span>Actions</span>
-                                                <span class="resize-handle" @onmousedown='(e) => BeginResize(e, "__actions")'></span>
-                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -206,11 +197,6 @@ else
                                                            checked="@isSelected" 
                                                            @onchange="@((e) => ToggleRecordSelection(recordId, e.Value))">
                                                 </td>
-                                                @foreach (var column in _dataResult.Columns)
-                                                {
-                                                    var cellValue = record.ContainsKey(column) ? record[column]?.ToString() : "";
-                                                    <td title="@cellValue">@cellValue</td>
-                                                }
                                                 <td>
                                                     <div class="btn-group btn-group-sm" role="group">
                                                         @if (_canUpdateRequests)
@@ -218,6 +204,13 @@ else
                                                             <button class="btn btn-outline-primary" title="Edit"
                                                                     @onclick="() => GoToEdit(recordId)">
                                                                 <i class="bi bi-pencil-square"></i>
+                                                            </button>
+                                                        }
+                                                        @if (_canInsertRequests)
+                                                        {
+                                                            <button class="btn btn-outline-warning" title="Duplicate"
+                                                                    @onclick="() => GoToDuplicate(record)">
+                                                                <i class="bi bi-copy"></i>
                                                             </button>
                                                         }
                                                         @if (_canDeleteRequests)
@@ -229,6 +222,11 @@ else
                                                         }
                                                     </div>
                                                 </td>
+                                                @foreach (var column in _dataResult.Columns)
+                                                {
+                                                    var cellValue = record.ContainsKey(column) ? record[column]?.ToString() : "";
+                                                    <td title="@cellValue">@cellValue</td>
+                                                }
                                             </tr>
                                         }
                                     </tbody>
@@ -239,7 +237,19 @@ else
                             @if (_dataResult.TotalPages > 1)
                             {
                                 <nav aria-label="Data pagination">
-                                    <ul class="pagination justify-content-center">
+                                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <label class="mb-0 text-muted">Show</label>
+                                            <select class="form-select form-select-sm" style="width: auto;" @onchange="OnPageSizeChanged">
+                                                <option value="10" selected="@(_pageSize == 10)">10</option>
+                                                <option value="25" selected="@(_pageSize == 25)">25</option>
+                                                <option value="50" selected="@(_pageSize == 50)">50</option>
+                                                <option value="100" selected="@(_pageSize == 100)">100</option>
+                                                <option value="500" selected="@(_pageSize == 500)">500</option>
+                                            </select>
+                                            <label class="mb-0 text-muted">per page</label>
+                                        </div>
+                                        <ul class="pagination mb-0">
                                         <li class="page-item @(_dataResult.CurrentPage == 1 ? "disabled" : "")">
                                             <button class="page-link" @onclick="() => ChangePage(1)">First</button>
                                         </li>
@@ -262,7 +272,23 @@ else
                                             <button class="page-link" @onclick="() => ChangePage(_dataResult.TotalPages)">Last</button>
                                         </li>
                                     </ul>
+                                    </div>
                                 </nav>
+                            }
+                            else
+                            {
+                                <!-- Show page size even when only 1 page -->
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <label class="mb-0 text-muted">Show</label>
+                                    <select class="form-select form-select-sm" style="width: auto;" @onchange="OnPageSizeChanged">
+                                        <option value="10" selected="@(_pageSize == 10)">10</option>
+                                        <option value="25" selected="@(_pageSize == 25)">25</option>
+                                        <option value="50" selected="@(_pageSize == 50)">50</option>
+                                        <option value="100" selected="@(_pageSize == 100)">100</option>
+                                        <option value="500" selected="@(_pageSize == 500)">500</option>
+                                    </select>
+                                    <label class="mb-0 text-muted">per page</label>
+                                </div>
                             }
                         }
                         else
@@ -590,6 +616,7 @@ else
     private string _errorMessage = string.Empty;
     private string _successMessage = string.Empty;
     private string _searchTerm = string.Empty;
+    private int _pageSize = 10;
 
     private FormDefinition? _formDefinition;
     private DataViewResult? _dataResult;
@@ -599,6 +626,7 @@ else
     private bool _canAccessDataView = false;
     private bool _canExecuteBulkActions = false;
     private bool _canUploadCsv = false;
+    private bool _canInsertRequests = false;
     private bool _canUpdateRequests = false;
     private bool _canDeleteRequests = false;
     private List<string> _userRoles = new();
@@ -724,6 +752,7 @@ else
             _canAccessDataView = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.ViewData);
             _canExecuteBulkActions = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.BulkActions);
             _canUploadCsv = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.BulkUploadCsv);
+            _canInsertRequests = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.CreateRequest);
             _canUpdateRequests = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.UpdateRequest);
             _canDeleteRequests = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.DeleteRequest);
             
@@ -766,7 +795,7 @@ else
         try
         {
             Logger.LogInformation("Loading data for form {FormDefinitionId}", FormDefinitionId);
-            _dataResult = await DataViewService.GetDataAsync(FormDefinitionId, 1, 50, _searchTerm);
+            _dataResult = await DataViewService.GetDataAsync(FormDefinitionId, 1, _pageSize, _searchTerm);
             ClearSelection();
             
             if (_dataResult == null)
@@ -794,6 +823,15 @@ else
     private async Task Search()
     {
         await LoadData();
+    }
+
+    private async Task OnPageSizeChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var newSize))
+        {
+            _pageSize = newSize;
+            await LoadData();
+        }
     }
 
     private async Task ClearSearch()
@@ -854,7 +892,7 @@ else
         
         try
         {
-            _dataResult = await DataViewService.GetDataAsync(FormDefinitionId, page, 50, _searchTerm);
+            _dataResult = await DataViewService.GetDataAsync(FormDefinitionId, page, _pageSize, _searchTerm);
             ClearSelection();
         }
         catch (Exception ex)
@@ -1251,5 +1289,21 @@ else
     {
         // Navigate to form screen with requestType=Delete and selected record id
         Navigation.NavigateTo($"/forms/{FormDefinitionId}?requestType=delete&recordId={Uri.EscapeDataString(recordId)}");
+    }
+
+    private void GoToDuplicate(Dictionary<string, object?> record)
+    {
+        // Navigate to form screen with requestType=Insert and prepopulate with record data
+        var queryParams = new List<string> { "requestType=insert" };
+        
+        foreach (var kvp in record)
+        {
+            if (kvp.Value != null)
+            {
+                queryParams.Add($"prefill_{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value.ToString() ?? "")}");
+            }
+        }
+        
+        Navigation.NavigateTo($"/forms/{FormDefinitionId}?{string.Join("&", queryParams)}");
     }
 }

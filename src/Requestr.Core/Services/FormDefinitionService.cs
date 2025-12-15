@@ -41,6 +41,7 @@ public class FormDefinitionService : IFormDefinitionService
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
+                WHERE fd.IsDeleted = 0
                 ORDER BY fd.Name, ff.DisplayOrder";
 
             var rows = await connection.QueryAsync(sql);
@@ -126,7 +127,7 @@ public class FormDefinitionService : IFormDefinitionService
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
-                WHERE fd.IsActive = 1
+                WHERE fd.IsActive = 1 AND fd.IsDeleted = 0
                 ORDER BY fd.Name, ff.DisplayOrder";
 
             var rows = await connection.QueryAsync(sql);
@@ -218,7 +219,7 @@ public class FormDefinitionService : IFormDefinitionService
                 FROM FormDefinitions fd
                 LEFT JOIN FormSections fs ON fd.Id = fs.FormDefinitionId
                 LEFT JOIN FormFields ff ON (fd.Id = ff.FormDefinitionId AND (fs.Id = ff.FormSectionId OR ff.FormSectionId IS NULL))
-                WHERE fd.Id = @Id AND fd.IsActive = 1
+                WHERE fd.Id = @Id AND fd.IsDeleted = 0
                 ORDER BY fs.DisplayOrder, ff.GridRow, ff.GridColumn, ff.DisplayOrder";
 
             var rows = await connection.QueryAsync(sql, new { Id = id });
@@ -534,7 +535,11 @@ public class FormDefinitionService : IFormDefinitionService
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            var sql = "UPDATE FormDefinitions SET IsActive = 0 WHERE Id = @Id";
+            var sql = @"UPDATE FormDefinitions 
+                        SET IsDeleted = 1, 
+                            DeletedAt = GETUTCDATE(), 
+                            DeletedBy = 'System'
+                        WHERE Id = @Id";
             var rowsAffected = await connection.ExecuteAsync(sql, new { Id = id });
 
             return rowsAffected > 0;
@@ -561,7 +566,7 @@ public class FormDefinitionService : IFormDefinitionService
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
-                WHERE fd.IsActive = 1
+                WHERE fd.IsActive = 1 AND fd.IsDeleted = 0
                 ORDER BY fd.Name, ff.DisplayOrder";
 
             var rows = await connection.QueryAsync(sql);
