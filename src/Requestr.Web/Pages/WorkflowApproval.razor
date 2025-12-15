@@ -320,18 +320,13 @@ else
                             else
                             {
                                 <!-- Individual Request Form -->
-                                <div class="mb-4">
-                                    <h6>Request Form</h6>
-                                    <div class="border rounded p-3">
-                                        <FormRenderer FormDefinition="_formRequest.FormDefinition"
-                                                      FieldValues="_workflowFieldValues"
-                                                      DisplayMode="@(IsStepCompleted ? FormDisplayMode.ReadOnly : FormDisplayMode.Approval)"
-                                                      WorkflowStepId="_currentStepDefinition.Id"
-                                                      CurrentRequestType="_formRequest.RequestType"
-                                                      TableColumns="_tableColumns"
-                                                      OnFieldValueChanged="OnWorkflowFieldChanged" />
-                                    </div>
-                                </div>
+                                <FormRenderer FormDefinition="_formRequest.FormDefinition"
+                                              FieldValues="_workflowFieldValues"
+                                              DisplayMode="@(IsStepCompleted ? FormDisplayMode.ReadOnly : FormDisplayMode.Approval)"
+                                              WorkflowStepId="_currentStepDefinition.Id"
+                                              CurrentRequestType="_formRequest.RequestType"
+                                              TableColumns="_tableColumns"
+                                              OnFieldValueChanged="OnWorkflowFieldChanged" />
                             }
                         }
 

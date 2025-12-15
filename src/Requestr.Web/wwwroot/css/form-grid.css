@@ -1,36 +1,17 @@
-/* Form Section Styles for User Experience */
+/* Form Section Styles - Aligned with site card styling */
 .form-section {
-    border: 1px solid #e9ecef;
-    border-radius: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
     padding: 1.5rem;
-    background: #ffffff;
-    margin-bottom: 2rem;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    transition: all 0.2s ease;
-}
-
-.form-section:hover {
-    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-    border-color: #dee2e6;
+    background: var(--card-bg);
+    margin-bottom: 1.5rem;
+    box-shadow: var(--shadow-sm);
 }
 
 .section-title {
-    color: #495057;
+    color: var(--text-color);
     font-weight: 600;
     margin-bottom: 1rem;
-    position: relative;
-    padding-left: 1rem;
-}
-
-.section-title::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    background: #007bff;
-    border-radius: 2px;
 }
 
 .form-grid {
@@ -40,41 +21,37 @@
 
 .form-field-container {
     min-height: 80px;
-    transition: all 0.2s ease;
-}
-
-.form-field-container:hover {
-    transform: translateY(-1px);
 }
 
 .form-field-container .form-label {
     font-weight: 600;
-    color: #495057;
+    color: var(--text-color);
     margin-bottom: 0.5rem;
     font-size: 0.875rem;
 }
 
 .form-field-container .form-control,
 .form-field-container .form-select {
-    border: 2px solid #e9ecef;
-    border-radius: 0.375rem;
-    padding: 0.75rem 1rem;
-    transition: all 0.2s ease;
-    background-color: #fff;
+    border: 1px solid var(--input-border);
+    border-radius: var(--border-radius-sm);
+    padding: 0.5rem 0.75rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    background-color: var(--input-bg);
+    color: var(--text-color);
 }
 
 .form-field-container .form-control:focus,
 .form-field-container .form-select:focus {
-    border-color: #007bff;
-    box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.25);
-    transform: translateY(-1px);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    outline: none;
 }
 
 .form-field-container .form-control:disabled,
 .form-field-container .form-select:disabled {
-    background-color: #f8f9fa;
-    border-color: #dee2e6;
-    opacity: 0.8;
+    background-color: var(--bg-subtle);
+    border-color: var(--border-color);
+    opacity: 0.7;
 }
 
 .form-field-container .text-danger {
@@ -84,7 +61,7 @@
 .form-field-container .form-text {
     font-size: 0.75rem;
     margin-top: 0.25rem;
-    color: #6c757d;
+    color: var(--text-muted);
 }
 
 /* Mobile responsive grid */
@@ -584,57 +561,11 @@
 }
 
 /* ===============================================
-   DARK MODE SUPPORT
+   DARK MODE SUPPORT - Grid Designer Only
+   (Form sections use CSS variables from site.css)
    =============================================== */
 
 @media (prefers-color-scheme: dark) {
-    /* Form Section Styles - Dark Mode */
-    .form-section {
-        border-color: #374151;
-        background: #1f2937;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.4);
-    }
-
-    .form-section:hover {
-        box-shadow: 0 2px 8px rgba(0,0,0,0.5);
-    }
-
-    .section-title {
-        color: #f9fafb;
-    }
-
-    .section-title::before {
-        background: #3b82f6;
-    }
-
-    .form-field-container .form-label {
-        color: #f9fafb;
-    }
-
-    .form-field-container .form-control,
-    .form-field-container .form-select {
-        background-color: #374151;
-        border-color: #4b5563;
-        color: #f9fafb;
-    }
-
-    .form-field-container .form-control:focus,
-    .form-field-container .form-select:focus {
-        border-color: #3b82f6;
-        box-shadow: 0 0 0 0.2rem rgba(59,130,246,0.25);
-        background-color: #374151;
-    }
-
-    .form-field-container .form-control:disabled,
-    .form-field-container .form-select:disabled {
-        background-color: #1f2937;
-        border-color: #374151;
-    }
-
-    .form-field-container .form-text {
-        color: #9ca3af;
-    }
-
     /* Grid Designer - Dark Mode */
     .grid-designer {
         border-color: #374151;
@@ -834,28 +765,8 @@
 }
 
 /* Theme-specific dark mode (when using data-theme attribute) */
+/* Form sections use CSS variables from site.css - no overrides needed */
 [data-theme="dark"] {
-    /* Same styles as prefers-color-scheme, but using data-theme selector */
-    /* This provides explicit dark mode support when the user toggles theme */
-    
-    .form-section {
-        border-color: #374151;
-        background: #1f2937;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.4);
-    }
-
-    .form-section:hover {
-        box-shadow: 0 2px 8px rgba(0,0,0,0.5);
-    }
-
-    .section-title {
-        color: #f9fafb;
-    }
-
-    .section-title::before {
-        background: #3b82f6;
-    }
-
     /* Grid and field styles for explicit dark theme - Higher specificity */
     [data-theme="dark"] .grid-designer {
         border-color: #374151 !important;
