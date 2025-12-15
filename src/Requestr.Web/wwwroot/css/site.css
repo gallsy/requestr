@@ -30,7 +30,7 @@
     --bg-color: #f8fafc;
     --bg-subtle: #f1f5f9;
     --text-color: #1e293b;
-    --text-muted: #64748b;
+    --text-muted: #475569;
     --card-bg: #ffffff;
     --border-color: #e2e8f0;
     --input-bg: #ffffff;
@@ -42,11 +42,11 @@
 /* Dark theme */
 [data-theme="dark"] {
     --bg-color: #0f172a;
-    --bg-subtle: #1e293b;
+    --bg-subtle: #334155;
     --text-color: #f1f5f9;
-    --text-muted: #94a3b8;
+    --text-muted: #cbd5e1;
     --card-bg: #1e293b;
-    --border-color: #334155;
+    --border-color: #475569;
     --input-bg: #334155;
     --input-border: #475569;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
@@ -278,13 +278,39 @@ textarea {
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Ensure dark mode text color overrides Bootstrap defaults */
+[data-theme="dark"] .form-control,
+[data-theme="dark"] .form-select,
+[data-theme="dark"] textarea,
+[data-theme="dark"] input[type="text"],
+[data-theme="dark"] input[type="number"],
+[data-theme="dark"] input[type="email"],
+[data-theme="dark"] input[type="password"],
+[data-theme="dark"] input[type="date"],
+[data-theme="dark"] input[type="datetime-local"] {
+    background-color: var(--input-bg) !important;
+    color: var(--text-color) !important;
+    border-color: var(--input-border) !important;
+}
+
 .form-control:focus,
 .form-select:focus,
 textarea:focus {
     border-color: var(--primary);
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
     background-color: var(--input-bg);
+    color: var(--text-color);
     outline: none;
+}
+
+/* Ensure dark mode focus state overrides Bootstrap */
+[data-theme="dark"] .form-control:focus,
+[data-theme="dark"] .form-select:focus,
+[data-theme="dark"] textarea:focus,
+[data-theme="dark"] input:focus {
+    background-color: var(--input-bg) !important;
+    color: var(--text-color) !important;
+    border-color: var(--primary) !important;
 }
 
 .form-label {
@@ -463,9 +489,23 @@ textarea::placeholder {
     color: var(--text-color);
 }
 
-.list-group-item-action:hover {
+.list-group-item-action:hover,
+.list-group-item-action:focus {
     background-color: var(--bg-subtle);
     color: var(--text-color);
+}
+
+/* Ensure dark mode list group hover overrides Bootstrap */
+[data-theme="dark"] .list-group-item {
+    background-color: var(--card-bg) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-color) !important;
+}
+
+[data-theme="dark"] .list-group-item-action:not(.active):hover,
+[data-theme="dark"] .list-group-item-action:not(.active):focus {
+    background-color: var(--bg-subtle) !important;
+    color: var(--text-color) !important;
 }
 
 /* ============================================
