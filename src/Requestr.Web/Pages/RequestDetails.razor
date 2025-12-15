@@ -334,8 +334,12 @@ else
                     await LoadWorkflowInformation();
                 }
 
-                // Check for conflicts if the request is pending or in workflow
-                if (_request.Status == RequestStatus.Pending || _request.WorkflowInstanceId.HasValue)
+                // Check for conflicts only if the request is not in a terminal state
+                var isCompleted = _request.Status == RequestStatus.Approved || 
+                                  _request.Status == RequestStatus.Rejected || 
+                                  _request.Status == RequestStatus.Applied || 
+                                  _request.Status == RequestStatus.Failed;
+                if (!isCompleted && (_request.Status == RequestStatus.Pending || _request.WorkflowInstanceId.HasValue))
                 {
                     await CheckForConflictsAsync();
                 }

@@ -26,20 +26,13 @@
             
             <AuthorizeView>
                 <Authorized>
-                    @{
-                        var hasAdminRole = context.User.IsInRole("Admin");
-                    }
-                    
-                    @if (hasAdminRole || UserHasPendingWorkflowSteps)
-                    {
-                        <NavLink class="nav-link sidebar-nav-link" href="approvals">
-                            Approvals
-                            @if (UserHasPendingWorkflowSteps)
-                            {
-                                <span class="badge bg-primary ms-auto">!</span>
-                            }
-                        </NavLink>
-                    }
+                    <NavLink class="nav-link sidebar-nav-link" href="approvals">
+                        Approvals
+                        @if (UserHasPendingWorkflowSteps)
+                        {
+                            <span class="badge bg-primary ms-auto">!</span>
+                        }
+                    </NavLink>
                 </Authorized>
             </AuthorizeView>
             

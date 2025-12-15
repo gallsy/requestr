@@ -286,8 +286,12 @@ else
                 return;
             }
 
-            // Check for conflicts if the request is pending or in workflow
-            if (_bulkRequest.Status == RequestStatus.Pending || _bulkRequest.WorkflowFormRequestId.HasValue)
+            // Check for conflicts only if the request is not in a terminal state
+            var isCompleted = _bulkRequest.Status == RequestStatus.Approved || 
+                              _bulkRequest.Status == RequestStatus.Rejected || 
+                              _bulkRequest.Status == RequestStatus.Applied || 
+                              _bulkRequest.Status == RequestStatus.Failed;
+            if (!isCompleted && (_bulkRequest.Status == RequestStatus.Pending || _bulkRequest.WorkflowFormRequestId.HasValue))
             {
                 await CheckForConflictsAsync();
             }
