@@ -5,7 +5,7 @@ namespace Requestr.Core.Interfaces;
 
 public interface IBulkFormRequestService
 {
-    Task<CsvUploadResult> ProcessCsvUploadAsync(int formDefinitionId, Stream csvStream, string fileName);
+    Task<SpreadsheetUploadResult> ProcessSpreadsheetUploadAsync(int formDefinitionId, Stream fileStream, string fileName);
     Task<BulkFormRequest> CreateBulkFormRequestAsync(CreateBulkFormRequestDto createDto, string userId, string userName);
     Task<BulkFormRequest?> GetBulkFormRequestByIdAsync(int id);
     Task<List<BulkFormRequest>> GetBulkFormRequestsByUserAsync(string userId);

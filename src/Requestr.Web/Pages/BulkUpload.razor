@@ -31,7 +31,7 @@ else if (_formDefinition == null)
 }
 else
 {
-    <PageHeader Title="Bulk Upload" Description="@($"Upload CSV data for {_formDefinition.Name}")">
+    <PageHeader Title="Bulk Upload" Description="@($"Upload Excel data for {_formDefinition.Name}")">
         <Actions>
             <a href="/forms/@FormId" class="btn btn-outline-secondary me-2">
                 <i class="bi bi-arrow-left me-2"></i>
@@ -51,7 +51,7 @@ else
                     <div class="card-header">
                         <h5 class="mb-0">
                             <i class="bi bi-1-circle me-2"></i>
-                            Upload CSV File & Select Request Type
+                            Upload Excel File & Select Request Type
                         </h5>
                     </div>
                     <div class="card-body">
@@ -83,11 +83,11 @@ else
                                 </div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Upload CSV File</label>
+                                <label class="form-label">Upload Excel File</label>
                                 <div class="mb-3">
-                                    <InputFile OnChange="OnFileSelected" class="form-control" accept=".csv" />
+                                    <InputFile OnChange="OnFileSelected" class="form-control" accept=".xlsx" />
                                     <div class="form-text">
-                                        Upload a CSV file with column headers matching the form fields. Maximum file size: 10MB.
+                                        Upload an Excel file (.xlsx) with column headers matching the form fields. Download the template for the correct format. Maximum file size: 10MB.
                                     </div>
                                 </div>
                             </div>
@@ -95,7 +95,7 @@ else
 
                         @if (_isProcessing)
                         {
-                            <LoadingSpinner Message="Processing CSV file..." />
+                            <LoadingSpinner Message="Processing Excel file..." />
                         }
                     </div>
                 </div>
@@ -301,7 +301,7 @@ else
     private RequestType _selectedRequestType = RequestType.Insert;
     private string _selectedFileName = "";
     private string _comments = "";
-    private CsvUploadResult? _uploadResult;
+    private SpreadsheetUploadResult? _uploadResult;
     private HashSet<int> _selectedRows = new();
     private bool _allSelected = false;
     private int _selectedRowCount = 0;
@@ -337,7 +337,7 @@ else
         {
             if (file.Size > 10 * 1024 * 1024) // 10MB limit
             {
-                _uploadResult = new CsvUploadResult
+                _uploadResult = new SpreadsheetUploadResult
                 {
                     IsValid = false,
                     Errors = new List<string> { "File size exceeds 10MB limit" }
@@ -346,11 +346,11 @@ else
             }
 
             using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
-            _uploadResult = await BulkFormRequestService.ProcessCsvUploadAsync(FormId, stream, file.Name);
+            _uploadResult = await BulkFormRequestService.ProcessSpreadsheetUploadAsync(FormId, stream, file.Name);
         }
         catch (Exception ex)
         {
-            _uploadResult = new CsvUploadResult
+            _uploadResult = new SpreadsheetUploadResult
             {
                 IsValid = false,
                 Errors = new List<string> { $"Error processing file: {ex.Message}" }
@@ -560,17 +560,211 @@ else
     {
         if (_formDefinition == null) return;
 
-        var headers = _formDefinition.Fields
+        var fields = _formDefinition.Fields
             .Where(f => f.IsVisible)
             .OrderBy(f => f.DisplayOrder)
-            .Select(f => f.Name)
             .ToList();
 
-        var csvContent = string.Join(",", headers);
-        var bytes = System.Text.Encoding.UTF8.GetBytes(csvContent);
-        var fileName = $"{_formDefinition.Name}_template.csv";
+        using var memoryStream = new MemoryStream();
+        using (var spreadsheet = DocumentFormat.OpenXml.Packaging.SpreadsheetDocument.Create(memoryStream, DocumentFormat.OpenXml.SpreadsheetDocumentType.Workbook))
+        {
+            var workbookPart = spreadsheet.AddWorkbookPart();
+            workbookPart.Workbook = new DocumentFormat.OpenXml.Spreadsheet.Workbook();
 
-        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, "text/csv", bytes);
+            var worksheetPart = workbookPart.AddNewPart<DocumentFormat.OpenXml.Packaging.WorksheetPart>();
+            var sheetData = new DocumentFormat.OpenXml.Spreadsheet.SheetData();
+            worksheetPart.Worksheet = new DocumentFormat.OpenXml.Spreadsheet.Worksheet();
+            worksheetPart.Worksheet.Append(sheetData);
+
+            var sheets = workbookPart.Workbook.AppendChild(new DocumentFormat.OpenXml.Spreadsheet.Sheets());
+            var sheet = new DocumentFormat.OpenXml.Spreadsheet.Sheet
+            {
+                Id = workbookPart.GetIdOfPart(worksheetPart),
+                SheetId = 1,
+                Name = "Data"
+            };
+            sheets.Append(sheet);
+
+            // Create header row
+            var headerRow = new DocumentFormat.OpenXml.Spreadsheet.Row { RowIndex = 1 };
+            for (int i = 0; i < fields.Count; i++)
+            {
+                var cell = new DocumentFormat.OpenXml.Spreadsheet.Cell
+                {
+                    CellReference = GetColumnLetter(i) + "1",
+                    DataType = DocumentFormat.OpenXml.Spreadsheet.CellValues.String,
+                    CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(fields[i].Name)
+                };
+                headerRow.Append(cell);
+            }
+            sheetData.Append(headerRow);
+
+            // Build data validations for row 2 onwards
+            var dataValidations = new DocumentFormat.OpenXml.Spreadsheet.DataValidations();
+            uint validationCount = 0;
+
+            for (int i = 0; i < fields.Count; i++)
+            {
+                var field = fields[i];
+                var colLetter = GetColumnLetter(i);
+                var sqref = $"{colLetter}2:{colLetter}1000";
+                var dataType = field.DataType?.ToLower() ?? "string";
+                var controlType = field.ControlType?.ToLower() ?? "";
+
+                DocumentFormat.OpenXml.Spreadsheet.DataValidation? dv = null;
+
+                if (dataType == "checkbox" || controlType == "checkbox" || dataType == "bool" || dataType == "boolean" || dataType == "bit")
+                {
+                    dv = new DocumentFormat.OpenXml.Spreadsheet.DataValidation
+                    {
+                        Type = DocumentFormat.OpenXml.Spreadsheet.DataValidationValues.List,
+                        AllowBlank = !field.IsRequired,
+                        ShowInputMessage = true,
+                        ShowErrorMessage = true,
+                        ShowDropDown = false,
+                        PromptTitle = new DocumentFormat.OpenXml.StringValue(TruncateString(field.DisplayName, 32)),
+                        Prompt = new DocumentFormat.OpenXml.StringValue("Select TRUE or FALSE"),
+                        ErrorTitle = new DocumentFormat.OpenXml.StringValue("Invalid value"),
+                        Error = new DocumentFormat.OpenXml.StringValue("Please select TRUE or FALSE")
+                    };
+                    dv.SequenceOfReferences = new DocumentFormat.OpenXml.ListValue<DocumentFormat.OpenXml.StringValue>(
+                        new[] { new DocumentFormat.OpenXml.StringValue(sqref) });
+                    dv.Formula1 = new DocumentFormat.OpenXml.Spreadsheet.Formula1("\"TRUE,FALSE\"");
+                }
+                else if (dataType == "datetime-local" || controlType == "datetime-local" || dataType == "datetime" || dataType == "datetime2" || dataType == "smalldatetime")
+                {
+                    // DateTime with time component
+                    dv = new DocumentFormat.OpenXml.Spreadsheet.DataValidation
+                    {
+                        Type = DocumentFormat.OpenXml.Spreadsheet.DataValidationValues.Date,
+                        Operator = DocumentFormat.OpenXml.Spreadsheet.DataValidationOperatorValues.GreaterThan,
+                        AllowBlank = !field.IsRequired,
+                        ShowInputMessage = true,
+                        ShowErrorMessage = true,
+                        PromptTitle = new DocumentFormat.OpenXml.StringValue(TruncateString(field.DisplayName, 32)),
+                        Prompt = new DocumentFormat.OpenXml.StringValue("Enter date and time (YYYY-MM-DD HH:MM:SS)"),
+                        ErrorTitle = new DocumentFormat.OpenXml.StringValue("Invalid date/time"),
+                        Error = new DocumentFormat.OpenXml.StringValue("Please enter a valid date and time")
+                    };
+                    dv.SequenceOfReferences = new DocumentFormat.OpenXml.ListValue<DocumentFormat.OpenXml.StringValue>(
+                        new[] { new DocumentFormat.OpenXml.StringValue(sqref) });
+                    dv.Formula1 = new DocumentFormat.OpenXml.Spreadsheet.Formula1("0");
+                }
+                else if (dataType == "date" || controlType == "date")
+                {
+                    // Date only (no time component)
+                    dv = new DocumentFormat.OpenXml.Spreadsheet.DataValidation
+                    {
+                        Type = DocumentFormat.OpenXml.Spreadsheet.DataValidationValues.Date,
+                        Operator = DocumentFormat.OpenXml.Spreadsheet.DataValidationOperatorValues.GreaterThan,
+                        AllowBlank = !field.IsRequired,
+                        ShowInputMessage = true,
+                        ShowErrorMessage = true,
+                        PromptTitle = new DocumentFormat.OpenXml.StringValue(TruncateString(field.DisplayName, 32)),
+                        Prompt = new DocumentFormat.OpenXml.StringValue("Enter a date (YYYY-MM-DD)"),
+                        ErrorTitle = new DocumentFormat.OpenXml.StringValue("Invalid date"),
+                        Error = new DocumentFormat.OpenXml.StringValue("Please enter a valid date")
+                    };
+                    dv.SequenceOfReferences = new DocumentFormat.OpenXml.ListValue<DocumentFormat.OpenXml.StringValue>(
+                        new[] { new DocumentFormat.OpenXml.StringValue(sqref) });
+                    dv.Formula1 = new DocumentFormat.OpenXml.Spreadsheet.Formula1("0");
+                }
+                else if (dataType == "number" || controlType == "number" || dataType == "int" || dataType == "integer" || dataType == "bigint" || dataType == "smallint" || dataType == "tinyint")
+                {
+                    dv = new DocumentFormat.OpenXml.Spreadsheet.DataValidation
+                    {
+                        Type = DocumentFormat.OpenXml.Spreadsheet.DataValidationValues.Whole,
+                        Operator = DocumentFormat.OpenXml.Spreadsheet.DataValidationOperatorValues.Between,
+                        AllowBlank = !field.IsRequired,
+                        ShowInputMessage = true,
+                        ShowErrorMessage = true,
+                        PromptTitle = new DocumentFormat.OpenXml.StringValue(TruncateString(field.DisplayName, 32)),
+                        Prompt = new DocumentFormat.OpenXml.StringValue("Enter a whole number"),
+                        ErrorTitle = new DocumentFormat.OpenXml.StringValue("Invalid number"),
+                        Error = new DocumentFormat.OpenXml.StringValue("Please enter a valid whole number")
+                    };
+                    dv.SequenceOfReferences = new DocumentFormat.OpenXml.ListValue<DocumentFormat.OpenXml.StringValue>(
+                        new[] { new DocumentFormat.OpenXml.StringValue(sqref) });
+                    dv.Formula1 = new DocumentFormat.OpenXml.Spreadsheet.Formula1("-2147483648");
+                    dv.Formula2 = new DocumentFormat.OpenXml.Spreadsheet.Formula2("2147483647");
+                }
+                else if (dataType == "decimal" || dataType == "float" || dataType == "double" || dataType == "money" || dataType == "numeric")
+                {
+                    dv = new DocumentFormat.OpenXml.Spreadsheet.DataValidation
+                    {
+                        Type = DocumentFormat.OpenXml.Spreadsheet.DataValidationValues.Decimal,
+                        Operator = DocumentFormat.OpenXml.Spreadsheet.DataValidationOperatorValues.Between,
+                        AllowBlank = !field.IsRequired,
+                        ShowInputMessage = true,
+                        ShowErrorMessage = true,
+                        PromptTitle = new DocumentFormat.OpenXml.StringValue(TruncateString(field.DisplayName, 32)),
+                        Prompt = new DocumentFormat.OpenXml.StringValue("Enter a decimal number"),
+                        ErrorTitle = new DocumentFormat.OpenXml.StringValue("Invalid number"),
+                        Error = new DocumentFormat.OpenXml.StringValue("Please enter a valid number")
+                    };
+                    dv.SequenceOfReferences = new DocumentFormat.OpenXml.ListValue<DocumentFormat.OpenXml.StringValue>(
+                        new[] { new DocumentFormat.OpenXml.StringValue(sqref) });
+                    dv.Formula1 = new DocumentFormat.OpenXml.Spreadsheet.Formula1("-999999999999");
+                    dv.Formula2 = new DocumentFormat.OpenXml.Spreadsheet.Formula2("999999999999");
+                }
+                else if ((dataType == "text" || controlType == "text" || controlType == "input" || controlType == "textarea" || dataType == "string" || dataType == "nvarchar" || dataType == "varchar" || dataType == "nchar" || dataType == "char") && field.MaxLength > 0)
+                {
+                    dv = new DocumentFormat.OpenXml.Spreadsheet.DataValidation
+                    {
+                        Type = DocumentFormat.OpenXml.Spreadsheet.DataValidationValues.TextLength,
+                        Operator = DocumentFormat.OpenXml.Spreadsheet.DataValidationOperatorValues.LessThanOrEqual,
+                        AllowBlank = !field.IsRequired,
+                        ShowInputMessage = true,
+                        ShowErrorMessage = true,
+                        PromptTitle = new DocumentFormat.OpenXml.StringValue(TruncateString(field.DisplayName, 32)),
+                        Prompt = new DocumentFormat.OpenXml.StringValue($"Max {field.MaxLength} characters"),
+                        ErrorTitle = new DocumentFormat.OpenXml.StringValue("Text too long"),
+                        Error = new DocumentFormat.OpenXml.StringValue($"Maximum {field.MaxLength} characters")
+                    };
+                    dv.SequenceOfReferences = new DocumentFormat.OpenXml.ListValue<DocumentFormat.OpenXml.StringValue>(
+                        new[] { new DocumentFormat.OpenXml.StringValue(sqref) });
+                    dv.Formula1 = new DocumentFormat.OpenXml.Spreadsheet.Formula1(field.MaxLength.ToString());
+                }
+
+                if (dv != null)
+                {
+                    dataValidations.Append(dv);
+                    validationCount++;
+                }
+            }
+
+            if (validationCount > 0)
+            {
+                dataValidations.Count = validationCount;
+                worksheetPart.Worksheet.InsertAfter(dataValidations, sheetData);
+            }
+
+            worksheetPart.Worksheet.Save();
+            workbookPart.Workbook.Save();
+        }
+
+        var bytes = memoryStream.ToArray();
+        var fileName = $"{_formDefinition.Name}_template.xlsx";
+
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+    }
+
+    private static string GetColumnLetter(int columnIndex)
+    {
+        var result = string.Empty;
+        var temp = columnIndex;
+        while (temp >= 0)
+        {
+            result = (char)('A' + (temp % 26)) + result;
+            temp = temp / 26 - 1;
+        }
+        return result;
+    }
+
+    private static string TruncateString(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        return value.Length <= maxLength ? value : value[..maxLength];
     }
 }
 

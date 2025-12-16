@@ -473,26 +473,27 @@ else
     </FooterTemplate>
 </Modal>
 
-<!-- CSV Upload Modal -->
-<Modal @ref="csvUploadModal" Title="Upload CSV File" Size="ModalSize.Large">
+<!-- Excel Upload Modal -->
+<Modal @ref="csvUploadModal" Title="Upload Excel File" Size="ModalSize.Large">
     <BodyTemplate>
         @if (_csvUploadResult == null)
         {
             <div class="alert alert-info">
                 <i class="bi bi-info-circle me-2"></i>
-                <strong>CSV Format Guidelines:</strong>
+                <strong>Excel Format Guidelines:</strong>
                 <ul class="mb-0 mt-2">
                     <li>First row must contain column headers</li>
                     <li>Column names must match form field names exactly</li>
                     <li>All required fields must be included</li>
                     <li>Date format: YYYY-MM-DD or MM/DD/YYYY</li>
-                    <li>Boolean values: true/false, yes/no, 1/0</li>
+                    <li>Boolean values: TRUE/FALSE from dropdown</li>
+                    <li>Download the template for proper formatting</li>
                 </ul>
             </div>
             
             <div class="mb-3">
-                <label class="form-label">Select CSV File</label>
-                <InputFile OnChange="HandleCsvFileSelected" class="form-control" accept=".csv" />
+                <label class="form-label">Select Excel File</label>
+                <InputFile OnChange="HandleCsvFileSelected" class="form-control" accept=".xlsx" />
                 @if (!string.IsNullOrEmpty(_csvFileName))
                 {
                     <small class="text-muted mt-1 d-block">Selected: @_csvFileName</small>
@@ -508,7 +509,7 @@ else
                             <span class="spinner-border spinner-border-sm me-2" role="status"></span>
                         }
                         <i class="bi bi-check-circle me-2"></i>
-                        Validate CSV
+                        Validate Excel
                     </button>
                     <button type="button" class="btn btn-secondary" @onclick="ClearCsvFile">
                         <i class="bi bi-x-circle me-2"></i>
@@ -577,7 +578,7 @@ else
                 <div class="mb-3">
                     <label class="form-label">Comments</label>
                     <textarea class="form-control" rows="3" @bind="_csvUploadComments" 
-                             placeholder="Optional comments about this CSV upload..."></textarea>
+                             placeholder="Optional comments about this Excel upload..."></textarea>
                 </div>
             }
         }
@@ -642,10 +643,10 @@ else
     private string _bulkUpdateComments = string.Empty;
     private string _bulkDeleteComments = string.Empty;
     
-    // CSV upload
+    // Excel upload
     private IBrowserFile? _csvFile;
     private string _csvFileName = string.Empty;
-    private CsvUploadResult? _csvUploadResult;
+    private SpreadsheetUploadResult? _csvUploadResult;
     private string _csvUploadComments = string.Empty;
 
     // Column resize state
@@ -1044,15 +1045,15 @@ else
             }
 
             // Validate file type
-            if (!_csvFile.Name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+            if (!_csvFile.Name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
             {
-                _errorMessage = "Please select a valid CSV file.";
+                _errorMessage = "Please select a valid Excel file (.xlsx).";
                 return;
             }
 
-            // Process the CSV file
+            // Process the Excel file
             using var stream = _csvFile.OpenReadStream(maxFileSize);
-            _csvUploadResult = await BulkFormRequestService.ProcessCsvUploadAsync(FormDefinitionId, stream, _csvFile.Name);
+            _csvUploadResult = await BulkFormRequestService.ProcessSpreadsheetUploadAsync(FormDefinitionId, stream, _csvFile.Name);
 
             if (_csvUploadResult.Errors.Any())
             {
@@ -1060,16 +1061,16 @@ else
             }
             else if (_csvUploadResult.ValidRows == 0)
             {
-                _errorMessage = "No valid rows found in the CSV file.";
+                _errorMessage = "No valid rows found in the Excel file.";
             }
             else
             {
-                _successMessage = $"CSV validation completed. {_csvUploadResult.ValidRows} valid rows found.";
+                _successMessage = $"Excel validation completed. {_csvUploadResult.ValidRows} valid rows found.";
             }
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error validating CSV file: {ex.Message}";
+            _errorMessage = $"Error validating Excel file: {ex.Message}";
         }
         finally
         {
@@ -1120,7 +1121,7 @@ else
 
             var bulkRequest = await BulkFormRequestService.CreateBulkFormRequestAsync(createBulkDto, currentUser, currentUserName);
 
-            _successMessage = $"CSV upload successful! Bulk request created with ID: {bulkRequest.Id}";
+            _successMessage = $"Excel upload successful! Bulk request created with ID: {bulkRequest.Id}";
             await CloseCsvUploadModal();
 
             // Navigate to the created bulk request
@@ -1128,7 +1129,7 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error processing CSV upload: {ex.Message}";
+            _errorMessage = $"Error processing Excel upload: {ex.Message}";
         }
         finally
         {
