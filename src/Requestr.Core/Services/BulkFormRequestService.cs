@@ -1,8 +1,7 @@
 using System.Globalization;
-using System.Text;
-using CsvHelper;
-using CsvHelper.Configuration;
 using Dapper;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Spreadsheet;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -41,43 +40,42 @@ public class BulkFormRequestService : IBulkFormRequestService
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
     }
 
-    public async Task<CsvUploadResult> ProcessCsvUploadAsync(int formDefinitionId, Stream csvStream, string fileName)
+    public async Task<SpreadsheetUploadResult> ProcessSpreadsheetUploadAsync(int formDefinitionId, Stream fileStream, string fileName)
     {
-        var result = new CsvUploadResult();
+        var result = new SpreadsheetUploadResult();
         
         try
         {
-            // Ensure we have a seekable working stream (BrowserFileStream is non-seekable)
-            Stream workingStream;
-            if (!csvStream.CanSeek)
+            // Validate file extension
+            if (!fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
             {
-                var ms = new MemoryStream();
-                await csvStream.CopyToAsync(ms);
-                ms.Position = 0;
-                workingStream = ms;
+                result.Errors.Add("Only .xlsx files are supported. Please download the template and use that format.");
+                return result;
+            }
+
+            // Ensure we have a seekable working stream
+            MemoryStream workingStream;
+            if (!fileStream.CanSeek)
+            {
+                workingStream = new MemoryStream();
+                await fileStream.CopyToAsync(workingStream);
+                workingStream.Position = 0;
             }
             else
             {
-                csvStream.Position = 0;
-                workingStream = csvStream;
-            }
-
-            var fileSize = workingStream.Length;
-            var contentType = "text/csv"; // Assuming CSV content type
-            var fileValidationResult = await _inputValidationService.ValidateCsvUploadAsync(workingStream, fileName, fileSize, contentType);
-            
-            if (!fileValidationResult.IsValid)
-            {
-                result.Errors.AddRange(fileValidationResult.Errors);
-                return result;
-            }
-            
-            // Reset working stream position after validation
-            if (workingStream.CanSeek)
-            {
+                workingStream = new MemoryStream();
+                fileStream.Position = 0;
+                await fileStream.CopyToAsync(workingStream);
                 workingStream.Position = 0;
             }
-            
+
+            // Validate file size
+            if (workingStream.Length > 10 * 1024 * 1024)
+            {
+                result.Errors.Add("File size exceeds 10MB limit");
+                return result;
+            }
+
             // Get form definition to validate against
             var formDefinition = await _formDefinitionService.GetFormDefinitionAsync(formDefinitionId);
             if (formDefinition == null)
@@ -86,45 +84,90 @@ public class BulkFormRequestService : IBulkFormRequestService
                 return result;
             }
 
-            // Configure CSV reader
-            var config = new CsvConfiguration(CultureInfo.InvariantCulture)
+            // Read Excel file
+            using var spreadsheet = SpreadsheetDocument.Open(workingStream, false);
+            var workbookPart = spreadsheet.WorkbookPart;
+            if (workbookPart == null)
             {
-                HasHeaderRecord = true,
-                MissingFieldFound = null,
-                HeaderValidated = null,
-                TrimOptions = TrimOptions.Trim
-            };
+                result.Errors.Add("Invalid Excel file: no workbook found");
+                return result;
+            }
 
-            using var reader = new StreamReader(workingStream, Encoding.UTF8, leaveOpen: true);
-            using var csv = new CsvReader(reader, config);
-
-            // Read headers
-            await csv.ReadAsync();
-            csv.ReadHeader();
-            var headers = csv.HeaderRecord;
-
-            if (headers == null || !headers.Any())
+            var worksheetPart = workbookPart.WorksheetParts.FirstOrDefault();
+            if (worksheetPart == null)
             {
-                result.Errors.Add("CSV file must contain headers");
+                result.Errors.Add("Invalid Excel file: no worksheet found");
+                return result;
+            }
+
+            var sheetData = worksheetPart.Worksheet.GetFirstChild<SheetData>();
+            if (sheetData == null)
+            {
+                result.Errors.Add("Invalid Excel file: no data found");
+                return result;
+            }
+
+            var rows = sheetData.Elements<Row>().ToList();
+            if (rows.Count == 0)
+            {
+                result.Errors.Add("Excel file is empty");
+                return result;
+            }
+
+            // Get shared strings table for resolving string values
+            var sharedStrings = workbookPart.SharedStringTablePart?.SharedStringTable
+                .Elements<SharedStringItem>()
+                .Select(s => s.InnerText)
+                .ToList() ?? new List<string>();
+
+            // Read headers from first row
+            var headerRow = rows[0];
+            var headers = new List<string>();
+            foreach (var cell in headerRow.Elements<Cell>())
+            {
+                var headerValue = GetCellValue(cell, sharedStrings);
+                if (!string.IsNullOrWhiteSpace(headerValue))
+                {
+                    headers.Add(headerValue);
+                }
+            }
+
+            if (!headers.Any())
+            {
+                result.Errors.Add("Excel file must contain column headers in the first row");
                 return result;
             }
 
             // Validate headers against form fields
-            var validationErrors = ValidateHeaders(headers, formDefinition.Fields);
+            var validationErrors = ValidateHeaders(headers.ToArray(), formDefinition.Fields);
             if (validationErrors.Any())
             {
                 result.Errors.AddRange(validationErrors);
                 return result;
             }
 
-            // Process each row
-            var rowNumber = 1; // Start from 1 (header is row 0)
-            while (await csv.ReadAsync())
+            // Build column index to header mapping
+            var columnToHeader = new Dictionary<int, string>();
+            var headerCells = headerRow.Elements<Cell>().ToList();
+            for (int i = 0; i < headerCells.Count; i++)
             {
-                rowNumber++;
-                var rowValidation = await ValidateRowAsync(csv, formDefinition, rowNumber);
+                var colIndex = GetColumnIndex(headerCells[i].CellReference?.Value);
+                var headerValue = GetCellValue(headerCells[i], sharedStrings);
+                if (!string.IsNullOrWhiteSpace(headerValue))
+                {
+                    columnToHeader[colIndex] = headerValue;
+                }
+            }
+
+            // Process data rows (skip header)
+            for (int rowIdx = 1; rowIdx < rows.Count; rowIdx++)
+            {
+                var row = rows[rowIdx];
+                var rowNumber = rowIdx + 1; // 1-based for user display
+
+                var rowValidation = await ValidateExcelRowAsync(row, columnToHeader, sharedStrings, formDefinition, rowNumber);
                 result.ValidationResults.Add(rowValidation);
-                
+
                 if (rowValidation.IsValid)
                 {
                     result.ParsedData.Add(rowValidation.ParsedData);
@@ -139,13 +182,53 @@ public class BulkFormRequestService : IBulkFormRequestService
             result.TotalRows = result.ValidRows + result.InvalidRows;
             result.IsValid = result.InvalidRows == 0 && result.ValidRows > 0;
 
-            return result;            }
-            catch (Exception ex)
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing Excel file");
+            result.Errors.Add($"Error processing Excel file: {ex.Message}");
+            return result;
+        }
+    }
+
+    private static string GetCellValue(Cell cell, List<string> sharedStrings)
+    {
+        if (cell.CellValue == null)
+            return string.Empty;
+
+        var value = cell.CellValue.InnerText;
+
+        // If it's a shared string, look it up
+        if (cell.DataType?.Value == CellValues.SharedString)
+        {
+            if (int.TryParse(value, out var index) && index < sharedStrings.Count)
             {
-                _logger.LogError(ex, "Error processing CSV file");
-                result.Errors.Add($"Error processing CSV file: {ex.Message}");
-                return result;
+                return sharedStrings[index];
             }
+        }
+
+        // If it's a boolean
+        if (cell.DataType?.Value == CellValues.Boolean)
+        {
+            return value == "1" ? "TRUE" : "FALSE";
+        }
+
+        return value;
+    }
+
+    private static int GetColumnIndex(string? cellReference)
+    {
+        if (string.IsNullOrEmpty(cellReference))
+            return 0;
+
+        var columnPart = new string(cellReference.TakeWhile(char.IsLetter).ToArray());
+        int columnIndex = 0;
+        foreach (var c in columnPart.ToUpperInvariant())
+        {
+            columnIndex = columnIndex * 26 + (c - 'A' + 1);
+        }
+        return columnIndex - 1; // 0-based
     }
 
     private List<string> ValidateHeaders(string[] headers, List<FormField> formFields)
@@ -172,9 +255,14 @@ public class BulkFormRequestService : IBulkFormRequestService
         return errors;
     }
 
-    private async Task<CsvRowValidationResult> ValidateRowAsync(CsvReader csv, FormDefinition formDefinition, int rowNumber)
+    private async Task<SpreadsheetRowValidationResult> ValidateExcelRowAsync(
+        Row row, 
+        Dictionary<int, string> columnToHeader, 
+        List<string> sharedStrings,
+        FormDefinition formDefinition, 
+        int rowNumber)
     {
-        var result = new CsvRowValidationResult
+        var result = new SpreadsheetRowValidationResult
         {
             RowNumber = rowNumber,
             IsValid = true
@@ -182,9 +270,28 @@ public class BulkFormRequestService : IBulkFormRequestService
 
         try
         {
+            // Build a dictionary of column name -> cell value for this row
+            var rowData = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var cell in row.Elements<Cell>())
+            {
+                var colIndex = GetColumnIndex(cell.CellReference?.Value);
+                if (columnToHeader.TryGetValue(colIndex, out var headerName))
+                {
+                    rowData[headerName] = GetCellValue(cell, sharedStrings);
+                }
+            }
+
+            // Skip completely empty rows
+            if (rowData.Values.All(string.IsNullOrWhiteSpace))
+            {
+                result.IsValid = false;
+                result.Errors.Add("Empty row");
+                return result;
+            }
+
             foreach (var field in formDefinition.Fields.Where(f => f.IsVisible))
             {
-                var cellValue = csv.GetField(field.Name);
+                rowData.TryGetValue(field.Name, out var cellValue);
                 
                 // Validate required fields
                 if (field.IsRequired && string.IsNullOrWhiteSpace(cellValue))
@@ -211,7 +318,7 @@ public class BulkFormRequestService : IBulkFormRequestService
         return result;
     }
 
-    private async Task<object?> ConvertAndValidateFieldValueAsync(string? cellValue, FormField field, CsvRowValidationResult result)
+    private async Task<object?> ConvertAndValidateFieldValueAsync(string? cellValue, FormField field, SpreadsheetRowValidationResult result)
     {
         if (string.IsNullOrWhiteSpace(cellValue))
         {
@@ -230,14 +337,16 @@ public class BulkFormRequestService : IBulkFormRequestService
                 return null;
             }
 
-            // Convert the sanitized value to appropriate type
-            object? convertedValue = field.DataType?.ToLower() switch
+            // Convert the sanitized value to appropriate type based on control type
+            // DataType contains HTML control types like "checkbox", "datetime-local", "date", "number", "text"
+            var controlType = (field.DataType ?? field.ControlType ?? "text").ToLowerInvariant();
+            
+            object? convertedValue = controlType switch
             {
-                "int" or "integer" => int.Parse(sanitizedValue),
-                "decimal" or "float" or "double" => decimal.Parse(sanitizedValue),
-                "bool" or "boolean" => bool.Parse(sanitizedValue),
-                "datetime" => DateTime.Parse(sanitizedValue),
-                "date" => DateTime.Parse(sanitizedValue).Date,
+                "checkbox" => ParseBoolean(sanitizedValue),
+                "number" => decimal.TryParse(sanitizedValue, out var num) ? num : (object?)sanitizedValue,
+                "datetime-local" or "datetime" => ParseExcelDateTime(sanitizedValue),
+                "date" => ParseExcelDateTime(sanitizedValue).Date,
                 _ => (object?)sanitizedValue
             };
             
@@ -249,6 +358,34 @@ public class BulkFormRequestService : IBulkFormRequestService
             result.IsValid = false;
             return null;
         }
+    }
+
+    /// <summary>
+    /// Parses a date value from Excel, handling both OLE Automation numbers and string formats.
+    /// Excel stores dates as OLE Automation dates (days since Dec 30, 1899).
+    /// </summary>
+    private static DateTime ParseExcelDateTime(string value)
+    {
+        // First try to parse as an OLE Automation date (numeric value from Excel)
+        if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var oaDate))
+        {
+            // Excel uses OLE Automation date format
+            return DateTime.FromOADate(oaDate);
+        }
+
+        // Fall back to standard DateTime parsing for string formats
+        return DateTime.Parse(value);
+    }
+
+    private static bool ParseBoolean(string value)
+    {
+        var normalized = value.Trim().ToUpperInvariant();
+        return normalized switch
+        {
+            "TRUE" or "YES" or "1" => true,
+            "FALSE" or "NO" or "0" => false,
+            _ => bool.Parse(value)
+        };
     }
 
     public async Task<BulkFormRequest> CreateBulkFormRequestAsync(CreateBulkFormRequestDto createDto, string userId, string userName)

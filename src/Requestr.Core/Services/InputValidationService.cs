@@ -17,11 +17,6 @@ public interface IInputValidationService
     Task<ValidationResult> ValidateFormSubmissionAsync(Dictionary<string, object?> fieldValues, List<FormField> formFields);
     
     /// <summary>
-    /// Validates CSV upload content
-    /// </summary>
-    Task<ValidationResult> ValidateCsvUploadAsync(Stream csvStream, string fileName, long fileSize, string contentType);
-    
-    /// <summary>
     /// Sanitizes comments and text content
     /// </summary>
     string SanitizeComments(string? comments);
@@ -104,61 +99,6 @@ public class InputValidationService : IInputValidationService
             result.IsValid = false;
             result.Errors.Add("Validation error occurred");
             return Task.FromResult(result);
-        }
-    }
-
-    public async Task<ValidationResult> ValidateCsvUploadAsync(Stream csvStream, string fileName, long fileSize, string contentType)
-    {
-        try
-        {
-            // First validate file properties
-            var fileValidation = InputValidator.ValidateFileUpload(fileName, fileSize, contentType);
-            if (!fileValidation.IsValid)
-            {
-                return fileValidation;
-            }
-
-            // Read and validate CSV content (handle non-seekable streams e.g. BrowserFileStream)
-            if (csvStream.CanSeek)
-            {
-                csvStream.Position = 0;
-            }
-
-            string content;
-            if (!csvStream.CanSeek)
-            {
-                using var tempMs = new MemoryStream();
-                await csvStream.CopyToAsync(tempMs);
-                tempMs.Position = 0;
-                using var tempReader = new StreamReader(tempMs, leaveOpen: true);
-                content = await tempReader.ReadToEndAsync();
-            }
-            else
-            {
-                using var reader = new StreamReader(csvStream, leaveOpen: true);
-                content = await reader.ReadToEndAsync();
-            }
-            
-            var contentValidation = InputValidator.ValidateCsvContent(content);
-            
-            if (!contentValidation.IsValid)
-            {
-                _logger.LogWarning("CSV upload validation failed for file {FileName}. Errors: {Errors}", 
-                    fileName, string.Join(", ", contentValidation.Errors));
-            }
-
-            // Reset stream position for subsequent processing if possible
-            if (csvStream.CanSeek)
-            {
-                csvStream.Position = 0;
-            }
-            
-            return contentValidation;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error validating CSV upload for file {FileName}", fileName);
-            return ValidationResult.Failure("Error validating CSV file");
         }
     }
 

@@ -544,8 +544,15 @@ else
             _workflowFieldValues = new Dictionary<string, object?>(_formRequest.FieldValues);
         }
 
-        // Check for conflicts between stored original values and current database values
-        await CheckForConflictsAsync();
+        // Check for conflicts only if the request is not in a terminal state
+        var isCompleted = _formRequest?.Status == RequestStatus.Approved || 
+                          _formRequest?.Status == RequestStatus.Rejected || 
+                          _formRequest?.Status == RequestStatus.Applied || 
+                          _formRequest?.Status == RequestStatus.Failed;
+        if (!isCompleted)
+        {
+            await CheckForConflictsAsync();
+        }
 
         Logger.LogInformation("LoadWorkflowDataAsync: Completed successfully");
     }

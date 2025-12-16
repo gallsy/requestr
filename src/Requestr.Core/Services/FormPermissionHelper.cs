@@ -19,7 +19,7 @@ public static class FormPermissionHelper
             FormPermissionType.DeleteRequest => "Delete records via requests",
             FormPermissionType.ViewData => "View the data view page for this form",
             FormPermissionType.BulkActions => "Perform bulk actions from the data view",
-            FormPermissionType.BulkUploadCsv => "Upload CSV files for bulk operations",
+            FormPermissionType.BulkUploadCsv => "Upload Excel files for bulk operations",
             _ => permissionType.ToString()
         };
     }

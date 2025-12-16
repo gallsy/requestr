@@ -163,58 +163,6 @@ public static class InputValidator
         return sanitized;
     }
 
-    /// <summary>
-    /// Validates CSV content for potential security risks
-    /// </summary>
-    public static Models.ValidationResult ValidateCsvContent(string csvContent)
-    {
-        var result = new Models.ValidationResult { IsValid = true };
-
-        if (string.IsNullOrWhiteSpace(csvContent))
-        {
-            result.IsValid = false;
-            result.Errors.Add("CSV content is empty.");
-            return result;
-        }
-
-        // Check for CSV injection attacks (formulas starting with =, +, -, @)
-        var lines = csvContent.Split('\n');
-        for (int i = 0; i < lines.Length; i++)
-        {
-            var line = lines[i].Trim();
-            if (string.IsNullOrEmpty(line)) continue;
-
-            var cells = line.Split(',');
-            for (int j = 0; j < cells.Length; j++)
-            {
-                var cell = cells[j].Trim(' ', '"', '\'');
-                
-                // Check for formula injection
-                if (cell.StartsWith("=") || cell.StartsWith("+") || cell.StartsWith("-") || cell.StartsWith("@"))
-                {
-                    result.IsValid = false;
-                    result.Errors.Add($"Potentially dangerous formula detected in row {i + 1}, column {j + 1}: {cell.Substring(0, Math.Min(20, cell.Length))}...");
-                }
-
-                // Check for script injection
-                if (ContainsXssPatterns(cell))
-                {
-                    result.IsValid = false;
-                    result.Errors.Add($"Potentially dangerous script content detected in row {i + 1}, column {j + 1}.");
-                }
-
-                // Check for SQL injection patterns
-                if (ContainsSqlInjectionPatterns(cell))
-                {
-                    result.IsValid = false;
-                    result.Errors.Add($"Potentially dangerous SQL content detected in row {i + 1}, column {j + 1}.");
-                }
-            }
-        }
-
-        return result;
-    }
-
     private static bool IsValidEmail(string email)
     {
         try
@@ -302,20 +250,20 @@ public static class InputValidator
         }
 
         // File extension validation
-        var allowedExtensions = new[] { ".csv" };
+        var allowedExtensions = new[] { ".xlsx" };
         var extension = Path.GetExtension(fileName).ToLowerInvariant();
         if (!allowedExtensions.Contains(extension))
         {
             result.IsValid = false;
-            result.Errors.Add($"File type '{extension}' is not allowed. Only CSV files are permitted.");
+            result.Errors.Add($"File type '{extension}' is not allowed. Only Excel (.xlsx) files are permitted.");
         }
 
         // Content type validation
-        var allowedContentTypes = new[] { "text/csv", "application/csv", "text/plain" };
+        var allowedContentTypes = new[] { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
         if (!allowedContentTypes.Contains(contentType.ToLowerInvariant()))
         {
             result.IsValid = false;
-            result.Errors.Add($"Content type '{contentType}' is not allowed for CSV files.");
+            result.Errors.Add($"Content type '{contentType}' is not allowed for Excel files.");
         }
 
         return result;

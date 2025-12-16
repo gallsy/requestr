@@ -96,18 +96,18 @@ public class CreateBulkFormRequestDto
     public string? Comments { get; set; }
 }
 
-public class CsvUploadResult
+public class SpreadsheetUploadResult
 {
     public bool IsValid { get; set; }
     public List<string> Errors { get; set; } = new();
     public List<Dictionary<string, object?>> ParsedData { get; set; } = new();
-    public List<CsvRowValidationResult> ValidationResults { get; set; } = new();
+    public List<SpreadsheetRowValidationResult> ValidationResults { get; set; } = new();
     public int TotalRows { get; set; }
     public int ValidRows { get; set; }
     public int InvalidRows { get; set; }
 }
 
-public class CsvRowValidationResult
+public class SpreadsheetRowValidationResult
 {
     public int RowNumber { get; set; }
     public bool IsValid { get; set; }

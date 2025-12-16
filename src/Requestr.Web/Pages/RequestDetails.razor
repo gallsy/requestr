@@ -96,7 +96,7 @@ else
                             var hasOriginal = _request.RequestType != RequestType.Insert && 
                                              _request.OriginalValues?.ContainsKey(fieldValue.Key) == true;
                             var originalValue = hasOriginal ? _request.OriginalValues?[fieldValue.Key]?.ToString() : null;
-                            var hasChanged = hasOriginal && originalValue != valueStr;
+                            var hasChanged = hasOriginal && !AreDisplayValuesEqual(originalValue, valueStr);
 
                             <div class="field-value-item py-3 @(fieldValue.Key != GetDisplayableFieldValues().Last().Key ? "border-bottom" : "")">
                                 <div class="row align-items-start">
@@ -334,8 +334,12 @@ else
                     await LoadWorkflowInformation();
                 }
 
-                // Check for conflicts if the request is pending or in workflow
-                if (_request.Status == RequestStatus.Pending || _request.WorkflowInstanceId.HasValue)
+                // Check for conflicts only if the request is not in a terminal state
+                var isCompleted = _request.Status == RequestStatus.Approved || 
+                                  _request.Status == RequestStatus.Rejected || 
+                                  _request.Status == RequestStatus.Applied || 
+                                  _request.Status == RequestStatus.Failed;
+                if (!isCompleted && (_request.Status == RequestStatus.Pending || _request.WorkflowInstanceId.HasValue))
                 {
                     await CheckForConflictsAsync();
                 }
@@ -367,6 +371,41 @@ else
         }
 
         return _request.FieldValues;
+    }
+
+    /// <summary>
+    /// Compares two display values, handling datetime precision differences
+    /// </summary>
+    private bool AreDisplayValuesEqual(string? value1, string? value2)
+    {
+        if (value1 == value2) return true;
+        if (string.IsNullOrEmpty(value1) && string.IsNullOrEmpty(value2)) return true;
+        if (string.IsNullOrEmpty(value1) || string.IsNullOrEmpty(value2)) return false;
+
+        // First try exact match (case-insensitive, trimmed)
+        if (string.Equals(value1?.Trim(), value2?.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Only use datetime comparison if BOTH values look like datetimes (contain date separators and time components)
+        var looksLikeDateTime1 = (value1.Contains("-") || value1.Contains("/")) && 
+                                  (value1.Contains(":") || value1.Contains("T"));
+        var looksLikeDateTime2 = (value2.Contains("-") || value2.Contains("/")) && 
+                                  (value2.Contains(":") || value2.Contains("T"));
+        
+        if (looksLikeDateTime1 && looksLikeDateTime2 &&
+            DateTime.TryParse(value1, System.Globalization.CultureInfo.InvariantCulture, 
+                System.Globalization.DateTimeStyles.None, out var dt1) &&
+            DateTime.TryParse(value2, System.Globalization.CultureInfo.InvariantCulture, 
+                System.Globalization.DateTimeStyles.None, out var dt2))
+        {
+            // Compare with 1 second tolerance for precision differences
+            return Math.Abs((dt1 - dt2).TotalSeconds) < 1;
+        }
+
+        // Values are different
+        return false;
     }
 
     private async Task LoadWorkflowInformation()
