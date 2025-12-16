@@ -250,20 +250,20 @@ public static class InputValidator
         }
 
         // File extension validation
-        var allowedExtensions = new[] { ".csv" };
+        var allowedExtensions = new[] { ".xlsx" };
         var extension = Path.GetExtension(fileName).ToLowerInvariant();
         if (!allowedExtensions.Contains(extension))
         {
             result.IsValid = false;
-            result.Errors.Add($"File type '{extension}' is not allowed. Only CSV files are permitted.");
+            result.Errors.Add($"File type '{extension}' is not allowed. Only Excel (.xlsx) files are permitted.");
         }
 
         // Content type validation
-        var allowedContentTypes = new[] { "text/csv", "application/csv", "text/plain" };
+        var allowedContentTypes = new[] { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
         if (!allowedContentTypes.Contains(contentType.ToLowerInvariant()))
         {
             result.IsValid = false;
-            result.Errors.Add($"Content type '{contentType}' is not allowed for CSV files.");
+            result.Errors.Add($"Content type '{contentType}' is not allowed for Excel files.");
         }
 
         return result;

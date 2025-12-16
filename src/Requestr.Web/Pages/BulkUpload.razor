@@ -194,7 +194,7 @@ else
                                             @for (int i = 0; i < _uploadResult.ValidationResults.Count; i++)
                                             {
                                                 var result = _uploadResult.ValidationResults[i];
-                                                var rowKey = result.RowNumber; // keep selection keyed by CSV row number to avoid index drift
+                                                var rowKey = result.RowNumber; // keep selection keyed by spreadsheet row number to avoid index drift
                                                 var isSelected = _selectedRows.Contains(rowKey);
                                                 <tr class="@(result.IsValid ? "" : "table-danger")">
                                                     <td>
@@ -483,7 +483,7 @@ else
                 {
                     try
                     {
-                        // Build WHERE conditions using primary key columns from the CSV data
+                        // Build WHERE conditions using primary key columns from the spreadsheet data
                         var whereConditions = new Dictionary<string, object?>();
                         foreach (var pkColumn in primaryKeyColumns)
                         {
@@ -493,7 +493,7 @@ else
                             }
                             else
                             {
-                                throw new InvalidOperationException($"Primary key column '{pkColumn}' not found in CSV data. Required for {_selectedRequestType} operations.");
+                                throw new InvalidOperationException($"Primary key column '{pkColumn}' not found in spreadsheet data. Required for {_selectedRequestType} operations.");
                             }
                         }
 
