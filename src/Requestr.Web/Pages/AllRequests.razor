@@ -322,18 +322,8 @@
             AllFormRequests = await FormRequestService.GetAccessibleFormRequestsAsync(CurrentUserId, UserRoles);
             AllFormRequests = AllFormRequests.Where(r => r.BulkFormRequestId == null).OrderByDescending(r => r.RequestedAt).ToList();
             
-            // Load bulk requests based on user access
-            if (_isAdmin)
-            {
-                // Admin can see all bulk requests
-                AllBulkRequests = await BulkFormRequestService.GetAllBulkFormRequestsAsync();
-            }
-            else
-            {
-                // Non-admin users can only see their own bulk requests for now
-                // This could be enhanced to include bulk requests they can approve
-                AllBulkRequests = await BulkFormRequestService.GetBulkFormRequestsByUserAsync(CurrentUserId);
-            }
+            // Load bulk requests based on user access (own requests + requests they can approve)
+            AllBulkRequests = await BulkFormRequestService.GetAccessibleBulkFormRequestsAsync(CurrentUserId, UserRoles);
             
             // Extract available forms for filter dropdown
             AvailableForms = AllFormRequests?.Where(r => !string.IsNullOrEmpty(r.FormDefinition?.Name))
