@@ -1,6 +1,7 @@
 @page "/workflow/{WorkflowInstanceId:int}/step/{StepId}"
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
+@using Requestr.Core.Utilities
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.JSInterop
@@ -441,12 +442,37 @@ else
     // Conflict detection
     private bool _hasConflicts = false;
     private List<string> _conflictMessages = new();
+    
+    // User information for security
+    private string _currentUserId = string.Empty;
+    private List<string> _userRoles = new();
+    private bool _isAdmin = false;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
+            // Get user info first for security check
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            _currentUserId = GetUserIdentifier(user);
+            _userRoles = ClaimsHelper.GetUserRoles(user);
+            _isAdmin = user.IsInRole("Admin") || _userRoles.Contains("Admin", StringComparer.OrdinalIgnoreCase);
+            
             await LoadWorkflowDataAsync();
+            
+            // Security check: User can view if they created it, are admin, or can approve it
+            if (!await CanUserAccessWorkflowAsync())
+            {
+                Logger.LogWarning("User {UserId} attempted to access workflow {WorkflowInstanceId}/step/{StepId} without permission", 
+                    _currentUserId, WorkflowInstanceId, StepId);
+                _workflowInstance = null; // Clear data so it's not displayed
+                _formRequest = null;
+                _currentStep = null;
+                _errorMessage = "You don't have permission to view this workflow step.";
+                return;
+            }
+            
             await CheckUserPermissionsAsync();
         }
         catch (Exception ex)
@@ -457,6 +483,43 @@ else
         {
             _isLoading = false;
         }
+    }
+    
+    private async Task<bool> CanUserAccessWorkflowAsync()
+    {
+        if (_formRequest == null || _workflowInstance == null) return false;
+        
+        // Admin can access any workflow
+        if (_isAdmin) return true;
+        
+        // User can access if they created the request
+        if (_formRequest.RequestedBy == _currentUserId) return true;
+        
+        // User can access if they are an approver for this form (legacy role-based)
+        if (_formRequest.FormDefinition?.ApproverRoles != null && _formRequest.FormDefinition.ApproverRoles.Any())
+        {
+            if (_userRoles.Any(ur => _formRequest.FormDefinition.ApproverRoles.Contains(ur, StringComparer.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+        
+        // User can access if they have access to any step in this workflow
+        try
+        {
+            var availableSteps = await WorkflowService.GetAvailableStepsForUserAsync(
+                _currentUserId, _userRoles, _workflowInstance.Id);
+            if (availableSteps?.Any() == true)
+            {
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error checking workflow access for workflow {WorkflowInstanceId}", WorkflowInstanceId);
+        }
+        
+        return false;
     }
 
     private async Task LoadWorkflowDataAsync()

@@ -1,17 +1,21 @@
 @page "/requests/{RequestId:int}"
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
+@using Requestr.Core.Utilities
 @using System.Text.Json
 @using Requestr.Web.Components
 @using Requestr.Web.Components.Shared
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using BlazorBootstrap
 @inject IFormRequestService FormRequestService
 @inject IFormDefinitionService FormDefinitionService
 @inject IConflictDetectionService ConflictDetectionService
+@inject IWorkflowService WorkflowService
 @inject ILogger<RequestDetails> Logger
 @inject NavigationManager Navigation
 @inject IDatabaseService DatabaseService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @attribute [Authorize]
 
 @if (_isLoading)
@@ -21,7 +25,7 @@
 else if (_request == null)
 {
     <EmptyState Title="Request Not Found" 
-                Description="The requested form request could not be found or you don't have permission to access it.">
+                Description="@(!string.IsNullOrEmpty(_errorMessage) ? _errorMessage : "The requested form request could not be found or you don't have permission to access it.")">
         <Action>
             <Button Color="ButtonColor.Primary" @onclick="@(() => Navigation.NavigateTo("/"))">
                 Go Home
@@ -288,6 +292,10 @@ else
     private List<ColumnInfo> _tableColumns = new();
     private bool _isLoading = true;
     private string _conflictWarning = "";
+    private string _errorMessage = "";
+    private string _currentUserId = "";
+    private List<string> _userRoles = new();
+    private bool _isAdmin = false;
     
     // Workflow-related fields
     private WorkflowStepInstance? _currentWorkflowStep;
@@ -303,56 +311,137 @@ else
         try
         {
             _isLoading = true;
+            
+            // Get current user info for security check
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            if (authState.User.Identity?.IsAuthenticated != true)
+            {
+                _errorMessage = "You must be logged in to view this page.";
+                return;
+            }
+            
+            _currentUserId = authState.User.FindFirst("sub")?.Value ?? 
+                            authState.User.FindFirst("oid")?.Value ?? 
+                            authState.User.Identity?.Name ?? "";
+            _userRoles = ClaimsHelper.GetUserRoles(authState.User);
+            _isAdmin = _userRoles.Contains("Admin");
+            
             _request = await FormRequestService.GetFormRequestWithHistoryAsync(RequestId);
             
-            if (_request != null)
+            if (_request == null)
             {
-                _formDefinition = await FormDefinitionService.GetByIdAsync(_request.FormDefinitionId);
-                _requestHistory = _request.History;
+                _errorMessage = "Request not found.";
+                return;
+            }
+            
+            // Load form definition first (needed for security check)
+            _formDefinition = await FormDefinitionService.GetByIdAsync(_request.FormDefinitionId);
+            
+            // Security check: User can view if they created it, are admin, or can approve it
+            if (!await CanUserAccessRequestAsync())
+            {
+                Logger.LogWarning("User {UserId} attempted to access request {RequestId} without permission", 
+                    _currentUserId, RequestId);
+                _request = null; // Clear the request so it's not displayed
+                _errorMessage = "You don't have permission to view this request.";
+                return;
+            }
+            
+            _requestHistory = _request.History;
 
-                // Load column metadata for filtering on display
-                try
+            // Load column metadata for filtering on display
+            try
+            {
+                if (_formDefinition != null)
                 {
-                    if (_formDefinition != null)
-                    {
-                        _tableColumns = await DatabaseService.GetTableColumnsAsync(
-                            _formDefinition.DatabaseConnectionName,
-                            _formDefinition.TableName,
-                            _formDefinition.Schema
-                        );
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogWarning(ex, "Failed to load table columns for RequestDetails form {FormDefinitionId}", _request.FormDefinitionId);
-                    _tableColumns = new List<ColumnInfo>();
-                }
-                
-                // Load workflow information if request has a workflow
-                if (_request.WorkflowInstanceId.HasValue)
-                {
-                    await LoadWorkflowInformation();
-                }
-
-                // Check for conflicts only if the request is not in a terminal state
-                var isCompleted = _request.Status == RequestStatus.Approved || 
-                                  _request.Status == RequestStatus.Rejected || 
-                                  _request.Status == RequestStatus.Applied || 
-                                  _request.Status == RequestStatus.Failed;
-                if (!isCompleted && (_request.Status == RequestStatus.Pending || _request.WorkflowInstanceId.HasValue))
-                {
-                    await CheckForConflictsAsync();
+                    _tableColumns = await DatabaseService.GetTableColumnsAsync(
+                        _formDefinition.DatabaseConnectionName,
+                        _formDefinition.TableName,
+                        _formDefinition.Schema
+                    );
                 }
             }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Failed to load table columns for RequestDetails form {FormDefinitionId}", _request.FormDefinitionId);
+                _tableColumns = new List<ColumnInfo>();
+            }
+            
+            // Load workflow information if request has a workflow
+            if (_request.WorkflowInstanceId.HasValue)
+            {
+                await LoadWorkflowInformation();
+            }
+
+            // Check for conflicts only if the request is not in a terminal state
+            var isCompleted = _request.Status == RequestStatus.Approved || 
+                              _request.Status == RequestStatus.Rejected || 
+                              _request.Status == RequestStatus.Applied || 
+                              _request.Status == RequestStatus.Failed;
+            if (!isCompleted && (_request.Status == RequestStatus.Pending || _request.WorkflowInstanceId.HasValue))
+            {
+                await CheckForConflictsAsync();
+            }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Log error - request will remain null and show not found message
+            Logger.LogError(ex, "Error loading request {RequestId}", RequestId);
+            _errorMessage = "Error loading request.";
         }
         finally
         {
             _isLoading = false;
         }
+    }
+    
+    private bool CanUserAccessRequest()
+    {
+        if (_request == null) return false;
+        
+        // Admin can access any request
+        if (_isAdmin) return true;
+        
+        // User can access if they created the request
+        if (_request.RequestedBy == _currentUserId) return true;
+        
+        // User can access if they are an approver for this form (legacy role-based)
+        if (_formDefinition?.ApproverRoles != null && _formDefinition.ApproverRoles.Any())
+        {
+            if (_userRoles.Any(ur => _formDefinition.ApproverRoles.Contains(ur, StringComparer.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+        
+        // For workflow-based requests, check is done asynchronously in CanUserAccessRequestAsync
+        // This method just handles the synchronous checks
+        return false;
+    }
+    
+    private async Task<bool> CanUserAccessRequestAsync()
+    {
+        // First do synchronous checks
+        if (CanUserAccessRequest()) return true;
+        
+        // User can access if the request has a workflow and user has access to any step
+        if (_request?.WorkflowInstanceId.HasValue == true)
+        {
+            try
+            {
+                var availableSteps = await WorkflowService.GetAvailableStepsForUserAsync(
+                    _currentUserId, _userRoles, _request.WorkflowInstanceId.Value);
+                if (availableSteps?.Any() == true)
+                {
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Error checking workflow access for request {RequestId}", RequestId);
+            }
+        }
+        
+        return false;
     }
 
     private IEnumerable<KeyValuePair<string, object?>> GetDisplayableFieldValues()
