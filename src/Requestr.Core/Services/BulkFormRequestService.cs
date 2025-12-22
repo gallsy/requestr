@@ -761,6 +761,33 @@ public class BulkFormRequestService : IBulkFormRequestService
         return results.ToList();
     }
 
+    public async Task<List<BulkFormRequest>> GetAccessibleBulkFormRequestsAsync(string userId, List<string> userRoles)
+    {
+        var isAdmin = userRoles.Contains("Admin");
+        
+        if (isAdmin)
+        {
+            // Admin can see all bulk requests
+            return await GetAllBulkFormRequestsAsync();
+        }
+        
+        // For non-admin users, combine:
+        // 1. Bulk requests they created
+        // 2. Bulk requests they can approve
+        var ownRequests = await GetBulkFormRequestsByUserAsync(userId);
+        var forApproval = await GetBulkFormRequestsForApprovalAsync(userId, userRoles);
+        
+        // Combine and deduplicate by Id
+        var combined = ownRequests
+            .Concat(forApproval)
+            .GroupBy(r => r.Id)
+            .Select(g => g.First())
+            .OrderByDescending(r => r.RequestedAt)
+            .ToList();
+        
+        return combined;
+    }
+
     public async Task<List<BulkFormRequest>> GetBulkFormRequestsForApprovalAsync(string userId, List<string> userRoles)
     {
         using var connection = new SqlConnection(_connectionString);

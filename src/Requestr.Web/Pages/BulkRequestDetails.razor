@@ -1,12 +1,14 @@
 @page "/bulk-requests/{BulkRequestId:int}"
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
+@using Requestr.Core.Utilities
 @using System.Linq
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using BlazorBootstrap
 @inject IBulkFormRequestService BulkFormRequestService
 @inject IConflictDetectionService ConflictDetectionService
+@inject IWorkflowService WorkflowService
 @inject ILogger<BulkRequestDetails> Logger
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -269,6 +271,9 @@ else
     private string _successMessage = "";
     private string _conflictWarning = "";
     private HashSet<int> _expandedRows = new();
+    private string _currentUserId = "";
+    private List<string> _userRoles = new();
+    private bool _isAdmin = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -277,12 +282,36 @@ else
             _isLoading = true;
             _isFromApprovals = IsFromApprovals;
             
+            // Get current user info for security check
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            if (authState.User.Identity?.IsAuthenticated != true)
+            {
+                _errorMessage = "You must be logged in to view this page.";
+                return;
+            }
+            
+            _currentUserId = authState.User.FindFirst("sub")?.Value ?? 
+                            authState.User.FindFirst("oid")?.Value ?? 
+                            authState.User.Identity?.Name ?? "";
+            _userRoles = ClaimsHelper.GetUserRoles(authState.User);
+            _isAdmin = _userRoles.Contains("Admin");
+            
             // Load the bulk request
             _bulkRequest = await BulkFormRequestService.GetBulkFormRequestByIdAsync(BulkRequestId);
             
             if (_bulkRequest == null)
             {
                 _errorMessage = "Bulk request not found.";
+                return;
+            }
+            
+            // Security check: User can view if they created it, are admin, or can approve it
+            if (!await CanUserAccessBulkRequestAsync())
+            {
+                Logger.LogWarning("User {UserId} attempted to access bulk request {BulkRequestId} without permission", 
+                    _currentUserId, BulkRequestId);
+                _bulkRequest = null; // Clear the request so it's not displayed
+                _errorMessage = "You don't have permission to view this bulk request.";
                 return;
             }
 
@@ -304,6 +333,56 @@ else
         {
             _isLoading = false;
         }
+    }
+    
+    private bool CanUserAccessBulkRequest()
+    {
+        if (_bulkRequest == null) return false;
+        
+        // Admin can access any request
+        if (_isAdmin) return true;
+        
+        // User can access if they created the request
+        if (_bulkRequest.RequestedBy == _currentUserId) return true;
+        
+        // User can access if they are an approver for this form (legacy role-based)
+        if (_bulkRequest.FormDefinition?.ApproverRoles != null && _bulkRequest.FormDefinition.ApproverRoles.Any())
+        {
+            if (_userRoles.Any(ur => _bulkRequest.FormDefinition.ApproverRoles.Contains(ur, StringComparer.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+        
+        // For workflow-based requests, check is done asynchronously in CanUserAccessBulkRequestAsync
+        // This method just handles the synchronous checks
+        return false;
+    }
+    
+    private async Task<bool> CanUserAccessBulkRequestAsync()
+    {
+        // First do synchronous checks
+        if (CanUserAccessBulkRequest()) return true;
+        
+        // User can access if the request has a workflow and user has access to any step
+        if (_bulkRequest?.WorkflowInstanceId.HasValue == true)
+        {
+            try
+            {
+                var availableSteps = await WorkflowService.GetAvailableStepsForUserAsync(
+                    _currentUserId, _userRoles, _bulkRequest.WorkflowInstanceId.Value);
+                if (availableSteps?.Any() == true)
+                {
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Error checking workflow access for bulk request {BulkRequestId}", BulkRequestId);
+            }
+        }
+        
+        return false;
     }
 
     private async Task CheckForConflictsAsync()
