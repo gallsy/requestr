@@ -504,12 +504,12 @@ else
             }
         }
         
-        // User can access if they have access to any step in this workflow
+        // User can access if they have participated in this workflow (completed a step or assigned to one)
         try
         {
-            var availableSteps = await WorkflowService.GetAvailableStepsForUserAsync(
+            var hasParticipated = await WorkflowService.HasUserParticipatedInWorkflowAsync(
                 _currentUserId, _userRoles, _workflowInstance.Id);
-            if (availableSteps?.Any() == true)
+            if (hasParticipated)
             {
                 return true;
             }

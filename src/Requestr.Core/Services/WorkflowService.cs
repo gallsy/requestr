@@ -1230,6 +1230,35 @@ public class WorkflowService : IWorkflowService
         return availableSteps;
     }
 
+    public async Task<bool> HasUserParticipatedInWorkflowAsync(string userId, List<string> userRoles, int workflowInstanceId)
+    {
+        using var connection = new SqlConnection(_connectionString);
+        
+        // Check if user's roles are assigned to any approval step in the workflow definition
+        const string sql = @"
+            SELECT CASE WHEN EXISTS (
+                SELECT 1 FROM WorkflowSteps ws
+                INNER JOIN WorkflowInstances wi ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId
+                WHERE wi.Id = @WorkflowInstanceId
+                AND ws.StepType = @ApprovalStepType
+                AND ws.AssignedRoles IS NOT NULL 
+                AND ws.AssignedRoles != '[]'
+                AND EXISTS (
+                    SELECT 1 FROM OPENJSON(ws.AssignedRoles) AS roles
+                    WHERE roles.value IN (SELECT value FROM OPENJSON(@UserRolesJson))
+                )
+            ) THEN 1 ELSE 0 END AS IsAssigned;";
+
+        var isAssigned = await connection.QuerySingleAsync<int>(sql, new
+        {
+            WorkflowInstanceId = workflowInstanceId,
+            ApprovalStepType = (int)WorkflowStepType.Approval,
+            UserRolesJson = System.Text.Json.JsonSerializer.Serialize(userRoles)
+        });
+
+        return isAssigned == 1;
+    }
+
     #endregion
 
     #region Private Helper Methods

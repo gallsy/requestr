@@ -36,6 +36,9 @@ public interface IWorkflowService
     Task<string?> GetNextStepIdAsync(int workflowInstanceId, string currentStepId, Dictionary<string, object?> formData);
     Task<List<string>> GetAvailableStepsForUserAsync(string userId, List<string> userRoles, int workflowInstanceId);
     
+    // Workflow Access - checks if user has participated in or is assigned to any step in the workflow
+    Task<bool> HasUserParticipatedInWorkflowAsync(string userId, List<string> userRoles, int workflowInstanceId);
+    
     // Workflow Action Processing
     Task<WorkflowActionResult> ProcessWorkflowActionAsync(int workflowInstanceId, string actionType, string userId, string? comments = null, Dictionary<string, object?>? fieldUpdates = null);
     Task<WorkflowStepInstance?> GetCurrentWorkflowStepAsync(int workflowInstanceId);

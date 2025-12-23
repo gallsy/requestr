@@ -2123,7 +2123,7 @@ public class FormRequestService : IFormRequestService
             {
                 // Non-admin users can see:
                 // 1. Requests they created
-                // 2. Requests where they have approval permissions through workflow steps
+                // 2. Requests where their roles are assigned to any approval step in the workflow
                 sql = @"
                     SELECT DISTINCT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
                            fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, 
@@ -2134,36 +2134,29 @@ public class FormRequestService : IFormRequestService
                     FROM FormRequests fr
                     INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
                     LEFT JOIN WorkflowInstances wi ON fr.WorkflowInstanceId = wi.Id
-                    LEFT JOIN WorkflowStepInstances wsi ON wi.Id = wsi.WorkflowInstanceId
-                    LEFT JOIN WorkflowSteps ws ON wsi.StepId = ws.StepId AND wi.WorkflowDefinitionId = ws.WorkflowDefinitionId
                     LEFT JOIN Users uReq ON TRY_CONVERT(uniqueidentifier, fr.RequestedBy) = uReq.UserObjectId
                     LEFT JOIN Users uApp ON TRY_CONVERT(uniqueidentifier, fr.ApprovedBy) = uApp.UserObjectId
                     WHERE 
                         -- Requests created by the user
                         fr.RequestedBy = @UserId
                         OR
-                        -- Requests where user has approval permissions through workflow (approval steps only)
-                        (ws.StepType = @ApprovalStepType AND ws.AssignedRoles IS NOT NULL 
-                         AND ws.AssignedRoles != '[]' 
-                         AND JSON_QUERY(ws.AssignedRoles, '$') IS NOT NULL 
-                         AND EXISTS (
-                             SELECT 1 FROM OPENJSON(ws.AssignedRoles) AS roles
-                             WHERE roles.value IN @UserRoles
-                         ))
-                        OR
-                        -- Legacy approval system (for forms without workflows)
-                        (fr.WorkflowInstanceId IS NULL AND EXISTS (
-                            SELECT 1 FROM STRING_SPLIT(fd.ApproverRoles, ',') 
-                            WHERE TRIM(value) IN @UserRoles
+                        -- Requests where user's roles are assigned to any approval step in the workflow
+                        (fr.WorkflowInstanceId IS NOT NULL AND EXISTS (
+                            SELECT 1 FROM WorkflowSteps ws
+                            WHERE ws.WorkflowDefinitionId = wi.WorkflowDefinitionId
+                            AND ws.StepType = @ApprovalStepType
+                            AND ws.AssignedRoles IS NOT NULL 
+                            AND ws.AssignedRoles != '[]'
+                            AND EXISTS (
+                                SELECT 1 FROM OPENJSON(ws.AssignedRoles) AS roles
+                                WHERE roles.value IN (SELECT value FROM OPENJSON(@UserRolesJson))
+                            )
                         ))
                     ORDER BY fr.RequestedAt DESC";
                 
-                parameters.Add("UserRoles", userRoles);
+                parameters.Add("UserRolesJson", System.Text.Json.JsonSerializer.Serialize(userRoles));
                 parameters.Add("ApprovalStepType", (int)WorkflowStepType.Approval);
             }
-
-            _logger.LogInformation("Executing GetAccessibleFormRequestsAsync for user {UserId} with roles {UserRoles}, IsAdmin: {IsAdmin}", 
-                userId, string.Join(", ", userRoles), isAdmin);
 
             var requests = await connection.QueryAsync(sql, parameters);
             var result = new List<FormRequest>();
@@ -2174,7 +2167,6 @@ public class FormRequestService : IFormRequestService
                 result.Add(request);
             }
 
-            _logger.LogInformation("Retrieved {Count} accessible requests for user {UserId}", result.Count, userId);
             return result;
         }
         catch (Exception ex)

@@ -773,13 +773,16 @@ public class BulkFormRequestService : IBulkFormRequestService
         
         // For non-admin users, combine:
         // 1. Bulk requests they created
-        // 2. Bulk requests they can approve
+        // 2. Bulk requests they can approve (pending workflow step assigned to their role)
+        // 3. Bulk requests where their roles are assigned to any workflow approval step
         var ownRequests = await GetBulkFormRequestsByUserAsync(userId);
         var forApproval = await GetBulkFormRequestsForApprovalAsync(userId, userRoles);
+        var participated = await GetBulkFormRequestsUserParticipatedInAsync(userId, userRoles);
         
         // Combine and deduplicate by Id
         var combined = ownRequests
             .Concat(forApproval)
+            .Concat(participated)
             .GroupBy(r => r.Id)
             .Select(g => g.First())
             .OrderByDescending(r => r.RequestedAt)
@@ -788,46 +791,109 @@ public class BulkFormRequestService : IBulkFormRequestService
         return combined;
     }
 
+    public async Task<List<BulkFormRequest>> GetBulkFormRequestsUserParticipatedInAsync(string userId, List<string> userRoles)
+    {
+        using var connection = new SqlConnection(_connectionString);
+        
+        var userRolesJson = System.Text.Json.JsonSerializer.Serialize(userRoles);
+        
+        // Get bulk requests where user's roles are assigned to any approval step in the workflow
+        var sql = @"
+            SELECT DISTINCT bfr.*, COALESCE(uReq.DisplayName, bfr.RequestedBy) AS RequestedByName, COALESCE(uApp.DisplayName, bfr.ApprovedBy) AS ApprovedByName
+            FROM BulkFormRequests bfr
+            INNER JOIN WorkflowInstances wi ON bfr.WorkflowInstanceId = wi.Id
+            LEFT JOIN Users uReq ON TRY_CONVERT(uniqueidentifier, bfr.RequestedBy) = uReq.UserObjectId
+            LEFT JOIN Users uApp ON TRY_CONVERT(uniqueidentifier, bfr.ApprovedBy) = uApp.UserObjectId
+            WHERE bfr.RequestedBy != @UserId
+            AND EXISTS (
+                SELECT 1 FROM WorkflowSteps ws
+                WHERE ws.WorkflowDefinitionId = wi.WorkflowDefinitionId
+                AND ws.StepType = @ApprovalStepType
+                AND ws.AssignedRoles IS NOT NULL AND ws.AssignedRoles != '[]'
+                AND EXISTS (
+                    SELECT 1 FROM OPENJSON(ws.AssignedRoles) sr
+                    WHERE sr.value IN (SELECT value FROM OPENJSON(@UserRolesJson))
+                )
+            )
+            ORDER BY bfr.RequestedAt DESC";
+
+        var results = await connection.QueryAsync<BulkFormRequest>(sql, new { 
+            UserId = userId, 
+            UserRolesJson = userRolesJson,
+            ApprovalStepType = (int)WorkflowStepType.Approval
+        });
+        
+        // Load FormDefinition for each result
+        foreach (var result in results)
+        {
+            var formDefinition = await _formDefinitionService.GetFormDefinitionAsync(result.FormDefinitionId);
+            result.FormDefinition = formDefinition;
+            
+            // Parse RequestType
+            var requestType = await connection.QueryFirstOrDefaultAsync<string>(
+                "SELECT RequestType FROM BulkFormRequests WHERE Id = @Id", new { Id = result.Id });
+            if (requestType != null)
+            {
+                result.RequestType = ParseRequestType(requestType);
+            }
+            
+            // Load Items count for display
+            var itemsCount = await connection.QuerySingleOrDefaultAsync<int>(
+                "SELECT COUNT(*) FROM BulkFormRequestItems WHERE BulkFormRequestId = @Id", new { Id = result.Id });
+            
+            result.Items = new List<BulkFormRequestItem>();
+            result.SelectedRows = itemsCount;
+            
+            if (result.WorkflowInstanceId.HasValue)
+            {
+                var workflowFormRequestSql = @"
+                    SELECT Id FROM FormRequests 
+                    WHERE BulkFormRequestId = @BulkFormRequestId 
+                    AND WorkflowInstanceId = @WorkflowInstanceId";
+                
+                var workflowFormRequestId = await connection.QueryFirstOrDefaultAsync<int?>(
+                    workflowFormRequestSql, 
+                    new { 
+                        BulkFormRequestId = result.Id, 
+                        WorkflowInstanceId = result.WorkflowInstanceId 
+                    });
+                
+                result.WorkflowFormRequestId = workflowFormRequestId;
+            }
+        }
+        
+        return results.ToList();
+    }
+
     public async Task<List<BulkFormRequest>> GetBulkFormRequestsForApprovalAsync(string userId, List<string> userRoles)
     {
         using var connection = new SqlConnection(_connectionString);
         
-        var rolesList = string.Join(",", userRoles.Select(r => $"'{r}'"));
+        var userRolesJson = System.Text.Json.JsonSerializer.Serialize(userRoles);
         
-        // Get both role-based and workflow-based bulk requests that need approval
+        // Get workflow-based bulk requests that need approval (pending step assigned to user's role)
         var sql = @"
             SELECT DISTINCT bfr.*, COALESCE(uReq.DisplayName, bfr.RequestedBy) AS RequestedByName, COALESCE(uApp.DisplayName, bfr.ApprovedBy) AS ApprovedByName
             FROM BulkFormRequests bfr
-            INNER JOIN FormDefinitions fd ON bfr.FormDefinitionId = fd.Id
-            LEFT JOIN WorkflowInstances wi ON bfr.WorkflowInstanceId = wi.Id
-            LEFT JOIN WorkflowStepInstances wsi ON wi.Id = wsi.WorkflowInstanceId 
-                AND wsi.Status = 0 -- Pending status
-            LEFT JOIN WorkflowSteps ws ON wsi.StepId = ws.Id
+            INNER JOIN WorkflowInstances wi ON bfr.WorkflowInstanceId = wi.Id
+            INNER JOIN WorkflowStepInstances wsi ON wi.Id = wsi.WorkflowInstanceId AND wsi.Status = 0 -- Pending status
+            INNER JOIN WorkflowSteps ws ON wsi.StepId = ws.StepId AND wi.WorkflowDefinitionId = ws.WorkflowDefinitionId
             LEFT JOIN Users uReq ON TRY_CONVERT(uniqueidentifier, bfr.RequestedBy) = uReq.UserObjectId
             LEFT JOIN Users uApp ON TRY_CONVERT(uniqueidentifier, bfr.ApprovedBy) = uApp.UserObjectId
             WHERE bfr.Status = 0 AND bfr.RequestedBy != @UserId
-            AND (
-                -- Role-based approval (legacy)
-                (bfr.WorkflowInstanceId IS NULL AND EXISTS (
-                    SELECT 1 FROM STRING_SPLIT(fd.ApproverRoles, ',') ar
-                    WHERE ar.value IN (" + rolesList + @")
-                ))
-                OR
-                -- Workflow-based approval (new)
-                (bfr.WorkflowInstanceId IS NOT NULL AND (
-                    -- User assigned to current step
-                    ws.AssignedUserId = @UserId
-                    OR
-                    -- User's role matches step role requirements
-                    EXISTS (
-                        SELECT 1 FROM STRING_SPLIT(ws.RequiredRoles, ',') sr
-                        WHERE sr.value IN (" + rolesList + @")
-                    )
-                ))
+            AND ws.StepType = @ApprovalStepType
+            AND ws.AssignedRoles IS NOT NULL AND ws.AssignedRoles != '[]' 
+            AND EXISTS (
+                SELECT 1 FROM OPENJSON(ws.AssignedRoles) sr
+                WHERE sr.value IN (SELECT value FROM OPENJSON(@UserRolesJson))
             )
             ORDER BY bfr.RequestedAt";
 
-        var results = await connection.QueryAsync<BulkFormRequest>(sql, new { UserId = userId });
+        var results = await connection.QueryAsync<BulkFormRequest>(sql, new { 
+            UserId = userId, 
+            UserRolesJson = userRolesJson,
+            ApprovalStepType = (int)WorkflowStepType.Approval
+        });
         
         // Load FormDefinition and parse RequestType for each result
         foreach (var result in results)

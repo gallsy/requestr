@@ -364,14 +364,16 @@ else
         // First do synchronous checks
         if (CanUserAccessBulkRequest()) return true;
         
-        // User can access if the request has a workflow and user has access to any step
+        // User can access if the request has a workflow and user has participated in it
+        // (either completed a step or is assigned to an approval step by role)
         if (_bulkRequest?.WorkflowInstanceId.HasValue == true)
         {
             try
             {
-                var availableSteps = await WorkflowService.GetAvailableStepsForUserAsync(
+                // Check if user has participated in this workflow (completed a step or is assigned)
+                var hasParticipated = await WorkflowService.HasUserParticipatedInWorkflowAsync(
                     _currentUserId, _userRoles, _bulkRequest.WorkflowInstanceId.Value);
-                if (availableSteps?.Any() == true)
+                if (hasParticipated)
                 {
                     return true;
                 }
