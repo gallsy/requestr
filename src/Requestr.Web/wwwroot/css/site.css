@@ -1228,6 +1228,7 @@ button.nav-link.active {
 .bulk-item-details {
     background-color: var(--card-bg);
     animation: slideDown 0.2s ease;
+    padding: 1rem;
 }
 
 @keyframes slideDown {

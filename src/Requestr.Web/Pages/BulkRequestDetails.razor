@@ -2,6 +2,7 @@
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Utilities
+@using Requestr.Web.Components.Shared
 @using System.Linq
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -36,22 +37,6 @@ else
 {
     <PageHeader Title="@(_bulkRequest.FormDefinition?.Name ?? "Bulk Request")" 
                 Description="@($"Bulk {_bulkRequest.RequestType} Request")">
-        <Actions>
-            @if (_isFromApprovals)
-            {
-                <Button Color="ButtonColor.Secondary" Outline="true" @onclick="@(() => Navigation.NavigateTo("/approvals"))">
-                    <Icon Name="IconName.ArrowLeft" class="me-2" />
-                    Back to Approvals
-                </Button>
-            }
-            else
-            {
-                <Button Color="ButtonColor.Secondary" Outline="true" @onclick="@(() => Navigation.NavigateTo("/requests"))">
-                    <Icon Name="IconName.ArrowLeft" class="me-2" />
-                    Back to Requests
-                </Button>
-            }
-        </Actions>
     </PageHeader>
 
     <div class="container">
@@ -182,76 +167,16 @@ else
                                         
                                         @if (isExpanded)
                                         {
-                                            <div class="bulk-item-details p-3 border border-top-0 rounded-bottom">
-                                                <div class="row">
-                                                    <div class="@(_bulkRequest.RequestType == RequestType.Update || _bulkRequest.RequestType == RequestType.Delete ? "col-md-6" : "col-12")">
-                                                        <h6 class="text-muted mb-2">
-                                                            <i class="bi bi-pencil me-1"></i>
-                                                            @(_bulkRequest.RequestType == RequestType.Insert ? "New Values" : "New Values")
-                                                        </h6>
-                                                        @if (item.FieldValues.Any())
-                                                        {
-                                                            <dl class="row mb-0">
-                                                                @foreach (var field in item.FieldValues)
-                                                                {
-                                                                    var fieldValueStr = field.Value?.ToString();
-                                                                    <dt class="col-sm-4 text-truncate" title="@field.Key">@field.Key</dt>
-                                                                    <dd class="col-sm-8">
-                                                                        @if (HasValueChanged(item, field.Key))
-                                                                        {
-                                                                            <span class="text-success fw-medium">@(string.IsNullOrEmpty(fieldValueStr) ? "(empty)" : fieldValueStr)</span>
-                                                                        }
-                                                                        else
-                                                                        {
-                                                                            @(string.IsNullOrEmpty(fieldValueStr) ? "(empty)" : fieldValueStr)
-                                                                        }
-                                                                    </dd>
-                                                                }
-                                                            </dl>
-                                                        }
-                                                        else
-                                                        {
-                                                            <p class="text-muted mb-0">No field values</p>
-                                                        }
-                                                    </div>
-                                                    @if (_bulkRequest.RequestType == RequestType.Update || _bulkRequest.RequestType == RequestType.Delete)
-                                                    {
-                                                        <div class="col-md-6">
-                                                            <h6 class="text-muted mb-2">
-                                                                <i class="bi bi-database me-1"></i>
-                                                                Original Values
-                                                            </h6>
-                                                            @if (item.OriginalValues.Any())
-                                                            {
-                                                                <dl class="row mb-0">
-                                                                    @foreach (var field in item.OriginalValues)
-                                                                    {
-                                                                        var origValueStr = field.Value?.ToString();
-                                                                        <dt class="col-sm-4 text-truncate" title="@field.Key">@field.Key</dt>
-                                                                        <dd class="col-sm-8">@(string.IsNullOrEmpty(origValueStr) ? "(empty)" : origValueStr)</dd>
-                                                                    }
-                                                                </dl>
-                                                            }
-                                                            else
-                                                            {
-                                                                <p class="text-muted mb-0">No original values</p>
-                                                            }
-                                                        </div>
-                                                    }
-                                                </div>
-                                                @* Show processing result for failed or applied items *@
-                                                @if (!string.IsNullOrEmpty(item.ProcessingResult))
-                                                {
-                                                    <div class="mt-3 pt-3 border-top">
-                                                        <div class="d-flex align-items-start gap-2 @(item.Status == RequestStatus.Failed ? "text-danger" : "text-success")">
-                                                            <i class="bi @(item.Status == RequestStatus.Failed ? "bi-exclamation-triangle-fill" : "bi-check-circle-fill")"></i>
-                                                            <div>
-                                                                <strong class="d-block">@(item.Status == RequestStatus.Failed ? "Error Details" : "Result")</strong>
-                                                                <span class="text-break">@item.ProcessingResult</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                }
+                                            <div class="bulk-item-details border border-top-0 rounded-bottom">
+                                                <RequestFieldValuesCard 
+                                                    FieldValues="@item.FieldValues"
+                                                    OriginalValues="@item.OriginalValues"
+                                                    FormFields="@_bulkRequest.FormDefinition?.Fields"
+                                                    RequestType="@_bulkRequest.RequestType"
+                                                    ProcessingResult="@item.ProcessingResult"
+                                                    Status="@item.Status"
+                                                    ShowHeader="false"
+                                                    Compact="true" />
                                             </div>
                                         }
                                     </div>

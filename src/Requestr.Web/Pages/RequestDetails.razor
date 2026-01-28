@@ -46,10 +46,6 @@ else
                     Edit Request
                 </Button>
             }
-            <Button Color="ButtonColor.Secondary" @onclick="GoBack">
-                <Icon Name="IconName.ArrowLeft" class="me-1" />
-                Back
-            </Button>
         </Actions>
     </PageHeader>
 
@@ -81,69 +77,11 @@ else
         <WorkflowProgressDisplay FormRequestId="@RequestId" ShowCompact="false" AutoLoad="true" />
 
         <!-- Field Values Card -->
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-list-ul me-2"></i>Field Values
-                </h5>
-            </div>
-            <div class="card-body">
-                @if (_request.FieldValues?.Any() == true)
-                {
-                    var showOriginalValues = _request.RequestType != RequestType.Insert && _request.OriginalValues?.Any() == true;
-                    
-                    <div class="field-values-grid">
-                        @foreach (var fieldValue in GetDisplayableFieldValues())
-                        {
-                            var field = _formDefinition?.Fields?.FirstOrDefault(f => f.Name == fieldValue.Key);
-                            var displayName = field?.DisplayName ?? fieldValue.Key;
-                            var valueStr = fieldValue.Value?.ToString();
-                            var hasOriginal = _request.RequestType != RequestType.Insert && 
-                                             _request.OriginalValues?.ContainsKey(fieldValue.Key) == true;
-                            var originalValue = hasOriginal ? _request.OriginalValues?[fieldValue.Key]?.ToString() : null;
-                            var hasChanged = hasOriginal && !AreDisplayValuesEqual(originalValue, valueStr);
-
-                            <div class="field-value-item py-3 @(fieldValue.Key != GetDisplayableFieldValues().Last().Key ? "border-bottom" : "")">
-                                <div class="row align-items-start">
-                                    <div class="col-md-4">
-                                        <label class="form-label text-muted mb-0">@displayName</label>
-                                        @if (hasChanged)
-                                        {
-                                            <span class="badge bg-warning text-dark ms-2" style="font-size: 0.7rem;">Changed</span>
-                                        }
-                                    </div>
-                                    <div class="col-md-8">
-                                        @if (showOriginalValues && hasOriginal)
-                                        {
-                                            @if (hasChanged)
-                                            {
-                                                <div class="d-flex align-items-center gap-2 flex-wrap">
-                                                    <span class="text-muted text-decoration-line-through">@(string.IsNullOrEmpty(originalValue) ? "(empty)" : originalValue)</span>
-                                                    <i class="bi bi-arrow-right text-muted small"></i>
-                                                    <span class="fw-medium">@(string.IsNullOrEmpty(valueStr) ? "(empty)" : valueStr)</span>
-                                                </div>
-                                            }
-                                            else
-                                            {
-                                                <span>@(string.IsNullOrEmpty(valueStr) ? "(empty)" : valueStr)</span>
-                                            }
-                                        }
-                                        else
-                                        {
-                                            <span>@(string.IsNullOrEmpty(valueStr) ? "(empty)" : valueStr)</span>
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-                else
-                {
-                    <p class="text-muted mb-0">No field values available.</p>
-                }
-            </div>
-        </div>
+        <RequestFieldValuesCard 
+            FieldValues="@_request.FieldValues"
+            OriginalValues="@_request.OriginalValues"
+            FormFields="@_formDefinition?.Fields"
+            RequestType="@_request.RequestType" />
 
         <!-- Request History Card -->
         <div class="card">

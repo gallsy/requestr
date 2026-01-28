@@ -1,0 +1,76 @@
+@* FieldValueDisplay - Displays a single field with optional before/after diff *@
+@using Requestr.Core.Models
+
+<div class="field-value-item py-2 @(ShowBorder ? "border-bottom" : "")">
+    <div class="row align-items-start">
+        <div class="col-md-4">
+            <label class="form-label text-muted mb-0">@DisplayName</label>
+            @if (HasChanged)
+            {
+                <span class="badge bg-warning text-dark ms-2" style="font-size: 0.7rem;">Changed</span>
+            }
+        </div>
+        <div class="col-md-8">
+            @if (ShowOriginal && HasOriginal)
+            {
+                @if (HasChanged)
+                {
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="text-muted text-decoration-line-through">@FormatValue(OriginalValue)</span>
+                        <i class="bi bi-arrow-right text-muted small"></i>
+                        <span class="fw-medium">@FormatValue(NewValue)</span>
+                    </div>
+                }
+                else
+                {
+                    <span>@FormatValue(NewValue)</span>
+                }
+            }
+            else
+            {
+                <span>@FormatValue(NewValue)</span>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string FieldName { get; set; } = string.Empty;
+    [Parameter] public string? DisplayName { get; set; }
+    [Parameter] public object? NewValue { get; set; }
+    [Parameter] public object? OriginalValue { get; set; }
+    [Parameter] public bool ShowOriginal { get; set; } = false;
+    [Parameter] public bool ShowBorder { get; set; } = true;
+    [Parameter] public RequestType RequestType { get; set; } = RequestType.Insert;
+
+    private string ResolvedDisplayName => !string.IsNullOrEmpty(DisplayName) ? DisplayName : FieldName;
+    
+    private bool HasOriginal => RequestType != RequestType.Insert && OriginalValue != null;
+    
+    private bool HasChanged => HasOriginal && !AreValuesEqual(OriginalValue, NewValue);
+
+    private string FormatValue(object? value)
+    {
+        if (value == null) return "(empty)";
+        
+        var strValue = value.ToString();
+        if (string.IsNullOrWhiteSpace(strValue)) return "(empty)";
+        
+        // Format booleans nicely
+        if (value is bool boolVal)
+            return boolVal ? "Yes" : "No";
+            
+        // Format dates nicely
+        if (value is DateTime dateVal)
+            return dateVal.ToString("MMM dd, yyyy");
+            
+        return strValue;
+    }
+
+    private bool AreValuesEqual(object? original, object? newVal)
+    {
+        var origStr = original?.ToString()?.Trim() ?? "";
+        var newStr = newVal?.ToString()?.Trim() ?? "";
+        return string.Equals(origStr, newStr, StringComparison.OrdinalIgnoreCase);
+    }
+}
