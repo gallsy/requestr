@@ -99,40 +99,6 @@ public class FormPermissionService : IFormPermissionService
         }
     }
 
-    public async Task<bool> UserHasPermissionAsync(int formDefinitionId, string userId, FormPermissionType permissionType)
-    {
-        try
-        {
-            // For now, we'll use a simplified approach since we don't have user role resolution implemented yet
-            // In a full implementation, you would resolve the user's roles from Entra ID and check each role
-            
-            // This is a placeholder - in production, you'd need to:
-            // 1. Get user's roles from Entra ID or cache
-            // 2. Check permission for each role
-            // 3. Return true if any role has the permission
-            
-            using var connection = new SqlConnection(_connectionString);
-            
-            const string sql = @"
-                SELECT COUNT(*) FROM FormPermissions 
-                WHERE FormDefinitionId = @FormDefinitionId 
-                    AND PermissionType = @PermissionType 
-                    AND IsGranted = 1
-                    AND RoleName IN ('Admin')"; // Simplified for now
-                    
-            var hasPermission = await connection.QuerySingleAsync<int>(sql, 
-                new { FormDefinitionId = formDefinitionId, PermissionType = (int)permissionType });
-            
-            return hasPermission > 0;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error checking user permission for form {FormDefinitionId}, user {UserId}, permission {PermissionType}", 
-                formDefinitionId, userId, permissionType);
-            return false;
-        }
-    }
-
     public async Task<Result> SetPermissionAsync(int formDefinitionId, string roleName, FormPermissionType permissionType, bool isGranted, string updatedBy)
     {
         try
