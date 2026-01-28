@@ -43,4 +43,7 @@ public interface IFormRequestService
     
     // Consolidated request access method
     Task<List<FormRequest>> GetAccessibleFormRequestsAsync(string userId, List<string> userRoles);
+    
+    // Get pending requests for a specific form definition
+    Task<List<FormRequest>> GetPendingRequestsByFormDefinitionAsync(int formDefinitionId);
 }
