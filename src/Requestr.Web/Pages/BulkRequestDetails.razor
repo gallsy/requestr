@@ -81,6 +81,7 @@ else
                                  Status="@_bulkRequest.Status"
                                  TotalRows="@_bulkRequest.TotalRows"
                                  Comments="@_bulkRequest.Comments"
+                                 ProcessingSummary="@_bulkRequest.ProcessingSummary"
                                  SubmittedBy="@_bulkRequest.RequestedByName"
                                  SubmittedAt="@_bulkRequest.RequestedAt"
                                  ProcessedBy="@_bulkRequest.ApprovedByName"
@@ -238,6 +239,19 @@ else
                                                         </div>
                                                     }
                                                 </div>
+                                                @* Show processing result for failed or applied items *@
+                                                @if (!string.IsNullOrEmpty(item.ProcessingResult))
+                                                {
+                                                    <div class="mt-3 pt-3 border-top">
+                                                        <div class="d-flex align-items-start gap-2 @(item.Status == RequestStatus.Failed ? "text-danger" : "text-success")">
+                                                            <i class="bi @(item.Status == RequestStatus.Failed ? "bi-exclamation-triangle-fill" : "bi-check-circle-fill")"></i>
+                                                            <div>
+                                                                <strong class="d-block">@(item.Status == RequestStatus.Failed ? "Error Details" : "Result")</strong>
+                                                                <span class="text-break">@item.ProcessingResult</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                }
                                             </div>
                                         }
                                     </div>

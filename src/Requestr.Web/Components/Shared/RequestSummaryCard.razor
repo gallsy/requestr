@@ -67,6 +67,20 @@
             </div>
         }
 
+        <!-- Failure message (if application to database failed) -->
+        @if (!string.IsNullOrEmpty(FailureMessage))
+        {
+            <div class="mt-3 p-3 bg-danger bg-opacity-10 border border-danger rounded">
+                <div class="d-flex align-items-start gap-2">
+                    <i class="bi bi-exclamation-triangle text-danger"></i>
+                    <div>
+                        <strong class="d-block text-danger">Error Details</strong>
+                        <span class="text-break">@FailureMessage</span>
+                    </div>
+                </div>
+            </div>
+        }
+
         <!-- Metadata footer -->
         <div class="mt-3 pt-3 border-top small">
             <div class="d-flex flex-wrap gap-3">
@@ -106,6 +120,7 @@
     [Parameter] public RequestStatus Status { get; set; }
     [Parameter] public string? Comments { get; set; }
     [Parameter] public string? RejectionReason { get; set; }
+    [Parameter] public string? FailureMessage { get; set; }
     [Parameter] public string? SubmittedBy { get; set; }
     [Parameter] public DateTime? SubmittedAt { get; set; }
     [Parameter] public string? ProcessedBy { get; set; }
