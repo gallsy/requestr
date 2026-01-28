@@ -112,6 +112,7 @@ public class SpreadsheetRowValidationResult
     public int RowNumber { get; set; }
     public bool IsValid { get; set; }
     public List<string> Errors { get; set; } = new();
+    public List<string> Warnings { get; set; } = new();
     public Dictionary<string, object?> ParsedData { get; set; } = new();
 }
 
