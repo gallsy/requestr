@@ -39,6 +39,20 @@
                 </div>
             </div>
         }
+
+        <!-- Processing summary (for completed bulk requests) -->
+        @if (!string.IsNullOrEmpty(ProcessingSummary))
+        {
+            <div class="mt-3 p-3 @GetProcessingSummaryBackgroundClass() border rounded">
+                <div class="d-flex align-items-start gap-2">
+                    <i class="bi @GetProcessingSummaryIcon() @GetProcessingSummaryIconColor()"></i>
+                    <div>
+                        <strong class="d-block">Processing Summary</strong>
+                        <span>@ProcessingSummary</span>
+                    </div>
+                </div>
+            </div>
+        }
     
         <!-- Metadata footer -->
         <div class="mt-3 pt-3 border-top small">
@@ -79,6 +93,7 @@
     [Parameter] public int TotalRows { get; set; }
     [Parameter] public RequestStatus Status { get; set; }
     [Parameter] public string? Comments { get; set; }
+    [Parameter] public string? ProcessingSummary { get; set; }
     [Parameter] public string? SubmittedBy { get; set; }
     [Parameter] public DateTime? SubmittedAt { get; set; }
     [Parameter] public string? ProcessedBy { get; set; }
@@ -108,5 +123,26 @@
         RequestType.Update => "Bulk Update",
         RequestType.Delete => "Bulk Delete",
         _ => RequestType.ToString()
+    };
+
+    private string GetProcessingSummaryBackgroundClass() => Status switch
+    {
+        RequestStatus.Applied => "bg-success bg-opacity-10 border-success",
+        RequestStatus.Failed => "bg-danger bg-opacity-10 border-danger",
+        _ => "bg-info bg-opacity-10 border-info"
+    };
+
+    private string GetProcessingSummaryIcon() => Status switch
+    {
+        RequestStatus.Applied => "bi-check-circle-fill",
+        RequestStatus.Failed => "bi-exclamation-triangle-fill",
+        _ => "bi-info-circle-fill"
+    };
+
+    private string GetProcessingSummaryIconColor() => Status switch
+    {
+        RequestStatus.Applied => "text-success",
+        RequestStatus.Failed => "text-danger",
+        _ => "text-info"
     };
 }

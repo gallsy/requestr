@@ -72,6 +72,7 @@
     [Parameter] public string? StepDescription { get; set; }
     [Parameter] public string RequestedByName { get; set; } = string.Empty;
     [Parameter] public DateTime RequestedAt { get; set; }
+    [Parameter] public string? RequestLink { get; set; }
 
     private string GetRequestTypeLabel() => RequestType switch
     {

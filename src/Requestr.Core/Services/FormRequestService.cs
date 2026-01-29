@@ -2240,4 +2240,84 @@ public class FormRequestService : IFormRequestService
             // Don't throw - notification failures shouldn't break the request creation
         }
     }
+    
+    /// <summary>
+    /// Gets all pending (non-completed) requests for a specific form definition.
+    /// This includes requests in Pending or Approved status that haven't been applied yet.
+    /// </summary>
+    public async Task<List<FormRequest>> GetPendingRequestsByFormDefinitionAsync(int formDefinitionId)
+    {
+        try
+        {
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            
+            // Note: RequestedByName and ApprovedByName columns were removed in migration 015
+            var sql = @"
+                SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
+                       fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedAt, 
+                       fr.ApprovedBy, fr.ApprovedAt, fr.RejectionReason,
+                       fr.Comments, fr.AppliedRecordKey, fr.FailureMessage
+                FROM FormRequests fr
+                WHERE fr.FormDefinitionId = @FormDefinitionId
+                  AND fr.Status IN (@Pending, @Approved)
+                ORDER BY fr.RequestedAt DESC";
+            
+            var rows = await connection.QueryAsync(sql, new 
+            { 
+                FormDefinitionId = formDefinitionId,
+                Pending = (int)RequestStatus.Pending,
+                Approved = (int)RequestStatus.Approved
+            });
+            
+            var requests = new List<FormRequest>();
+            foreach (var row in rows)
+            {
+                var request = new FormRequest
+                {
+                    Id = (int)row.Id,
+                    FormDefinitionId = (int)row.FormDefinitionId,
+                    RequestType = (RequestType)(int)row.RequestType,
+                    Status = (RequestStatus)(int)row.Status,
+                    RequestedBy = (string)row.RequestedBy,
+                    RequestedByName = (string)row.RequestedBy, // Use RequestedBy as fallback since column was dropped
+                    RequestedAt = (DateTime)row.RequestedAt,
+                    ApprovedBy = row.ApprovedBy as string,
+                    ApprovedByName = row.ApprovedBy as string, // Use ApprovedBy as fallback since column was dropped
+                    ApprovedAt = row.ApprovedAt as DateTime?,
+                    RejectionReason = row.RejectionReason as string,
+                    Comments = row.Comments as string,
+                    AppliedRecordKey = row.AppliedRecordKey as string,
+                    FailureMessage = row.FailureMessage as string
+                };
+                
+                // Deserialize field values
+                var fieldValuesJson = row.FieldValuesJson as string;
+                if (!string.IsNullOrEmpty(fieldValuesJson))
+                {
+                    request.FieldValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(fieldValuesJson) 
+                        ?? new Dictionary<string, object?>();
+                }
+                
+                var originalValuesJson = row.OriginalValuesJson as string;
+                if (!string.IsNullOrEmpty(originalValuesJson))
+                {
+                    request.OriginalValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(originalValuesJson) 
+                        ?? new Dictionary<string, object?>();
+                }
+                
+                requests.Add(request);
+            }
+            
+            _logger.LogInformation("Found {Count} pending requests for form definition {FormDefinitionId}", 
+                requests.Count, formDefinitionId);
+            
+            return requests;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting pending requests for form definition {FormDefinitionId}", formDefinitionId);
+            throw;
+        }
+    }
 }

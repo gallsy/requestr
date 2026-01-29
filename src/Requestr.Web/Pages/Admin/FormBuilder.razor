@@ -13,6 +13,7 @@
 @inject IDatabaseService DatabaseService
 @inject IDataService DataService
 @inject IFormPermissionService FormPermissionService
+@inject IFormRequestService FormRequestService
 @inject IWorkflowService WorkflowService
 @inject IWorkflowDesignerService WorkflowDesignerService
 @inject IFormWorkflowConfigurationService FormWorkflowConfigurationService
@@ -42,6 +43,29 @@
         </button>
     </Actions>
 </PageHeader>
+
+@* Schema Drift Warning Banner *@
+@if (!_isLoading && HasSchemaDrift)
+{
+    <div class="alert alert-warning d-flex align-items-start mb-3" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-3 fs-4"></i>
+        <div>
+            <strong>Schema Changes Detected</strong>
+            <p class="mb-2">The database table schema has changed since this form was last updated. Some form fields may no longer match the database.</p>
+            <ul class="mb-2">
+                @if (_staleFields.Any())
+                {
+                    <li><strong>@_staleFields.Count column(s) no longer exist:</strong> @string.Join(", ", _staleFields)</li>
+                }
+                @if (_schemaChangedFields.Any())
+                {
+                    <li><strong>@_schemaChangedFields.Count column(s) have changed metadata:</strong> @string.Join(", ", _schemaChangedFields.Keys)</li>
+                }
+            </ul>
+            <small class="text-muted">Affected fields are highlighted in red in the Form Designer. Please review and update or remove these fields.</small>
+        </div>
+    </div>
+}
 
 <div class="container-fluid">
     @if (_isLoading)
@@ -296,12 +320,30 @@
                                                         @foreach (var field in sectionFields)
                                                         {
                                                             var fieldGridStyle = $"grid-column: {field.GridColumn} / span {field.GridColumnSpan}; grid-row: {field.GridRow};";
-                                                            <div class="field-in-grid @(_draggedField == field ? "dragging" : "")" 
+                                                            var isStale = IsFieldStale(field);
+                                                            var isChanged = IsFieldChanged(field);
+                                                            var driftTooltip = GetFieldDriftTooltip(field);
+                                                            var fieldDriftClass = isStale ? "schema-drift" : (isChanged ? "schema-warning" : "");
+                                                            <div class="field-in-grid @(_draggedField == field ? "dragging" : "") @fieldDriftClass" 
                                                                  style="@fieldGridStyle"
                                                                  draggable="@(_isResizing ? "false" : "true")"
                                                                  @ondragstart="@(e => OnFieldDragStart(e, field))"
                                                                  @ondragend="OnFieldDragEnd"
-                                                                 @onclick="@(e => OnFieldClick(e, field))">
+                                                                 @onclick="@(e => OnFieldClick(e, field))"
+                                                                 title="@driftTooltip">
+                                                                
+                                                                @if (isStale)
+                                                                {
+                                                                    <div class="schema-drift-indicator" title="@driftTooltip">
+                                                                        <i class="bi bi-exclamation-triangle-fill"></i>
+                                                                    </div>
+                                                                }
+                                                                else if (isChanged)
+                                                                {
+                                                                    <div class="schema-warning-indicator" title="@driftTooltip">
+                                                                        <i class="bi bi-info-circle-fill"></i>
+                                                                    </div>
+                                                                }
                                                                 
                                                                 <div class="field-header">
                                                                     <div>
@@ -508,6 +550,86 @@
     ColumnInfo="@GetColumnInfoForField(_selectedField)"
     OnClosed="OnFieldConfigClosed" />
 
+<!-- Affected Requests Warning Modal -->
+<Modal @ref="_affectedRequestsModal" Title="Pending Requests Affected" Size="ModalSize.Large">
+    <BodyTemplate>
+        <div class="alert alert-warning mb-3">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <strong>Warning:</strong> The following fields no longer exist in the database schema, but there are 
+            <strong>@_affectedRequests.Count pending request(s)</strong> for this form that may contain data for these fields.
+        </div>
+        
+        <div class="mb-3">
+            <strong>Stale Fields:</strong>
+            <ul class="mb-0">
+                @foreach (var field in _staleFields)
+                {
+                    <li><code>@field</code></li>
+                }
+            </ul>
+        </div>
+        
+        <div class="mb-3">
+            <strong>Affected Pending Requests:</strong>
+        </div>
+        
+        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+            <table class="table table-sm table-striped">
+                <thead class="table-light sticky-top">
+                    <tr>
+                        <th>ID</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Requested By</th>
+                        <th>Requested At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var request in _affectedRequests)
+                    {
+                        <tr>
+                            <td>@request.Id</td>
+                            <td>
+                                <span class="badge @GetRequestTypeBadgeClass(request.RequestType)">
+                                    @request.RequestType
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge @GetStatusBadgeClass(request.Status)">
+                                    @request.Status
+                                </span>
+                            </td>
+                            <td>@(request.RequestedByName ?? request.RequestedBy)</td>
+                            <td>@request.RequestedAt.ToString("g")</td>
+                            <td>
+                                <a href="/requests/@request.Id" target="_blank" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-box-arrow-up-right"></i> View
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="alert alert-info mt-3 mb-0">
+            <i class="bi bi-info-circle me-2"></i>
+            <strong>Recommendation:</strong> Review these requests before saving. You may want to approve, reject, or 
+            modify them first. If you proceed with saving, the stale fields will be removed from the form definition, 
+            but the pending request data will remain unchanged.
+        </div>
+    </BodyTemplate>
+    <FooterTemplate>
+        <Button Color="ButtonColor.Secondary" @onclick="CloseAffectedRequestsModal">
+            <i class="bi bi-x-lg me-1"></i> Cancel - Review Requests First
+        </Button>
+        <Button Color="ButtonColor.Warning" @onclick="ProceedWithSaveAsync">
+            <i class="bi bi-exclamation-triangle me-1"></i> Proceed with Save Anyway
+        </Button>
+    </FooterTemplate>
+</Modal>
+
 @code {
     [Parameter] public int? FormId { get; set; }
     
@@ -556,6 +678,16 @@
     // Role management fields
     private bool _isAddingRole = false;
     private string _newRoleName = "";
+
+    // Schema drift detection fields
+    private HashSet<string> _staleFields = new(); // Fields that no longer exist in DB schema
+    private Dictionary<string, List<string>> _schemaChangedFields = new(); // Fields with changed metadata (field name -> list of changes)
+    private bool HasSchemaDrift => _staleFields.Any() || _schemaChangedFields.Any();
+
+    // Affected requests modal fields
+    private Modal _affectedRequestsModal = default!;
+    private List<FormRequest> _affectedRequests = new();
+    private bool _proceedWithSaveOverride = false; // Flag to skip the affected requests check when user confirms
 
     // Workflow-related fields
     private List<WorkflowDefinition>? _availableWorkflows = new();
@@ -685,6 +817,12 @@
                     {
                         _tableColumns = await DatabaseService.GetTableColumnsAsync(_selectedConnectionString, _formDefinition.TableName, _formDefinition.Schema);
                         _filteredColumns = _tableColumns.ToList();
+                        
+                        // Backfill SqlDataType for existing fields that have NULL values (legacy data)
+                        BackfillSqlDataTypes();
+                        
+                        // Detect schema drift - compare form fields against current DB schema
+                        DetectSchemaDrift();
                     }
                 }
                 
@@ -1016,6 +1154,12 @@
             _tableColumns = await DatabaseService.GetTableColumnsAsync(_selectedConnectionString, _formDefinition.TableName, _formDefinition.Schema);
             _filteredColumns = _tableColumns.ToList();
             
+            // Backfill SqlDataType for existing fields that have NULL (legacy data)
+            BackfillSqlDataTypes();
+            
+            // Re-detect schema drift when table changes
+            DetectSchemaDrift();
+            
             // Check for primary keys
             try
             {
@@ -1096,6 +1240,252 @@
         await OnTableChangedAsync();
     }
 
+    /// <summary>
+    /// Detects schema drift by comparing form fields against current database schema.
+    /// Populates _staleFields and _schemaChangedFields for UI display.
+    /// Uses SqlDataType (the persisted original SQL type) for data type comparisons when available.
+    /// </summary>
+    private void DetectSchemaDrift()
+    {
+        _staleFields.Clear();
+        _schemaChangedFields.Clear();
+        
+        if (_tableColumns == null || !_tableColumns.Any() || _formDefinition.Fields == null)
+            return;
+        
+        // Build a lookup of current DB columns (case-insensitive)
+        var dbColumnLookup = _tableColumns.ToDictionary(
+            c => c.Name, 
+            c => c, 
+            StringComparer.OrdinalIgnoreCase);
+        
+        foreach (var field in _formDefinition.Fields)
+        {
+            if (!dbColumnLookup.TryGetValue(field.Name, out var dbColumn))
+            {
+                // Field no longer exists in database
+                _staleFields.Add(field.Name);
+                continue;
+            }
+            
+            // Check for metadata changes
+            var changes = new List<string>();
+            
+            // Compare data type if SqlDataType is available (persisted original SQL type)
+            if (!string.IsNullOrEmpty(field.SqlDataType))
+            {
+                var originalType = NormalizeDataType(field.SqlDataType);
+                var currentType = NormalizeDataType(dbColumn.DataType);
+                if (originalType != currentType)
+                {
+                    changes.Add($"Data type changed: {field.SqlDataType} → {dbColumn.DataType}");
+                }
+            }
+            
+            // Compare max length (only for string types where the form field has a non-zero max length)
+            if (IsStringType(dbColumn.DataType) && field.MaxLength > 0 && dbColumn.MaxLength > 0 && field.MaxLength != dbColumn.MaxLength)
+            {
+                changes.Add($"Max length changed: {field.MaxLength} → {dbColumn.MaxLength}");
+            }
+            
+            // Compare nullability - but only flag if DB became more restrictive (nullable -> not nullable)
+            // A field marked as required should stay required, but if DB allows null now, that's usually fine
+            if (field.IsRequired && dbColumn.IsNullable)
+            {
+                // Form says required but DB now allows nulls - this is a mild inconsistency, not an error
+                // changes.Add($"Database now allows NULL but form marks field as required");
+            }
+            else if (!field.IsRequired && !dbColumn.IsNullable && !dbColumn.IsIdentity)
+            {
+                // Form says optional but DB now requires a value - this is a problem
+                changes.Add($"Database column is now NOT NULL but form allows empty values");
+            }
+            
+            if (changes.Any())
+            {
+                _schemaChangedFields[field.Name] = changes;
+            }
+        }
+        
+        if (_staleFields.Any() || _schemaChangedFields.Any())
+        {
+            Logger.LogWarning("Schema drift detected for form {FormId}: {StaleCount} stale fields, {ChangedCount} fields with changes",
+                FormId, _staleFields.Count, _schemaChangedFields.Count);
+        }
+    }
+    
+    /// <summary>
+    /// Backfills SqlDataType for existing form fields that have NULL values (legacy data).
+    /// This is called when the form is loaded and table columns are available.
+    /// The backfilled values will be persisted on the next save.
+    /// </summary>
+    private void BackfillSqlDataTypes()
+    {
+        if (_tableColumns == null || !_tableColumns.Any() || _formDefinition.Fields == null)
+            return;
+        
+        // Build a lookup of current DB columns (case-insensitive)
+        var dbColumnLookup = _tableColumns.ToDictionary(
+            c => c.Name, 
+            c => c, 
+            StringComparer.OrdinalIgnoreCase);
+        
+        var backfilledFields = new List<string>();
+        var skippedFields = new List<string>();
+        var alreadyPopulatedFields = new List<string>();
+        
+        foreach (var field in _formDefinition.Fields)
+        {
+            if (!string.IsNullOrEmpty(field.SqlDataType))
+            {
+                // Already has SqlDataType - no action needed
+                alreadyPopulatedFields.Add($"{field.Name} ({field.SqlDataType})");
+            }
+            else if (dbColumnLookup.TryGetValue(field.Name, out var dbColumn))
+            {
+                // Backfill from current schema
+                field.SqlDataType = dbColumn.DataType;
+                backfilledFields.Add($"{field.Name} → {dbColumn.DataType}");
+            }
+            else
+            {
+                // Column no longer exists - can't backfill
+                skippedFields.Add(field.Name);
+            }
+        }
+        
+        // Log detailed information
+        if (backfilledFields.Any())
+        {
+            Logger.LogInformation("SqlDataType Backfill for Form {FormId} '{FormName}': Backfilled {Count} fields: {Fields}",
+                FormId, _formDefinition.Name, backfilledFields.Count, string.Join(", ", backfilledFields));
+        }
+        
+        if (skippedFields.Any())
+        {
+            Logger.LogWarning("SqlDataType Backfill for Form {FormId} '{FormName}': Skipped {Count} fields (column not found): {Fields}",
+                FormId, _formDefinition.Name, skippedFields.Count, string.Join(", ", skippedFields));
+        }
+        
+        if (alreadyPopulatedFields.Any() && !backfilledFields.Any())
+        {
+            Logger.LogDebug("SqlDataType Backfill for Form {FormId} '{FormName}': All {Count} fields already have SqlDataType populated",
+                FormId, _formDefinition.Name, alreadyPopulatedFields.Count);
+        }
+        
+        if (backfilledFields.Any())
+        {
+            Logger.LogInformation("SqlDataType backfill complete. Save the form to persist these values.");
+        }
+    }
+    
+    /// <summary>
+    /// Resyncs field metadata (SqlDataType, MaxLength) from the current database schema.
+    /// Called before saving to ensure form fields reflect the current database state.
+    /// This clears schema drift warnings for fields that still exist.
+    /// </summary>
+    private void ResyncFieldsFromSchema()
+    {
+        if (_tableColumns == null || !_tableColumns.Any() || _formDefinition.Fields == null)
+            return;
+        
+        // Build a lookup of current DB columns (case-insensitive)
+        var dbColumnLookup = _tableColumns.ToDictionary(
+            c => c.Name, 
+            c => c, 
+            StringComparer.OrdinalIgnoreCase);
+        
+        var resyncedFields = new List<string>();
+        
+        foreach (var field in _formDefinition.Fields)
+        {
+            if (dbColumnLookup.TryGetValue(field.Name, out var dbColumn))
+            {
+                var changes = new List<string>();
+                
+                // Resync SqlDataType if it changed
+                if (field.SqlDataType != dbColumn.DataType)
+                {
+                    changes.Add($"SqlDataType: {field.SqlDataType ?? "NULL"} → {dbColumn.DataType}");
+                    field.SqlDataType = dbColumn.DataType;
+                }
+                
+                // Resync MaxLength for string types if it changed
+                if (IsStringType(dbColumn.DataType) && field.MaxLength != dbColumn.MaxLength)
+                {
+                    changes.Add($"MaxLength: {field.MaxLength} → {dbColumn.MaxLength}");
+                    field.MaxLength = dbColumn.MaxLength;
+                }
+                
+                if (changes.Any())
+                {
+                    resyncedFields.Add($"{field.Name} ({string.Join(", ", changes)})");
+                }
+            }
+            // Note: Fields that no longer exist in the DB are left as-is - admin should manually remove them
+        }
+        
+        if (resyncedFields.Any())
+        {
+            Logger.LogInformation("Schema Resync for Form {FormId} '{FormName}': Updated {Count} fields to match current database schema: {Fields}",
+                FormId, _formDefinition.Name, resyncedFields.Count, string.Join("; ", resyncedFields));
+        }
+    }
+    
+    private string NormalizeDataType(string dataType)
+    {
+        if (string.IsNullOrEmpty(dataType)) return "";
+        
+        // Normalize common SQL Server type aliases
+        return dataType.ToLowerInvariant() switch
+        {
+            "int" or "integer" => "int",
+            "bigint" => "bigint",
+            "smallint" => "smallint",
+            "tinyint" => "tinyint",
+            "bit" or "boolean" => "bit",
+            "decimal" or "numeric" => "decimal",
+            "float" or "double" => "float",
+            "real" => "real",
+            "money" => "money",
+            "smallmoney" => "smallmoney",
+            "varchar" or "nvarchar" or "char" or "nchar" or "text" or "ntext" => "string",
+            "datetime" or "datetime2" or "smalldatetime" => "datetime",
+            "date" => "date",
+            "time" => "time",
+            "datetimeoffset" => "datetimeoffset",
+            "uniqueidentifier" or "guid" => "uniqueidentifier",
+            "varbinary" or "binary" or "image" => "binary",
+            "xml" => "xml",
+            _ => dataType.ToLowerInvariant()
+        };
+    }
+    
+    private bool IsStringType(string dataType)
+    {
+        if (string.IsNullOrEmpty(dataType)) return false;
+        var lower = dataType.ToLowerInvariant();
+        return lower is "varchar" or "nvarchar" or "char" or "nchar" or "text" or "ntext";
+    }
+    
+    private bool IsFieldStale(FormField field) => _staleFields.Contains(field.Name);
+    
+    private bool IsFieldChanged(FormField field) => _schemaChangedFields.ContainsKey(field.Name);
+    
+    private string GetFieldDriftTooltip(FormField field)
+    {
+        if (_staleFields.Contains(field.Name))
+            return "This column no longer exists in the database table";
+        
+        if (_schemaChangedFields.TryGetValue(field.Name, out var changes))
+        {
+            var changeList = string.Join("\n", changes);
+            return $"{changeList}\n\nThis will be automatically updated when you save the form.";
+        }
+        
+        return "";
+    }
+
     private void OnDragStart(ColumnInfo column)
     {
         _draggedColumn = column;
@@ -1148,6 +1538,7 @@
                     DisplayName = _draggedColumn.Name,
                     DataType = defaultControlType,
                     ControlType = defaultControlType,
+                    SqlDataType = _draggedColumn.DataType, // Store the original SQL type for schema drift detection
                     MaxLength = _draggedColumn.MaxLength,
                     IsRequired = !_draggedColumn.IsNullable && !_draggedColumn.IsIdentity,
                     IsReadOnly = _draggedColumn.IsIdentity || _draggedColumn.IsPrimaryKey,
@@ -1158,7 +1549,7 @@
                     TreatBlankAsNull = _draggedColumn.IsNullable && !_draggedColumn.IsIdentity // default ON for eligible nullable columns
                 };
                 
-                // Store the original SQL type for this field
+                // Store the original SQL type for this field (also in local dictionary for backward compatibility)
                 _fieldOriginalSqlTypes[newField.Name] = _draggedColumn.DataType;
                 
                 _formDefinition.Fields.Add(newField);
@@ -1212,6 +1603,26 @@
             }
             
             _formDefinition.DatabaseConnectionName = _selectedConnectionString;
+            
+            // Check for affected pending requests if there are stale fields and this is an existing form
+            // Only check if the user hasn't already confirmed to proceed
+            if (!_proceedWithSaveOverride && _staleFields.Any() && FormId.HasValue)
+            {
+                _affectedRequests = await FormRequestService.GetPendingRequestsByFormDefinitionAsync(FormId.Value);
+                if (_affectedRequests.Any())
+                {
+                    // Show the warning modal instead of saving
+                    await _affectedRequestsModal.ShowAsync();
+                    return;
+                }
+            }
+            
+            // Reset the override flag after use
+            _proceedWithSaveOverride = false;
+            
+            // Resync field metadata from current database schema before saving
+            // This updates SqlDataType and MaxLength to match the current DB state
+            ResyncFieldsFromSchema();
             
             // Set timestamps and user info to prevent SQL DateTime overflow
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
@@ -1834,6 +2245,7 @@
                     DisplayName = _draggedColumn.Name,
                     DataType = defaultControlType,
                     ControlType = defaultControlType,
+                    SqlDataType = _draggedColumn.DataType, // Store the original SQL type for schema drift detection
                     MaxLength = _draggedColumn.MaxLength,
                     IsRequired = !_draggedColumn.IsNullable && !_draggedColumn.IsIdentity,
                     IsReadOnly = _draggedColumn.IsIdentity || _draggedColumn.IsPrimaryKey,
@@ -1848,7 +2260,7 @@
                     TreatBlankAsNull = _draggedColumn.IsNullable && !_draggedColumn.IsIdentity
                 };
                 
-                // Store the original SQL type for this field
+                // Store the original SQL type for this field (also in local dictionary for backward compatibility)
                 _fieldOriginalSqlTypes[newField.Name] = _draggedColumn.DataType;
                 
                 _formDefinition.Fields.Add(newField);
@@ -1917,6 +2329,44 @@
     {
         _selectedField = null;
         StateHasChanged();
+    }
+
+    // Affected Requests Modal Methods
+    private async Task CloseAffectedRequestsModal()
+    {
+        await _affectedRequestsModal.HideAsync();
+        _affectedRequests = new();
+    }
+
+    private async Task ProceedWithSaveAsync()
+    {
+        await _affectedRequestsModal.HideAsync();
+        _proceedWithSaveOverride = true;
+        await SaveForm();
+    }
+
+    private string GetRequestTypeBadgeClass(RequestType requestType)
+    {
+        return requestType switch
+        {
+            RequestType.Insert => "bg-success",
+            RequestType.Update => "bg-primary",
+            RequestType.Delete => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetStatusBadgeClass(RequestStatus status)
+    {
+        return status switch
+        {
+            RequestStatus.Pending => "bg-warning text-dark",
+            RequestStatus.Approved => "bg-info",
+            RequestStatus.Rejected => "bg-danger",
+            RequestStatus.Applied => "bg-success",
+            RequestStatus.Failed => "bg-danger",
+            _ => "bg-secondary"
+        };
     }
 
     private ColumnInfo? GetColumnInfoForField(FormField? field)
@@ -2168,6 +2618,7 @@
             DisplayName = column.Name,
             DataType = defaultControlType,
             ControlType = defaultControlType,
+            SqlDataType = column.DataType, // Store the original SQL type for schema drift detection
             MaxLength = column.MaxLength,
             IsRequired = !column.IsNullable && !column.IsIdentity,
             IsReadOnly = column.IsIdentity || column.IsPrimaryKey,
@@ -2182,7 +2633,7 @@
             TreatBlankAsNull = column.IsNullable && !column.IsIdentity
         };
 
-        // Store the original SQL type for this field
+        // Store the original SQL type for this field (also in local dictionary for backward compatibility)
         _fieldOriginalSqlTypes[newField.Name] = column.DataType;
         
         _formDefinition.Fields.Add(newField);

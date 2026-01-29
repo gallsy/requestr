@@ -20,9 +20,6 @@ public interface IFormPermissionService
     // Check if a role has a specific permission on a form
     Task<bool> HasPermissionAsync(int formDefinitionId, string roleName, FormPermissionType permissionType);
     
-    // Check if a user has a specific permission on a form (checks all their roles)
-    Task<bool> UserHasPermissionAsync(int formDefinitionId, string userId, FormPermissionType permissionType);
-    
     // Grant or revoke permissions
     Task<Result> SetPermissionAsync(int formDefinitionId, string roleName, FormPermissionType permissionType, bool isGranted, string updatedBy);
     

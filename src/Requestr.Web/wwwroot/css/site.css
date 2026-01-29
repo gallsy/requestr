@@ -841,10 +841,85 @@ button.nav-link.active {
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-sm);
     padding: 0.75rem;
+    position: relative;
 }
 
 .field-in-grid:hover {
     border-color: var(--primary);
+}
+
+/* Schema Drift Highlighting - Stale Fields (Red - column no longer exists) */
+.field-in-grid.schema-drift {
+    border-color: var(--danger, #dc3545);
+    border-width: 2px;
+    background: rgba(220, 53, 69, 0.05);
+}
+
+.field-in-grid.schema-drift:hover {
+    border-color: var(--danger, #dc3545);
+    background: rgba(220, 53, 69, 0.1);
+}
+
+.schema-drift-indicator {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 20px;
+    height: 20px;
+    background: var(--danger, #dc3545);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    z-index: 10;
+    cursor: help;
+}
+
+[data-theme="dark"] .field-in-grid.schema-drift {
+    background: rgba(220, 53, 69, 0.15);
+}
+
+[data-theme="dark"] .field-in-grid.schema-drift:hover {
+    background: rgba(220, 53, 69, 0.2);
+}
+
+/* Schema Warning Highlighting - Length/metadata changes (Yellow - auto-fixed on save) */
+.field-in-grid.schema-warning {
+    border-color: var(--warning, #ffc107);
+    border-width: 2px;
+    background: rgba(255, 193, 7, 0.05);
+}
+
+.field-in-grid.schema-warning:hover {
+    border-color: var(--warning, #ffc107);
+    background: rgba(255, 193, 7, 0.1);
+}
+
+.schema-warning-indicator {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 20px;
+    height: 20px;
+    background: var(--warning, #ffc107);
+    color: #212529;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    z-index: 10;
+    cursor: help;
+}
+
+[data-theme="dark"] .field-in-grid.schema-warning {
+    background: rgba(255, 193, 7, 0.15);
+}
+
+[data-theme="dark"] .field-in-grid.schema-warning:hover {
+    background: rgba(255, 193, 7, 0.2);
 }
 
 .field-name {
@@ -1228,6 +1303,7 @@ button.nav-link.active {
 .bulk-item-details {
     background-color: var(--card-bg);
     animation: slideDown 0.2s ease;
+    padding: 1rem;
 }
 
 @keyframes slideDown {

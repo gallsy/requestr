@@ -2,9 +2,11 @@
 @using Requestr.Core.Models
 @using Requestr.Core.Models.DTOs
 @using Requestr.Core.Interfaces
+@using Dapper
 @inject IFormDefinitionService FormDefinitionService
 @inject IBulkFormRequestService BulkFormRequestService
 @inject IDataService DataService
+@inject IConfiguration _configuration
 @inject IToastNotificationService ToastService
 @inject ILogger<BulkUpload> Logger
 @inject NavigationManager Navigation
@@ -188,6 +190,7 @@ else
                                                     <th>@field.DisplayName</th>
                                                 }
                                                 <th width="150">Errors</th>
+                                                <th width="150">Warnings</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -196,7 +199,7 @@ else
                                                 var result = _uploadResult.ValidationResults[i];
                                                 var rowKey = result.RowNumber; // keep selection keyed by spreadsheet row number to avoid index drift
                                                 var isSelected = _selectedRows.Contains(rowKey);
-                                                <tr class="@(result.IsValid ? "" : "table-danger")">
+                                                <tr class="@(result.IsValid ? (result.Warnings.Any() ? "table-warning" : "") : "table-danger")">
                                                     <td>
                                                         @if (result.IsValid)
                                                         {
@@ -228,6 +231,14 @@ else
                                                         {
                                                             <small class="text-danger">
                                                                 @string.Join("; ", result.Errors)
+                                                            </small>
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        @if (result.Warnings.Any())
+                                                        {
+                                                            <small class="text-warning">
+                                                                @string.Join("; ", result.Warnings)
                                                             </small>
                                                         }
                                                     </td>
@@ -347,6 +358,12 @@ else
 
             using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
             _uploadResult = await BulkFormRequestService.ProcessSpreadsheetUploadAsync(FormId, stream, file.Name);
+
+            // Check for duplicate primary key values within the file (for INSERT operations)
+            if (_uploadResult != null && _uploadResult.ValidationResults.Any(v => v.IsValid))
+            {
+                await CheckForDuplicatePrimaryKeysInFile();
+            }
         }
         catch (Exception ex)
         {
@@ -765,6 +782,411 @@ else
     {
         if (string.IsNullOrEmpty(value)) return value;
         return value.Length <= maxLength ? value : value[..maxLength];
+    }
+
+    /// <summary>
+    /// Validates primary keys based on the request type:
+    /// - INSERT with identity PK: Warn if user supplied values (they'll be ignored)
+    /// - INSERT with manual PK: Check for duplicates in file AND existing records in database
+    /// - UPDATE: Check that records exist in database
+    /// </summary>
+    private async Task CheckForDuplicatePrimaryKeysInFile()
+    {
+        if (_formDefinition == null || _uploadResult == null) return;
+
+        try
+        {
+            // Get primary key columns for the table
+            var primaryKeyColumns = await DataService.GetPrimaryKeyColumnsAsync(
+                _formDefinition.DatabaseConnectionName,
+                _formDefinition.TableName,
+                _formDefinition.Schema);
+
+            if (!primaryKeyColumns.Any()) return;
+
+            var identityColumns = await GetIdentityColumnsAsync();
+            var nonIdentityPkColumns = primaryKeyColumns
+                .Where(pk => !identityColumns.Contains(pk, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            // Get valid rows for processing
+            var validRows = _uploadResult.ValidationResults
+                .Where(v => v.IsValid)
+                .ToList();
+
+            if (!validRows.Any()) return;
+
+            if (_selectedRequestType == RequestType.Insert)
+            {
+                await ValidateInsertPrimaryKeys(primaryKeyColumns, identityColumns, nonIdentityPkColumns, validRows);
+            }
+            else if (_selectedRequestType == RequestType.Update || _selectedRequestType == RequestType.Delete)
+            {
+                await ValidateUpdateDeletePrimaryKeys(primaryKeyColumns, validRows);
+            }
+
+            // Update overall validity
+            _uploadResult.IsValid = _uploadResult.InvalidRows == 0 && _uploadResult.ValidRows > 0;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error validating primary keys in bulk upload");
+        }
+    }
+
+    /// <summary>
+    /// Validates INSERT operations:
+    /// - Warns if identity column values are supplied (they'll be ignored)
+    /// - Checks for duplicate PKs within the file
+    /// - Checks for existing PKs in the database
+    /// </summary>
+    private async Task ValidateInsertPrimaryKeys(
+        List<string> primaryKeyColumns,
+        HashSet<string> identityColumns,
+        List<string> nonIdentityPkColumns,
+        List<SpreadsheetRowValidationResult> validRows)
+    {
+        // Check if user supplied values for identity columns (warn - they'll be ignored)
+        var identityPkColumns = primaryKeyColumns
+            .Where(pk => identityColumns.Contains(pk, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        if (identityPkColumns.Any())
+        {
+            foreach (var row in validRows)
+            {
+                var parsedDataCi = new Dictionary<string, object?>(row.ParsedData, StringComparer.OrdinalIgnoreCase);
+                foreach (var identityCol in identityPkColumns)
+                {
+                    if (parsedDataCi.TryGetValue(identityCol, out var value) && value != null && !string.IsNullOrWhiteSpace(value.ToString()))
+                    {
+                        row.Warnings.Add($"Column '{identityCol}' is auto-generated; supplied value '{value}' will be ignored");
+                    }
+                }
+            }
+        }
+
+        // If all PK columns are identity, no further validation needed
+        if (!nonIdentityPkColumns.Any()) return;
+
+        // Build map of composite PK values to row numbers for duplicate detection
+        var pkValueToRows = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+        var rowPkValues = new Dictionary<int, (string CompositeKey, Dictionary<string, object?> PkValues)>();
+
+        foreach (var row in validRows)
+        {
+            var pkValues = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            var allPkColumnsPresent = true;
+            var parsedDataCi = new Dictionary<string, object?>(row.ParsedData, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var pkColumn in nonIdentityPkColumns)
+            {
+                if (parsedDataCi.TryGetValue(pkColumn, out var value) && value != null && !string.IsNullOrWhiteSpace(value.ToString()))
+                {
+                    pkValues[pkColumn] = value;
+                }
+                else
+                {
+                    allPkColumnsPresent = false;
+                    break;
+                }
+            }
+
+            if (!allPkColumnsPresent) continue;
+
+            // Trim values for consistent comparison with database results (handles char column padding)
+            var compositeKey = string.Join("||", nonIdentityPkColumns.Select(col => pkValues[col]?.ToString()?.Trim() ?? ""));
+            rowPkValues[row.RowNumber] = (compositeKey, pkValues);
+
+            if (!pkValueToRows.ContainsKey(compositeKey))
+            {
+                pkValueToRows[compositeKey] = new List<int>();
+            }
+            pkValueToRows[compositeKey].Add(row.RowNumber);
+        }
+
+        // Check for duplicates within the file
+        var duplicates = pkValueToRows.Where(kvp => kvp.Value.Count > 1).ToList();
+        foreach (var duplicate in duplicates)
+        {
+            var rowNumbers = duplicate.Value;
+            var pkDisplay = FormatPkDisplay(nonIdentityPkColumns, duplicate.Key);
+
+            // Mark all but the first occurrence as duplicates
+            foreach (var rowNumber in rowNumbers.Skip(1))
+            {
+                MarkRowInvalid(rowNumber, $"Duplicate primary key in file: {pkDisplay} (same as row {rowNumbers.First()})");
+            }
+        }
+
+        // Check for existing records in database
+        if (rowPkValues.Any())
+        {
+            var existingPks = await CheckExistingPrimaryKeysInDatabase(nonIdentityPkColumns, rowPkValues.Values.Select(v => v.PkValues).ToList());
+            
+            foreach (var rowEntry in rowPkValues)
+            {
+                var rowNumber = rowEntry.Key;
+                var compositeKey = rowEntry.Value.CompositeKey;
+
+                if (existingPks.Contains(compositeKey))
+                {
+                    var pkDisplay = FormatPkDisplay(nonIdentityPkColumns, compositeKey);
+                    MarkRowInvalid(rowNumber, $"Primary key already exists in database: {pkDisplay}");
+                }
+            }
+        }
+
+
+    }
+
+    /// <summary>
+    /// Validates UPDATE/DELETE operations - checks that records exist in database
+    /// </summary>
+    private async Task ValidateUpdateDeletePrimaryKeys(List<string> primaryKeyColumns, List<SpreadsheetRowValidationResult> validRows)
+    {
+        var rowPkValues = new Dictionary<int, (string CompositeKey, Dictionary<string, object?> PkValues)>();
+
+        foreach (var row in validRows)
+        {
+            var pkValues = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            var allPkColumnsPresent = true;
+
+            // Use case-insensitive lookup in ParsedData
+            var parsedDataCaseInsensitive = new Dictionary<string, object?>(row.ParsedData, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var pkColumn in primaryKeyColumns)
+            {
+                if (parsedDataCaseInsensitive.TryGetValue(pkColumn, out var value) && value != null && !string.IsNullOrWhiteSpace(value.ToString()))
+                {
+                    pkValues[pkColumn] = value;
+                }
+                else
+                {
+                    allPkColumnsPresent = false;
+                    MarkRowInvalid(row.RowNumber, $"Missing required primary key column '{pkColumn}' for {_selectedRequestType} operation");
+                    break;
+                }
+            }
+
+            if (!allPkColumnsPresent) continue;
+
+            // Trim values for consistent comparison with database results (handles char column padding)
+            var compositeKey = string.Join("||", primaryKeyColumns.Select(col => pkValues[col]?.ToString()?.Trim() ?? ""));
+            rowPkValues[row.RowNumber] = (compositeKey, pkValues);
+        }
+
+        if (!rowPkValues.Any()) return;
+
+        // Check which records exist in database
+        var existingPks = await CheckExistingPrimaryKeysInDatabase(primaryKeyColumns, rowPkValues.Values.Select(v => v.PkValues).ToList());
+
+        foreach (var rowEntry in rowPkValues)
+        {
+            var rowNumber = rowEntry.Key;
+            var compositeKey = rowEntry.Value.CompositeKey;
+
+            if (!existingPks.Contains(compositeKey))
+            {
+                var pkDisplay = FormatPkDisplay(primaryKeyColumns, compositeKey);
+                MarkRowInvalid(rowNumber, $"Record not found in database: {pkDisplay}");
+            }
+        }
+
+    }
+
+    /// <summary>
+    /// Queries the database to find which of the provided PK values already exist
+    /// Returns a set of composite key strings that exist in the database
+    /// </summary>
+    private async Task<HashSet<string>> CheckExistingPrimaryKeysInDatabase(
+        List<string> pkColumns, 
+        List<Dictionary<string, object?>> pkValuesList)
+    {
+        var existingKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!pkValuesList.Any() || _formDefinition == null) return existingKeys;
+
+        try
+        {
+            var connectionString = GetConnectionString(_formDefinition.DatabaseConnectionName);
+            if (string.IsNullOrEmpty(connectionString)) 
+            {
+                Logger.LogWarning("No connection string found for {DbName}", _formDefinition.DatabaseConnectionName);
+                return existingKeys;
+            }
+
+            using var connection = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
+            await connection.OpenAsync();
+
+            // For single-column PKs, use efficient IN clause
+            if (pkColumns.Count == 1)
+            {
+                var pkColumn = pkColumns[0];
+                
+                // Use case-insensitive lookup for dictionary access
+                var values = pkValuesList
+                    .Select(pv => {
+                        var ciDict = new Dictionary<string, object?>(pv, StringComparer.OrdinalIgnoreCase);
+                        return ciDict.TryGetValue(pkColumn, out var v) ? v?.ToString() : null;
+                    })
+                    .Where(v => !string.IsNullOrEmpty(v))
+                    .Distinct()
+                    .ToList();
+
+                if (!values.Any()) return existingKeys;
+
+                // Use parameterized query with individual parameters for safety
+                var parameters = new DynamicParameters();
+                var paramNames = new List<string>();
+                for (int i = 0; i < values.Count; i++)
+                {
+                    var paramName = $"@p{i}";
+                    paramNames.Add(paramName);
+                    parameters.Add(paramName, values[i]);
+                }
+
+                var sql = $"SELECT [{pkColumn}] FROM [{_formDefinition.Schema}].[{_formDefinition.TableName}] WHERE [{pkColumn}] IN ({string.Join(", ", paramNames)})";
+                var existingValues = await connection.QueryAsync<dynamic>(sql, parameters);
+
+                foreach (var val in existingValues)
+                {
+                    // Handle different data types and trim char columns that may have trailing spaces
+                    string? stringVal = null;
+                    if (val is IDictionary<string, object> dict)
+                    {
+                        stringVal = dict.Values.FirstOrDefault()?.ToString()?.Trim();
+                    }
+                    else
+                    {
+                        stringVal = ((object?)val)?.ToString()?.Trim();
+                    }
+                    
+                    if (!string.IsNullOrEmpty(stringVal))
+                    {
+                        existingKeys.Add(stringVal);
+                    }
+                }
+            }
+            else
+            {
+                // For composite PKs, build individual OR conditions
+                // Batch into groups to avoid query size limits
+                const int batchSize = 100;
+                
+                for (int batch = 0; batch < pkValuesList.Count; batch += batchSize)
+                {
+                    var batchItems = pkValuesList.Skip(batch).Take(batchSize).ToList();
+                    var parameters = new DynamicParameters();
+                    var conditions = new List<string>();
+
+                    for (int i = 0; i < batchItems.Count; i++)
+                    {
+                        var item = batchItems[i];
+                        var conditionParts = new List<string>();
+                        
+                        foreach (var pkCol in pkColumns)
+                        {
+                            var paramName = $"@p{batch + i}_{pkCol.Replace(" ", "_")}";
+                            parameters.Add(paramName, item[pkCol]?.ToString());
+                            conditionParts.Add($"[{pkCol}] = {paramName}");
+                        }
+                        
+                        conditions.Add($"({string.Join(" AND ", conditionParts)})");
+                    }
+
+                    var selectColumns = string.Join(", ", pkColumns.Select(c => $"[{c}]"));
+                    var sql = $"SELECT {selectColumns} FROM [{_formDefinition.Schema}].[{_formDefinition.TableName}] WHERE {string.Join(" OR ", conditions)}";
+                    
+                    var results = await connection.QueryAsync(sql, parameters);
+                    
+                    foreach (var row in results)
+                    {
+                        var dict = (IDictionary<string, object>)row;
+                        // Trim values to handle char column padding
+                        var compositeKey = string.Join("||", pkColumns.Select(col => dict[col]?.ToString()?.Trim() ?? ""));
+                        existingKeys.Add(compositeKey);
+                    }
+                }
+            }
+
+
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error checking existing primary keys in database");
+        }
+
+        return existingKeys;
+    }
+
+    private void MarkRowInvalid(int rowNumber, string errorMessage)
+    {
+        var validationResult = _uploadResult?.ValidationResults.FirstOrDefault(v => v.RowNumber == rowNumber);
+        if (validationResult != null && validationResult.IsValid)
+        {
+            validationResult.IsValid = false;
+            validationResult.Errors.Add(errorMessage);
+            _uploadResult!.ValidRows--;
+            _uploadResult.InvalidRows++;
+        }
+    }
+
+    private static string FormatPkDisplay(List<string> pkColumns, string compositeKey)
+    {
+        var values = compositeKey.Split("||");
+        return string.Join(", ", pkColumns.Zip(values, (col, val) => $"{col}={val}"));
+    }
+
+    private async Task<HashSet<string>> GetIdentityColumnsAsync()
+    {
+        if (_formDefinition == null) return new HashSet<string>();
+
+        try
+        {
+            // Query to get identity columns for the table
+            var connectionString = GetConnectionString(_formDefinition.DatabaseConnectionName);
+            if (string.IsNullOrEmpty(connectionString)) return new HashSet<string>();
+
+            using var connection = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
+            await connection.OpenAsync();
+
+            const string sql = @"
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_NAME = @tableName 
+                    AND TABLE_SCHEMA = @schema
+                    AND COLUMNPROPERTY(OBJECT_ID(TABLE_SCHEMA + '.' + TABLE_NAME), COLUMN_NAME, 'IsIdentity') = 1";
+
+            var identityColumns = await connection.QueryAsync<string>(sql, new 
+            { 
+                tableName = _formDefinition.TableName, 
+                schema = _formDefinition.Schema 
+            });
+
+            return identityColumns.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error getting identity columns for table {TableName}", _formDefinition.TableName);
+            return new HashSet<string>();
+        }
+    }
+
+    /// <summary>
+    /// Gets a connection string by name, checking both ConnectionStrings and DatabaseConnections sections
+    /// </summary>
+    private string? GetConnectionString(string connectionStringName)
+    {
+        // Try to get from ConnectionStrings section first
+        var connectionString = _configuration.GetConnectionString(connectionStringName);
+        if (!string.IsNullOrEmpty(connectionString))
+        {
+            return connectionString;
+        }
+        
+        // Try to get from DatabaseConnections section
+        connectionString = _configuration.GetSection($"DatabaseConnections:{connectionStringName}").Value;
+        return connectionString;
     }
 }
 
