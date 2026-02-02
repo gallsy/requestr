@@ -107,9 +107,8 @@
                                         @if (_emailConfig.Provider == EmailProvider.SMTP)
                                         {
                                             <!-- SMTP Settings -->
-                                            <StandardAlert AlertType="info" 
-                                                           IconName="IconName.InfoCircleFill">
-                                                Configure your SMTP server settings below
+                                            <StandardAlert AlertType="info" Dismissable="false">
+                                                <i class="bi bi-info-circle-fill me-2"></i>Configure your SMTP server settings below
                                             </StandardAlert>
                                             
                                             <div class="row">
@@ -149,9 +148,8 @@
                                         else if (_emailConfig.Provider == EmailProvider.SendGrid)
                                         {
                                             <!-- SendGrid Settings -->
-                                            <StandardAlert AlertType="info" 
-                                                           IconName="IconName.InfoCircleFill">
-                                                Enter your SendGrid API key below. You can find this in your SendGrid dashboard.
+                                            <StandardAlert AlertType="info" Dismissable="false">
+                                                <i class="bi bi-info-circle-fill me-2"></i>Enter your SendGrid API key below. You can find this in your SendGrid dashboard.
                                             </StandardAlert>
                                             
                                             <div class="mb-3">
@@ -414,11 +412,9 @@
     {
         return templateKey switch
         {
-            NewRequestCreated => "New Request Created",
             RequestApproved => "Request Approved", 
             RequestRejected => "Request Rejected",
             WorkflowStepPending => "Workflow Step Pending",
-            FormSubmissionComplete => "Form Submission Complete",
             _ => templateKey
         };
     }

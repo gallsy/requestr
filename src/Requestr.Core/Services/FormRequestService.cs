@@ -1061,6 +1061,9 @@ public class FormRequestService : IFormRequestService
                     "System",
                     "Request applied to target database"
                 );
+
+                // Send notification to the requestor that their request has been applied
+                await SendRequestAppliedNotificationAsync(formRequest, formDefinition);
             }
 
             return success;
@@ -2225,19 +2228,89 @@ public class FormRequestService : IFormRequestService
             // Send notifications
             foreach (var email in notificationEmails)
             {
-                await _notificationService.SendNotificationAsync(
-                    NewRequestCreated, 
-                    variables, 
-                    email);
-                    
-                _logger.LogInformation("Sent new request notification for request {RequestId} to {Email}", 
-                    formRequest.Id, email);
+                // Note: We no longer send notifications on new request creation
+                // Notifications are only sent for workflow step pending and final status
+                _logger.LogDebug("Skipping new request notification for request {RequestId} - not enabled", 
+                    formRequest.Id);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error sending new request notification for request {RequestId}", formRequest.Id);
             // Don't throw - notification failures shouldn't break the request creation
+        }
+    }
+    
+    private async Task SendRequestAppliedNotificationAsync(FormRequest formRequest, FormDefinition formDefinition)
+    {
+        try
+        {
+            // Get the requestor's email from the Users table
+            string? requestorEmail = null;
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                
+                // Try to find user by their ID (RequestedBy might be a GUID or email)
+                var sql = @"SELECT Email FROM Users WHERE Id = @UserId OR Email = @UserId";
+                requestorEmail = await connection.QueryFirstOrDefaultAsync<string>(sql, new { UserId = formRequest.RequestedBy });
+            }
+            
+            if (string.IsNullOrEmpty(requestorEmail))
+            {
+                // If we can't find the user, try using RequestedBy directly as email
+                if (formRequest.RequestedBy?.Contains("@") == true)
+                {
+                    requestorEmail = formRequest.RequestedBy;
+                }
+                else
+                {
+                    _logger.LogWarning("Could not determine email for requestor {RequestedBy} for request {RequestId}", 
+                        formRequest.RequestedBy, formRequest.Id);
+                    return;
+                }
+            }
+            
+            // Get base URL from configuration
+            var baseUrl = _configuration["Branding:BaseUrl"] ?? "http://localhost:8080";
+            var systemName = _configuration["Branding:ApplicationName"] ?? "Requestr";
+            
+            // Build notification variables
+            var variables = new Dictionary<string, string>
+            {
+                { "{{RequestId}}", formRequest.Id.ToString() },
+                { "{{FormName}}", formDefinition.Name },
+                { "{{RequestType}}", formRequest.RequestType.ToString() },
+                { "{{RequestorName}}", formRequest.RequestedByName ?? formRequest.RequestedBy },
+                { "{{RequestCreatedDate}}", formRequest.RequestedAt.ToString("yyyy-MM-dd HH:mm:ss") },
+                { "{{AppliedDate}}", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") },
+                { "{{RequestComments}}", formRequest.Comments ?? "" },
+                { "{{RequestUrl}}", $"{baseUrl}/admin/requests/details/{formRequest.Id}" },
+                { "{{SystemName}}", systemName }
+            };
+            
+            // Add field values to variables for display in the email
+            if (formRequest.FieldValues != null)
+            {
+                foreach (var field in formRequest.FieldValues)
+                {
+                    variables[$"{{{{Field_{field.Key}}}}}"] = field.Value?.ToString() ?? "";
+                }
+            }
+            
+            // Send notification to the requestor
+            await _notificationService.SendNotificationAsync(
+                RequestApproved, 
+                variables, 
+                requestorEmail);
+                
+            _logger.LogInformation("Sent request approved notification for request {RequestId} to {Email}", 
+                formRequest.Id, requestorEmail);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending request applied notification for request {RequestId}", formRequest.Id);
+            // Don't throw - notification failures shouldn't break the request application
         }
     }
     

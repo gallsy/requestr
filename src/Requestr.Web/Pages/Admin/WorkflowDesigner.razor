@@ -820,30 +820,28 @@
         }
     }
 
-    private async Task AddRoleToStep()
+    private void AddRoleToStep()
     {
         if (selectedStep == null || string.IsNullOrWhiteSpace(newRoleName)) return;
 
         if (!selectedStep.AssignedRoles.Contains(newRoleName))
         {
             selectedStep.AssignedRoles.Add(newRoleName);
-            await UpdateSelectedStep();
         }
 
         newRoleName = string.Empty;
         StateHasChanged();
     }
 
-    private async Task RemoveRoleFromStep(string roleName)
+    private void RemoveRoleFromStep(string roleName)
     {
         if (selectedStep == null) return;
 
         selectedStep.AssignedRoles.Remove(roleName);
-        await UpdateSelectedStep();
         StateHasChanged();
     }
 
-    private async Task AddBranchCondition()
+    private void AddBranchCondition()
     {
         if (selectedStep?.Configuration.BranchConditions == null)
             selectedStep!.Configuration.BranchConditions = new List<BranchCondition>();
@@ -857,31 +855,15 @@
             Description = ""
         });
         
-        await UpdateSelectedStep();
         StateHasChanged();
     }
 
-    private async Task RemoveBranchCondition(BranchCondition condition)
+    private void RemoveBranchCondition(BranchCondition condition)
     {
         if (selectedStep?.Configuration.BranchConditions == null) return;
 
         selectedStep.Configuration.BranchConditions.Remove(condition);
-        await UpdateSelectedStep();
         StateHasChanged();
-    }
-
-    private async Task UpdateSelectedStep()
-    {
-        if (selectedStep == null) return;
-
-        try
-        {
-            await WorkflowDesignerService.UpdateStepAsync(selectedStep.Id, selectedStep);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error updating step");
-        }
     }
 
     private async Task ValidateWorkflow()
