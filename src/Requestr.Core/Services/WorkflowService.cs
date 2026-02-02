@@ -3054,12 +3054,15 @@ public class WorkflowService : IWorkflowService
                 SELECT fr.*, fd.Name as FormName, fd.NotificationEmail as FormNotificationEmail,
                        ws.NotificationEmail as StepNotificationEmail,
                        fr.BulkFormRequestId,
-                       COALESCE(bfr.Comments, fr.Comments) as EffectiveComments
+                       COALESCE(bfr.Comments, fr.Comments) as EffectiveComments,
+                       COALESCE(uRequestor.Email, fr.RequestedBy) as RequestorEmail,
+                       COALESCE(uRequestor.DisplayName, fr.RequestedBy) as RequestedByName
                 FROM FormRequests fr
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
                 INNER JOIN WorkflowInstances wi ON fr.WorkflowInstanceId = wi.Id
                 INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId AND ws.StepId = @StepId
                 LEFT JOIN BulkFormRequests bfr ON fr.BulkFormRequestId = bfr.Id
+                LEFT JOIN Users uRequestor ON uRequestor.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
                 WHERE fr.Id = @FormRequestId";
 
             using var connection = new SqlConnection(_connectionString);
@@ -3110,7 +3113,7 @@ public class WorkflowService : IWorkflowService
                     return;
 
                 case WorkflowStepAction.Rejected:
-                    // Send rejection notification to the requestor
+                    // Send rejection notification to the requestor only
                     templateKey = RequestRejected;
                     if (!string.IsNullOrEmpty(formRequestData.RequestorEmail?.ToString()))
                         notificationEmails.Add(formRequestData.RequestorEmail.ToString());
@@ -3122,27 +3125,14 @@ public class WorkflowService : IWorkflowService
                     return;
             }
 
-            // Add step-specific notification email if configured
-            if (!string.IsNullOrEmpty(formRequestData.StepNotificationEmail?.ToString()))
-            {
-                var stepEmail = formRequestData.StepNotificationEmail.ToString();
-                notificationEmails.Add(stepEmail);
-                _logger.LogInformation("Adding step-specific notification email for step {StepId}: {Email}", 
-                    stepId, (string)stepEmail);
-            }
-            else
-            {
-                _logger.LogDebug("No step-specific notification email configured for step {StepId}", stepId);
-            }
+            // Note: Step notification emails are only used for "pending action" notifications,
+            // not for approval/rejection status notifications which go only to the requestor
 
             // Log notification summary
             if (!notificationEmails.Any())
             {
-                string formEmail = formRequestData.FormNotificationEmail?.ToString() ?? "(null)";
-                string stepEmail2 = formRequestData.StepNotificationEmail?.ToString() ?? "(null)";
-                _logger.LogInformation("No notification recipients configured for request {RequestId}, step {StepId}, action {Action}. " +
-                    "FormNotificationEmail: '{FormEmail}', StepNotificationEmail: '{StepEmail}'",
-                    formRequestId, stepId, action, formEmail, stepEmail2);
+                _logger.LogWarning("No requestor email found for request {RequestId}, step {StepId}, action {Action}. Cannot send notification.",
+                    formRequestId, stepId, action);
                 return;
             }
 
