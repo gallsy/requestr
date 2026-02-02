@@ -2710,6 +2710,8 @@ public class WorkflowService : IWorkflowService
 
     private async Task ApplyWorkflowDataChangesAsync(int workflowInstanceId, string completedBy)
     {
+        int formRequestId = 0;
+        
         try
         {
             _logger.LogInformation("Starting background data application for workflow instance {WorkflowInstanceId}", workflowInstanceId);
@@ -2732,7 +2734,7 @@ public class WorkflowService : IWorkflowService
                 return;
             }
             
-            int formRequestId = workflowData.FormRequestId;
+            formRequestId = workflowData.FormRequestId;
             int currentStatus = workflowData.Status;
             int? bulkFormRequestId = workflowData.BulkFormRequestId;
 
@@ -2787,6 +2789,34 @@ public class WorkflowService : IWorkflowService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in background data application for workflow instance {WorkflowInstanceId}", workflowInstanceId);
+            
+            // Update request status to Failed so it doesn't stay stuck in Approved
+            if (formRequestId > 0)
+            {
+                try
+                {
+                    using var failConnection = new SqlConnection(_connectionString);
+                    await failConnection.OpenAsync();
+                    const string updateFailedSql = @"
+                        UPDATE FormRequests 
+                        SET Status = @Status, FailureMessage = @FailureMessage 
+                        WHERE Id = @Id AND Status = @ApprovedStatus";
+                        
+                    await failConnection.ExecuteAsync(updateFailedSql, new 
+                    { 
+                        Id = formRequestId, 
+                        Status = (int)RequestStatus.Failed,
+                        ApprovedStatus = (int)RequestStatus.Approved,
+                        FailureMessage = $"Background data application failed: {ex.Message}"
+                    });
+                    
+                    _logger.LogWarning("Updated form request {FormRequestId} status to Failed after background application error", formRequestId);
+                }
+                catch (Exception updateEx)
+                {
+                    _logger.LogError(updateEx, "Failed to update status to Failed for form request {FormRequestId}", formRequestId);
+                }
+            }
         }
     }
 
@@ -3022,11 +3052,14 @@ public class WorkflowService : IWorkflowService
             // Get form request details and step notification email for notification
             const string formRequestSql = @"
                 SELECT fr.*, fd.Name as FormName, fd.NotificationEmail as FormNotificationEmail,
-                       ws.NotificationEmail as StepNotificationEmail
+                       ws.NotificationEmail as StepNotificationEmail,
+                       fr.BulkFormRequestId,
+                       COALESCE(bfr.Comments, fr.Comments) as EffectiveComments
                 FROM FormRequests fr
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
                 INNER JOIN WorkflowInstances wi ON fr.WorkflowInstanceId = wi.Id
                 INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId AND ws.StepId = @StepId
+                LEFT JOIN BulkFormRequests bfr ON fr.BulkFormRequestId = bfr.Id
                 WHERE fr.Id = @FormRequestId";
 
             using var connection = new SqlConnection(_connectionString);
@@ -3038,21 +3071,27 @@ public class WorkflowService : IWorkflowService
                 return;
             }
 
+            // Determine the correct URL - bulk requests should link to the bulk request page
+            int? bulkFormRequestId = formRequestData.BulkFormRequestId;
+            string requestUrl = bulkFormRequestId.HasValue 
+                ? $"/bulk-requests/{bulkFormRequestId.Value}" 
+                : $"/requests/{formRequestId}";
+
             // Build notification variables
             var variables = new Dictionary<string, string>
             {
-                { "{{RequestId}}", formRequestId.ToString() },
+                { "{{RequestId}}", bulkFormRequestId?.ToString() ?? formRequestId.ToString() },
                 { "{{FormName}}", formRequestData.FormName?.ToString() ?? "Unknown Form" },
                 { "{{WorkflowStepName}}", stepName },
                 { "{{Action}}", action.ToString() },
                 { "{{ApproverName}}", userName },
                 { "{{ApproverEmail}}", userId },
-                { "{{RequestComments}}", formRequestData.Comments?.ToString() ?? "" },
+                { "{{RequestComments}}", formRequestData.EffectiveComments?.ToString() ?? "" },
                 { "{{ApproverComments}}", comments ?? "" },
                 { "{{RequestCreatedDate}}", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") },
                 { "{{CreatingUser}}", formRequestData.RequestedByName?.ToString() ?? formRequestData.RequestedBy?.ToString() ?? "" },
                 { "{{CreatingUserEmail}}", formRequestData.RequestedBy?.ToString() ?? "" },
-                { "{{RequestUrl}}", $"/admin/requests/details/{formRequestId}" },
+                { "{{RequestUrl}}", requestUrl },
                 { "{{SystemUrl}}", "" },
                 { "{{SystemName}}", "Requestr" }
             };
@@ -3133,14 +3172,16 @@ public class WorkflowService : IWorkflowService
             // Get form request details and the last approval step information for notification
             // The last approval step has the actual approver details (not "System" from End step auto-completion)
             const string formRequestSql = @"
-                SELECT fr.*, fd.Name as FormName,
+                SELECT fr.*, fr.BulkFormRequestId, fd.Name as FormName,
                        COALESCE(uRequestor.Email, fr.RequestedBy) as RequestorEmail,
                        COALESCE(uRequestor.DisplayName, fr.RequestedBy) as RequestedByName,
                        lastApproval.CompletedBy as LastApproverUserId,
                        lastApproval.Comments as LastApprovalComments,
-                       COALESCE(uApprover.DisplayName, lastApproval.CompletedBy, @CompletedBy) as ApproverName
+                       COALESCE(uApprover.DisplayName, lastApproval.CompletedBy, @CompletedBy) as ApproverName,
+                       COALESCE(bfr.Comments, fr.Comments) as EffectiveComments
                 FROM FormRequests fr
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+                LEFT JOIN BulkFormRequests bfr ON fr.BulkFormRequestId = bfr.Id
                 LEFT JOIN Users uRequestor ON uRequestor.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
                 -- Get the last completed approval step (not Start/End auto-completions)
                 LEFT JOIN (
@@ -3173,20 +3214,31 @@ public class WorkflowService : IWorkflowService
             // Use the last approval step's comments if available, otherwise use passed comments
             string approverComments = formRequestData.LastApprovalComments?.ToString() ?? comments ?? "";
 
+            // Build request URL - use bulk request URL if this is part of a bulk request
+            int? bulkFormRequestId = formRequestData.BulkFormRequestId as int?;
+            string requestUrl = bulkFormRequestId.HasValue 
+                ? $"{baseUrl}/bulk-requests/{bulkFormRequestId.Value}"
+                : $"{baseUrl}/requests/{formRequestId}";
+            
+            // Use bulk request ID for {{RequestId}} if this is a bulk request
+            string requestIdForVariable = bulkFormRequestId.HasValue 
+                ? bulkFormRequestId.Value.ToString() 
+                : formRequestId.ToString();
+
             // Build notification variables
             var variables = new Dictionary<string, string>
             {
-                { "{{RequestId}}", formRequestId.ToString() },
+                { "{{RequestId}}", requestIdForVariable },
                 { "{{FormName}}", formRequestData.FormName?.ToString() ?? "Unknown Form" },
                 { "{{RequestDescription}}", formRequestData.RequestType?.ToString() ?? "Request" },
                 { "{{ApproverName}}", formRequestData.ApproverName?.ToString() ?? completedBy },
                 { "{{ApproverEmail}}", formRequestData.LastApproverUserId?.ToString() ?? completedBy },
                 { "{{ApproverComments}}", approverComments },
-                { "{{RequestComments}}", formRequestData.Comments?.ToString() ?? "" },
+                { "{{RequestComments}}", formRequestData.EffectiveComments?.ToString() ?? "" },
                 { "{{RequestCreatedDate}}", formRequestData.RequestedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") },
                 { "{{CreatingUser}}", formRequestData.RequestedByName?.ToString() ?? formRequestData.RequestedBy?.ToString() ?? "" },
                 { "{{CreatingUserEmail}}", formRequestData.RequestorEmail?.ToString() ?? "" },
-                { "{{RequestUrl}}", $"{baseUrl}/requests/{formRequestId}" },
+                { "{{RequestUrl}}", requestUrl },
                 { "{{SystemUrl}}", baseUrl },
                 { "{{SystemName}}", "Requestr" }
             };
@@ -3226,10 +3278,11 @@ public class WorkflowService : IWorkflowService
                 SELECT 
                     wi.Id as WorkflowInstanceId,
                     wi.FormRequestId,
+                    fr.BulkFormRequestId,
                     fd.Name as FormName,
                     wd.Name as WorkflowName,
                     fr.RequestType,
-                    fr.Comments as RequestComments,
+                    COALESCE(bfr.Comments, fr.Comments) as RequestComments,
                     fr.RequestedAt,
                     COALESCE(uReq.Email, fr.RequestedBy) as RequestorEmail,
                     COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName,
@@ -3241,6 +3294,7 @@ public class WorkflowService : IWorkflowService
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
                 INNER JOIN WorkflowDefinitions wd ON wi.WorkflowDefinitionId = wd.Id
                 INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wd.Id AND ws.StepId = @StepId
+                LEFT JOIN BulkFormRequests bfr ON fr.BulkFormRequestId = bfr.Id
                 LEFT JOIN Users uReq ON uReq.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
                 WHERE wi.Id = @WorkflowInstanceId";
 
@@ -3259,10 +3313,21 @@ public class WorkflowService : IWorkflowService
             // Get base URL from configuration
             var baseUrl = _configuration["AppBranding:BaseUrl"] ?? "http://localhost:8080";
 
+            // Build request URL - use bulk request URL if this is part of a bulk request
+            int? bulkFormRequestId = stepData.BulkFormRequestId as int?;
+            string requestUrl = bulkFormRequestId.HasValue 
+                ? $"{baseUrl}/bulk-requests/{bulkFormRequestId.Value}"
+                : $"{baseUrl}/workflow/{workflowInstanceId}/step/{stepId}";
+            
+            // Use bulk request ID for {{RequestId}} if this is a bulk request
+            string requestIdForVariable = bulkFormRequestId.HasValue 
+                ? bulkFormRequestId.Value.ToString() 
+                : stepData.FormRequestId.ToString();
+
             // Prepare notification variables - using the correct template placeholders
             var variables = new Dictionary<string, string>
             {
-                { "{{RequestId}}", stepData.FormRequestId.ToString() },
+                { "{{RequestId}}", requestIdForVariable },
                 { "{{FormName}}", (stepData.FormName ?? "Form Request").ToString() },
                 { "{{WorkflowName}}", (stepData.WorkflowName ?? "Workflow").ToString() },
                 { "{{WorkflowStepName}}", (stepData.StepName ?? stepId).ToString() },
@@ -3271,7 +3336,7 @@ public class WorkflowService : IWorkflowService
                 { "{{CreatingUser}}", (stepData.RequestedByName ?? "Unknown").ToString() },
                 { "{{CreatingUserEmail}}", (stepData.RequestorEmail ?? "").ToString() },
                 { "{{RequestCreatedDate}}", stepData.RequestedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") },
-                { "{{RequestUrl}}", $"{baseUrl}/workflow/{workflowInstanceId}/step/{stepId}" },
+                { "{{RequestUrl}}", requestUrl },
                 { "{{SystemName}}", "Requestr" },
                 { "{{AssignedUserName}}", "" },
                 { "{{AssignedUserEmail}}", "" },

@@ -329,13 +329,8 @@ public class FormRequestService : IFormRequestService
             }
             else
             {
-                // No workflow - auto-approve and apply if needed
-                if (formRequest.Status == RequestStatus.Approved)
-                {
-                    // Auto-apply approved requests without workflows
-                    // Note: This would be done outside the transaction in a real implementation
-                    _logger.LogInformation("Form request {RequestId} auto-approved (no workflow)", id);
-                }
+                // No workflow - request is auto-approved, will apply data after transaction commits
+                _logger.LogInformation("Form request {RequestId} auto-approved (no workflow), will apply data changes", id);
             }
             
             // Record the creation in history
@@ -363,6 +358,31 @@ public class FormRequestService : IFormRequestService
             
             // Send new request notification after successful commit
             await SendNewRequestNotificationAsync(formRequest);
+            
+            // For requests without workflows, apply data changes immediately after commit
+            if (workflowDefinition == null && formRequest.Status == RequestStatus.Approved)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(100); // Small delay to ensure transaction is fully committed
+                        var success = await ApplyFormRequestAsync(formRequest.Id);
+                        if (success)
+                        {
+                            _logger.LogInformation("Successfully applied form request {RequestId} (no workflow)", formRequest.Id);
+                        }
+                        else
+                        {
+                            _logger.LogError("Failed to apply form request {RequestId} (no workflow)", formRequest.Id);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error applying form request {RequestId} (no workflow)", formRequest.Id);
+                    }
+                });
+            }
             
             return formRequest;
         }
@@ -1065,12 +1085,59 @@ public class FormRequestService : IFormRequestService
                 // Send notification to the requestor that their request has been applied
                 await SendRequestAppliedNotificationAsync(formRequest, formDefinition);
             }
+            else
+            {
+                // Data operation returned false - update status to Failed
+                _logger.LogWarning("Data operation returned false for form request {Id}, updating status to Failed", id);
+                
+                using var connection = new SqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                var sql = "UPDATE FormRequests SET Status = @Status, FailureMessage = @FailureMessage WHERE Id = @Id";
+                await connection.ExecuteAsync(sql, new 
+                { 
+                    Id = id, 
+                    Status = (int)RequestStatus.Failed,
+                    FailureMessage = "Data operation failed - check target database constraints and permissions"
+                });
+
+                // Record the failure in history
+                await RecordChangeAsync(
+                    id,
+                    FormRequestChangeType.Failed,
+                    new Dictionary<string, object?> { { "Status", "Approved" } },
+                    new Dictionary<string, object?> { { "Status", "Failed" } },
+                    "System",
+                    "System",
+                    "Request failed to apply to target database"
+                );
+            }
 
             return success;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error applying form request {Id}", id);
+            
+            // Update status to Failed on exception
+            try
+            {
+                using var connection = new SqlConnection(_connectionString);
+                await connection.OpenAsync();
+                var sql = "UPDATE FormRequests SET Status = @Status, FailureMessage = @FailureMessage WHERE Id = @Id AND Status = @ApprovedStatus";
+                await connection.ExecuteAsync(sql, new 
+                { 
+                    Id = id, 
+                    Status = (int)RequestStatus.Failed,
+                    ApprovedStatus = (int)RequestStatus.Approved,
+                    FailureMessage = $"Error applying request: {ex.Message}"
+                });
+            }
+            catch (Exception updateEx)
+            {
+                _logger.LogError(updateEx, "Failed to update status to Failed for form request {Id}", id);
+            }
+            
             throw;
         }
     }
