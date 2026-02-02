@@ -6,7 +6,7 @@
 @inject IFormDefinitionService FormDefinitionService
 @inject IBulkFormRequestService BulkFormRequestService
 @inject IDataService DataService
-@inject IConfiguration _configuration
+@inject IConnectionStringResolver ConnectionStringResolver
 @inject IToastNotificationService ToastService
 @inject ILogger<BulkUpload> Logger
 @inject NavigationManager Navigation
@@ -1008,7 +1008,7 @@ else
 
         try
         {
-            var connectionString = GetConnectionString(_formDefinition.DatabaseConnectionName);
+            var connectionString = ConnectionStringResolver.GetConnectionString(_formDefinition.DatabaseConnectionName);
             if (string.IsNullOrEmpty(connectionString)) 
             {
                 Logger.LogWarning("No connection string found for {DbName}", _formDefinition.DatabaseConnectionName);
@@ -1144,7 +1144,7 @@ else
         try
         {
             // Query to get identity columns for the table
-            var connectionString = GetConnectionString(_formDefinition.DatabaseConnectionName);
+            var connectionString = ConnectionStringResolver.GetConnectionString(_formDefinition.DatabaseConnectionName);
             if (string.IsNullOrEmpty(connectionString)) return new HashSet<string>();
 
             using var connection = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
@@ -1170,23 +1170,6 @@ else
             Logger.LogWarning(ex, "Error getting identity columns for table {TableName}", _formDefinition.TableName);
             return new HashSet<string>();
         }
-    }
-
-    /// <summary>
-    /// Gets a connection string by name, checking both ConnectionStrings and DatabaseConnections sections
-    /// </summary>
-    private string? GetConnectionString(string connectionStringName)
-    {
-        // Try to get from ConnectionStrings section first
-        var connectionString = _configuration.GetConnectionString(connectionStringName);
-        if (!string.IsNullOrEmpty(connectionString))
-        {
-            return connectionString;
-        }
-        
-        // Try to get from DatabaseConnections section
-        connectionString = _configuration.GetSection($"DatabaseConnections:{connectionStringName}").Value;
-        return connectionString;
     }
 }
 

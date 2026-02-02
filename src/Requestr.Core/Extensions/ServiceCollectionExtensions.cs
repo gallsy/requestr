@@ -8,6 +8,9 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddRequestrCore(this IServiceCollection services)
     {
+        // Configuration Services
+        services.AddScoped<IConnectionStringResolver, ConnectionStringResolver>();
+        
         // Data Services
         services.AddScoped<IDatabaseService, DatabaseService>();
         services.AddScoped<IDataService, DataService>();
