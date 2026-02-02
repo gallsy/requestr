@@ -27,7 +27,7 @@ public class ConnectionStringResolver : IConnectionStringResolver
         }
         
         // Try to get from DatabaseConnections section
-        connectionString = _configuration.GetSection($"DatabaseConnections:{connectionStringName}").Value;
+        connectionString = _configuration[$"DatabaseConnections:{connectionStringName}"];
         return connectionString;
     }
 
