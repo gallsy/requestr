@@ -167,6 +167,9 @@ public class WorkflowDesignerService : IWorkflowDesignerService
 
     public async Task<WorkflowStep> UpdateStepAsync(int stepId, WorkflowStep stepData)
     {
+        _logger.LogInformation("UpdateStepAsync called: stepId={StepId}, Name={Name}, NotificationEmail={Email}", 
+            stepId, stepData.Name, stepData.NotificationEmail ?? "(null)");
+        
         using var connection = new SqlConnection(_connectionString);
 
         const string sql = @"
@@ -176,7 +179,7 @@ public class WorkflowDesignerService : IWorkflowDesignerService
                 NotificationEmail = @NotificationEmail
             WHERE Id = @Id";
 
-        await connection.ExecuteAsync(sql, new
+        var rowsAffected = await connection.ExecuteAsync(sql, new
         {
             stepData.Name,
             stepData.Description,
@@ -189,7 +192,7 @@ public class WorkflowDesignerService : IWorkflowDesignerService
             Id = stepId
         });
 
-        _logger.LogInformation("Updated step {StepId}", stepId);
+        _logger.LogInformation("Updated step {StepId}, rows affected: {RowsAffected}", stepId, rowsAffected);
 
         return stepData;
     }

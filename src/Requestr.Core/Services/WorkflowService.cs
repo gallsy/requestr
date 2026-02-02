@@ -185,6 +185,13 @@ public class WorkflowService : IWorkflowService
             var steps = stepsDb.Select(s => s.ToDomainModel()).ToList();
             var fieldConfigurations = fieldConfigurationsDb.Select(f => f.ToDomainModel()).ToList();
 
+            // Log step details including NotificationEmail
+            foreach (var step in steps)
+            {
+                _logger.LogInformation("Loaded step {StepId} ({StepName}): NotificationEmail={Email}", 
+                    step.StepId, step.Name, step.NotificationEmail ?? "(null)");
+            }
+
             // Map relationships
             workflowDefinition.Steps = steps;
             workflowDefinition.Transitions = transitions.ToList();
@@ -1266,9 +1273,9 @@ public class WorkflowService : IWorkflowService
     private async Task InsertWorkflowStepAsync(SqlConnection connection, SqlTransaction transaction, WorkflowStep step)
     {
         const string sql = @"
-            INSERT INTO WorkflowSteps (WorkflowDefinitionId, StepId, StepType, Name, Description, AssignedRoles, PositionX, PositionY, Configuration, IsRequired, CreatedAt)
+            INSERT INTO WorkflowSteps (WorkflowDefinitionId, StepId, StepType, Name, Description, AssignedRoles, PositionX, PositionY, Configuration, IsRequired, NotificationEmail, CreatedAt)
             OUTPUT INSERTED.Id
-            VALUES (@WorkflowDefinitionId, @StepId, @StepType, @Name, @Description, @AssignedRoles, @PositionX, @PositionY, @Configuration, @IsRequired, @CreatedAt)";
+            VALUES (@WorkflowDefinitionId, @StepId, @StepType, @Name, @Description, @AssignedRoles, @PositionX, @PositionY, @Configuration, @IsRequired, @NotificationEmail, @CreatedAt)";
 
         var stepId = await connection.QuerySingleAsync<int>(sql, new
         {
@@ -1282,6 +1289,7 @@ public class WorkflowService : IWorkflowService
             step.PositionY,
             Configuration = JsonSerializer.Serialize(step.Configuration),
             step.IsRequired,
+            step.NotificationEmail,
             CreatedAt = DateTime.UtcNow
         }, transaction);
 
@@ -1495,6 +1503,20 @@ public class WorkflowService : IWorkflowService
             _logger.LogInformation("Updating FormRequest status to Approved for workflow {WorkflowInstanceId}", workflowInstanceId);
             // Update request status to approved within the transaction
             await UpdateFormRequestToApprovedAsync(connection, transaction, workflowInstanceId, completedBy);
+            
+            // Send REQUEST_APPROVED notification to the requestor
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(100); // Small delay to ensure transaction is committed
+                    await SendWorkflowCompletedNotificationAsync(workflowInstance.FormRequestId, completedBy, true, null);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to send approval notification for workflow {WorkflowInstanceId}", workflowInstanceId);
+                }
+            });
             
             // Start data application in background after transaction commit
             _ = Task.Run(async () =>
@@ -3025,7 +3047,8 @@ public class WorkflowService : IWorkflowService
                 { "{{Action}}", action.ToString() },
                 { "{{ApproverName}}", userName },
                 { "{{ApproverEmail}}", userId },
-                { "{{RequestComments}}", comments ?? "" },
+                { "{{RequestComments}}", formRequestData.Comments?.ToString() ?? "" },
+                { "{{ApproverComments}}", comments ?? "" },
                 { "{{RequestCreatedDate}}", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") },
                 { "{{CreatingUser}}", formRequestData.RequestedByName?.ToString() ?? formRequestData.RequestedBy?.ToString() ?? "" },
                 { "{{CreatingUserEmail}}", formRequestData.RequestedBy?.ToString() ?? "" },
@@ -3035,31 +3058,29 @@ public class WorkflowService : IWorkflowService
             };
 
             // Determine template key and notification recipients based on action
-            string templateKey;
+            // Note: We only send final status notifications (approved/rejected) to the requestor
+            // Individual step notifications have been simplified out
+            string? templateKey = null;
             var notificationEmails = new List<string>();
 
             switch (action)
             {
                 case WorkflowStepAction.Approved:
-                    templateKey = WorkflowStepApproved;
-                    // Notify form admin
-                    if (!string.IsNullOrEmpty(formRequestData.FormNotificationEmail?.ToString()))
-                        notificationEmails.Add(formRequestData.FormNotificationEmail.ToString());
-                    break;
+                    // We'll send REQUEST_APPROVED when workflow completes, not per-step
+                    _logger.LogDebug("Skipping step approved notification - final approval handled separately");
+                    return;
 
                 case WorkflowStepAction.Rejected:
-                    templateKey = WorkflowStepRejected;
-                    // Notify form admin
-                    if (!string.IsNullOrEmpty(formRequestData.FormNotificationEmail?.ToString()))
-                        notificationEmails.Add(formRequestData.FormNotificationEmail.ToString());
+                    // Send rejection notification to the requestor
+                    templateKey = RequestRejected;
+                    if (!string.IsNullOrEmpty(formRequestData.RequestorEmail?.ToString()))
+                        notificationEmails.Add(formRequestData.RequestorEmail.ToString());
                     break;
 
                 default:
-                    templateKey = WorkflowStepCompleted;
-                    // Notify form admin only for other actions
-                    if (!string.IsNullOrEmpty(formRequestData.FormNotificationEmail?.ToString()))
-                        notificationEmails.Add(formRequestData.FormNotificationEmail.ToString());
-                    break;
+                    // No notification for other step actions
+                    _logger.LogDebug("Skipping step completed notification - simplified notification model");
+                    return;
             }
 
             // Add step-specific notification email if configured
@@ -3069,6 +3090,21 @@ public class WorkflowService : IWorkflowService
                 notificationEmails.Add(stepEmail);
                 _logger.LogInformation("Adding step-specific notification email for step {StepId}: {Email}", 
                     stepId, (string)stepEmail);
+            }
+            else
+            {
+                _logger.LogDebug("No step-specific notification email configured for step {StepId}", stepId);
+            }
+
+            // Log notification summary
+            if (!notificationEmails.Any())
+            {
+                string formEmail = formRequestData.FormNotificationEmail?.ToString() ?? "(null)";
+                string stepEmail2 = formRequestData.StepNotificationEmail?.ToString() ?? "(null)";
+                _logger.LogInformation("No notification recipients configured for request {RequestId}, step {StepId}, action {Action}. " +
+                    "FormNotificationEmail: '{FormEmail}', StepNotificationEmail: '{StepEmail}'",
+                    formRequestId, stepId, action, formEmail, stepEmail2);
+                return;
             }
 
             // Send notifications
@@ -3088,26 +3124,123 @@ public class WorkflowService : IWorkflowService
     }
 
     /// <summary>
+    /// Sends notification when a workflow is completed (approved or rejected)
+    /// </summary>
+    private async Task SendWorkflowCompletedNotificationAsync(int formRequestId, string completedBy, bool wasApproved, string? comments)
+    {
+        try
+        {
+            // Get form request details and the last approval step information for notification
+            // The last approval step has the actual approver details (not "System" from End step auto-completion)
+            const string formRequestSql = @"
+                SELECT fr.*, fd.Name as FormName,
+                       COALESCE(uRequestor.Email, fr.RequestedBy) as RequestorEmail,
+                       COALESCE(uRequestor.DisplayName, fr.RequestedBy) as RequestedByName,
+                       lastApproval.CompletedBy as LastApproverUserId,
+                       lastApproval.Comments as LastApprovalComments,
+                       COALESCE(uApprover.DisplayName, lastApproval.CompletedBy, @CompletedBy) as ApproverName
+                FROM FormRequests fr
+                INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+                LEFT JOIN Users uRequestor ON uRequestor.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
+                -- Get the last completed approval step (not Start/End auto-completions)
+                LEFT JOIN (
+                    SELECT wsi.WorkflowInstanceId, wsi.CompletedBy, wsi.Comments
+                    FROM WorkflowStepInstances wsi
+                    INNER JOIN WorkflowSteps ws ON ws.StepId = wsi.StepId 
+                        AND ws.WorkflowDefinitionId = (SELECT WorkflowDefinitionId FROM WorkflowInstances WHERE FormRequestId = @FormRequestId)
+                    WHERE wsi.WorkflowInstanceId = (SELECT WorkflowInstanceId FROM FormRequests WHERE Id = @FormRequestId)
+                      AND ws.StepType = 2 -- Approval step type
+                      AND wsi.Status = 2 -- Completed
+                      AND wsi.Action = 1 -- Approved action
+                    ORDER BY wsi.CompletedAt DESC
+                    OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY
+                ) lastApproval ON 1=1
+                LEFT JOIN Users uApprover ON uApprover.UserObjectId = TRY_CONVERT(uniqueidentifier, lastApproval.CompletedBy)
+                WHERE fr.Id = @FormRequestId";
+
+            using var connection = new SqlConnection(_connectionString);
+            var formRequestData = await connection.QueryFirstOrDefaultAsync(formRequestSql, new { FormRequestId = formRequestId, CompletedBy = completedBy });
+            
+            if (formRequestData == null)
+            {
+                _logger.LogWarning("Could not find form request {FormRequestId} for workflow completed notification", formRequestId);
+                return;
+            }
+
+            // Get base URL from configuration
+            var baseUrl = _configuration["AppBranding:BaseUrl"] ?? "http://localhost:8080";
+
+            // Use the last approval step's comments if available, otherwise use passed comments
+            string approverComments = formRequestData.LastApprovalComments?.ToString() ?? comments ?? "";
+
+            // Build notification variables
+            var variables = new Dictionary<string, string>
+            {
+                { "{{RequestId}}", formRequestId.ToString() },
+                { "{{FormName}}", formRequestData.FormName?.ToString() ?? "Unknown Form" },
+                { "{{RequestDescription}}", formRequestData.RequestType?.ToString() ?? "Request" },
+                { "{{ApproverName}}", formRequestData.ApproverName?.ToString() ?? completedBy },
+                { "{{ApproverEmail}}", formRequestData.LastApproverUserId?.ToString() ?? completedBy },
+                { "{{ApproverComments}}", approverComments },
+                { "{{RequestComments}}", formRequestData.Comments?.ToString() ?? "" },
+                { "{{RequestCreatedDate}}", formRequestData.RequestedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") },
+                { "{{CreatingUser}}", formRequestData.RequestedByName?.ToString() ?? formRequestData.RequestedBy?.ToString() ?? "" },
+                { "{{CreatingUserEmail}}", formRequestData.RequestorEmail?.ToString() ?? "" },
+                { "{{RequestUrl}}", $"{baseUrl}/requests/{formRequestId}" },
+                { "{{SystemUrl}}", baseUrl },
+                { "{{SystemName}}", "Requestr" }
+            };
+
+            // Determine template key based on approval status
+            var templateKey = wasApproved ? RequestApproved : RequestRejected;
+
+            // Send to requestor
+            string? requestorEmail = formRequestData.RequestorEmail?.ToString();
+            if (!string.IsNullOrEmpty(requestorEmail))
+            {
+                await _notificationService.SendNotificationAsync(templateKey, variables, requestorEmail);
+                _logger.LogInformation("Sent workflow {Status} notification for request {RequestId} to requestor {Email}", 
+                    wasApproved ? "approved" : "rejected", formRequestId, requestorEmail);
+            }
+            else
+            {
+                _logger.LogWarning("No requestor email found for form request {FormRequestId}, cannot send workflow completed notification", formRequestId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending workflow completed notification for request {RequestId}", formRequestId);
+            // Don't throw - notification failures shouldn't break the workflow
+        }
+    }
+
+    /// <summary>
     /// Sends notification when a workflow step becomes active (requires action)
     /// </summary>
     private async Task SendStepBecomesActiveNotificationAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId, string stepId)
     {
         try
         {
-            // Get workflow and form request data
+            // Get workflow and form request data including workflow name
             const string sql = @"
                 SELECT 
                     wi.Id as WorkflowInstanceId,
                     wi.FormRequestId,
-                    fd.Name as FormTitle,
+                    fd.Name as FormName,
+                    wd.Name as WorkflowName,
+                    fr.RequestType,
+                    fr.Comments as RequestComments,
+                    fr.RequestedAt,
                     COALESCE(uReq.Email, fr.RequestedBy) as RequestorEmail,
                     COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName,
                     ws.Name as StepName,
+                    ws.Description as StepDescription,
                     ws.NotificationEmail as StepNotificationEmail
                 FROM WorkflowInstances wi
                 INNER JOIN FormRequests fr ON wi.FormRequestId = fr.Id
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
-                INNER JOIN WorkflowSteps ws ON ws.StepId = @StepId
+                INNER JOIN WorkflowDefinitions wd ON wi.WorkflowDefinitionId = wd.Id
+                INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wd.Id AND ws.StepId = @StepId
                 LEFT JOIN Users uReq ON uReq.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
                 WHERE wi.Id = @WorkflowInstanceId";
 
@@ -3123,38 +3256,56 @@ public class WorkflowService : IWorkflowService
                 return;
             }
 
-            // Prepare notification variables
-            var reqEmail = (stepData.RequestorEmail ?? "").ToString();
-            if (string.IsNullOrWhiteSpace(reqEmail) || !reqEmail.Contains("@"))
-            {
-                // fall back to requested by name if email not available
-                reqEmail = (stepData.RequestedByName ?? stepData.RequestorEmail ?? "Unknown").ToString();
-            }
+            // Get base URL from configuration
+            var baseUrl = _configuration["AppBranding:BaseUrl"] ?? "http://localhost:8080";
 
+            // Prepare notification variables - using the correct template placeholders
             var variables = new Dictionary<string, string>
             {
-                ["FormTitle"] = (stepData.FormTitle ?? "Form Request").ToString(),
-                ["StepName"] = (stepData.StepName ?? stepId).ToString(),
-                ["FormRequestId"] = stepData.FormRequestId.ToString(),
-                ["RequestorEmail"] = reqEmail
+                { "{{RequestId}}", stepData.FormRequestId.ToString() },
+                { "{{FormName}}", (stepData.FormName ?? "Form Request").ToString() },
+                { "{{WorkflowName}}", (stepData.WorkflowName ?? "Workflow").ToString() },
+                { "{{WorkflowStepName}}", (stepData.StepName ?? stepId).ToString() },
+                { "{{RequestDescription}}", (stepData.RequestType?.ToString() ?? "Request") },
+                { "{{RequestComments}}", (stepData.RequestComments ?? "").ToString() },
+                { "{{CreatingUser}}", (stepData.RequestedByName ?? "Unknown").ToString() },
+                { "{{CreatingUserEmail}}", (stepData.RequestorEmail ?? "").ToString() },
+                { "{{RequestCreatedDate}}", stepData.RequestedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") },
+                { "{{RequestUrl}}", $"{baseUrl}/workflow/{workflowInstanceId}/step/{stepId}" },
+                { "{{SystemName}}", "Requestr" },
+                { "{{AssignedUserName}}", "" },
+                { "{{AssignedUserEmail}}", "" },
+                { "{{DueDate}}", "" }
             };
 
             var notificationEmails = new List<string>();
 
             // Add step-specific notification email if configured
-            if (!string.IsNullOrWhiteSpace((string)stepData.StepNotificationEmail))
+            if (!string.IsNullOrWhiteSpace((string?)stepData.StepNotificationEmail))
             {
                 notificationEmails.Add((string)stepData.StepNotificationEmail);
                 _logger.LogInformation("Adding step-specific notification email for step {StepId}: {Email}", 
                     stepId, (string)stepData.StepNotificationEmail);
             }
+            else
+            {
+                _logger.LogDebug("No step-specific notification email configured for step {StepId} becoming active", stepId);
+            }
 
-            // Send notifications for step becoming active
-            const string templateKey = "step-requires-action";
+            // Log if no recipients configured
+            if (!notificationEmails.Any())
+            {
+                _logger.LogInformation("No notification recipients configured for step {StepId} becoming active. " +
+                    "StepNotificationEmail: '{StepEmail}'",
+                    stepId, (string?)stepData.StepNotificationEmail ?? "(null)");
+                return;
+            }
+
+            // Send notifications for step becoming active using the correct template key
             foreach (var email in notificationEmails.Distinct())
             {
-                await _notificationService.SendNotificationAsync(templateKey, variables, email);
-                _logger.LogInformation("Sent step requires action notification for request {RequestId}, step {StepId} to {Email}", 
+                await _notificationService.SendNotificationAsync(WorkflowStepPending, variables, email);
+                _logger.LogInformation("Sent workflow step pending notification for request {RequestId}, step {StepId} to {Email}", 
                     (int)stepData.FormRequestId, stepId, email);
             }
         }

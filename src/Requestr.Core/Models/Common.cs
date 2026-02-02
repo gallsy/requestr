@@ -108,14 +108,9 @@ public class NotificationVariable
 
 public static class NotificationTemplateKeys
 {
-    public const string NewRequestCreated = "NEW_REQUEST_CREATED";
     public const string RequestApproved = "REQUEST_APPROVED";
     public const string RequestRejected = "REQUEST_REJECTED";
     public const string WorkflowStepPending = "WORKFLOW_STEP_PENDING";
-    public const string WorkflowStepApproved = "WORKFLOW_STEP_APPROVED";
-    public const string WorkflowStepRejected = "WORKFLOW_STEP_REJECTED";
-    public const string WorkflowStepCompleted = "WORKFLOW_STEP_COMPLETED";
-    public const string FormSubmissionComplete = "FORM_SUBMISSION_COMPLETE";
 }
 
 public static class NotificationVariables
@@ -138,6 +133,7 @@ public static class NotificationVariables
         new() { Key = "{{CreatingUserEmail}}", DisplayName = "Creating User Email", Description = "Email of the user who created the request", Category = "User" },
         new() { Key = "{{ApproverName}}", DisplayName = "Approver Name", Description = "Name of the approver", Category = "User" },
         new() { Key = "{{ApproverEmail}}", DisplayName = "Approver Email", Description = "Email of the approver", Category = "User" },
+        new() { Key = "{{ApproverComments}}", DisplayName = "Approver Comments", Description = "Comments provided by the approver when approving or rejecting", Category = "User" },
         
         // Workflow Variables
         new() { Key = "{{WorkflowStepName}}", DisplayName = "Workflow Step Name", Description = "Name of the current workflow step", Category = "Workflow" },

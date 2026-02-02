@@ -444,240 +444,13 @@ public class NotificationTemplateService : INotificationTemplateService
     {
         var defaultTemplates = new List<NotificationTemplate>
         {
-            new()
-            {
-                Name = "New Request Created",
-                TemplateKey = NotificationTemplateKeys.NewRequestCreated,
-                Subject = "New Request Submitted: {{FormName}} - {{RequestId}}",
-                Body = @"
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset='utf-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-    <title>New Request Created</title>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background-color: #f8f9fa; }
-        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
-        .header { background: linear-gradient(135deg, #0d6efd, #0056b3); color: white; padding: 30px 20px; text-align: center; }
-        .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
-        .content { padding: 30px 20px; }
-        .info-grid { display: grid; gap: 15px; margin: 20px 0; }
-        .info-item { background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #0d6efd; }
-        .info-label { font-weight: 600; color: #495057; font-size: 14px; margin-bottom: 5px; }
-        .info-value { color: #212529; font-size: 16px; }
-        .action-button { display: inline-block; background: #0d6efd; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500; margin: 20px 0; }
-        .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #6c757d; font-size: 14px; border-top: 1px solid #dee2e6; }
-        .status-badge { display: inline-block; background: #28a745; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; }
-    </style>
-</head>
-<body>
-    <div class='container'>
-        <div class='header'>
-            <h1>🆕 New Request Submitted</h1>
-            <p style='margin: 10px 0 0 0; opacity: 0.9;'>A new request requires your attention</p>
-        </div>
-        <div class='content'>
-            <div class='info-grid'>
-                <div class='info-item'>
-                    <div class='info-label'>📋 Form Name</div>
-                    <div class='info-value'>{{FormName}}</div>
-                </div>
-                <div class='info-item'>
-                    <div class='info-label'>🔢 Request ID</div>
-                    <div class='info-value'>{{RequestId}}</div>
-                </div>
-                <div class='info-item'>
-                    <div class='info-label'>📝 Description</div>
-                    <div class='info-value'>{{RequestDescription}}</div>
-                </div>
-                <div class='info-item'>
-                    <div class='info-label'>👤 Requested by</div>
-                    <div class='info-value'>{{CreatingUser}} ({{CreatingUserEmail}})</div>
-                </div>
-                <div class='info-item'>
-                    <div class='info-label'>💬 Comments</div>
-                    <div class='info-value'>{{RequestComments}}</div>
-                </div>
-                <div class='info-item'>
-                    <div class='info-label'>📅 Created Date</div>
-                    <div class='info-value'>{{RequestCreatedDate}}</div>
-                </div>
-            </div>
-            <div style='text-align: center;'>
-                <a href='{{RequestUrl}}' class='action-button'>🔍 View Request Details</a>
-            </div>
-        </div>
-        <div class='footer'>
-            <p>This is an automated notification from the Requestr system.<br>
-            Please do not reply to this email.</p>
-        </div>
-    </div>
-</body>
-</html>",
-                IsEnabled = true
-            },
-            new()
-            {
-                Name = "Request Approved",
-                TemplateKey = NotificationTemplateKeys.RequestApproved,
-                Subject = "✅ Request Approved: {{FormName}} - {{RequestId}}",
-                Body = @"
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset='utf-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-    <title>Request Approved</title>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background-color: #f8f9fa; }
-        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
-        .header { background: linear-gradient(135deg, #28a745, #1e7e34); color: white; padding: 30px 20px; text-align: center; }
-        .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
-        .content { padding: 30px 20px; }
-        .success-banner { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 6px; margin-bottom: 20px; text-align: center; font-weight: 500; }
-        .info-grid { display: grid; gap: 15px; margin: 20px 0; }
-        .info-item { background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #28a745; }
-        .info-label { font-weight: 600; color: #495057; font-size: 14px; margin-bottom: 5px; }
-        .info-value { color: #212529; font-size: 16px; }
-        .action-button { display: inline-block; background: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500; margin: 20px 0; }
-        .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #6c757d; font-size: 14px; border-top: 1px solid #dee2e6; }
-    </style>
-</head>
-<body>
-    <div class='container'>
-        <div class='header'>
-            <h1>✅ Request Approved</h1>
-            <p style='margin: 10px 0 0 0; opacity: 0.9;'>Your request has been approved</p>
-        </div>
-        <div class='content'>
-            <div class='success-banner'>
-                🎉 Great news! Your request has been approved and will be processed.
-            </div>
-            <div class='info-grid'>
-                <div class='info-item'>
-                    <div class='info-label'>📋 Form Name</div>
-                    <div class='info-value'>{{FormName}}</div>
-                </div>
-                <div class='info-item'>
-                    <div class='info-label'>🔢 Request ID</div>
-                    <div class='info-value'>{{RequestId}}</div>
-                </div>
-                <div class='info-item'>
-                    <div class='info-label'>📝 Description</div>
-                    <div class='info-value'>{{RequestDescription}}</div>
-                </div>
-                <div class='info-item'>
-                    <div class='info-label'>👨‍💼 Approved by</div>
-                    <div class='info-value'>{{ApproverName}} ({{ApproverEmail}})</div>
-                </div>
-                <div class='info-item'>
-                    <div class='info-label'>📅 Approval Date</div>
-                    <div class='info-value'>{{ApprovalDate}}</div>
-                </div>
-            </div>
-            <div style='text-align: center;'>
-                <a href='{{RequestUrl}}' class='action-button'>📋 View Request Details</a>
-            </div>
-            <div style='background: #e7f3ff; border: 1px solid #b8daff; color: #004085; padding: 15px; border-radius: 6px; margin-top: 20px;'>
-                <strong>Next Steps:</strong> Your approved request will now be processed according to the defined workflow. You will receive updates as the request progresses.
-            </div>
-        </div>
-        <div class='footer'>
-            <p>This is an automated notification from the Requestr system.<br>
-            Please do not reply to this email.</p>
-        </div>
-    </div>
-</body>
-</html>",
-                IsEnabled = true
-            },
-            new()
-            {
-                Name = "Request Rejected",
-                TemplateKey = NotificationTemplateKeys.RequestRejected,
-                Subject = "❌ Request Rejected: {{FormName}} - {{RequestId}}",
-                Body = @"
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset='utf-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-    <title>Request Rejected</title>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background-color: #f8f9fa; }
-        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
-        .header { background: linear-gradient(135deg, #dc3545, #c82333); color: white; padding: 30px 20px; text-align: center; }
-        .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
-        .content { padding: 30px 20px; }
-        .rejection-banner { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 15px; border-radius: 6px; margin-bottom: 20px; text-align: center; font-weight: 500; }
-        .info-grid { display: grid; gap: 15px; margin: 20px 0; }
-        .info-item { background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #dc3545; }
-        .info-label { font-weight: 600; color: #495057; font-size: 14px; margin-bottom: 5px; }
-        .info-value { color: #212529; font-size: 16px; }
-        .action-button { display: inline-block; background: #dc3545; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500; margin: 20px 0; }
-        .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #6c757d; font-size: 14px; border-top: 1px solid #dee2e6; }
-    </style>
-</head>
-<body>
-    <div class='container'>
-        <div class='header'>
-            <h1>❌ Request Rejected</h1>
-            <p style='margin: 10px 0 0 0; opacity: 0.9;'>Your request has been rejected</p>
-        </div>
-        <div class='content'>
-            <div class='rejection-banner'>
-                Unfortunately, your request has been rejected. Please review the details below.
-            </div>
-            <div class='info-grid'>
-                <div class='info-item'>
-                    <div class='info-label'>📋 Form Name</div>
-                    <div class='info-value'>{{FormName}}</div>
-                </div>
-                <div class='info-item'>
-                    <div class='info-label'>🔢 Request ID</div>
-                    <div class='info-value'>{{RequestId}}</div>
-                </div>
-                <div class='info-item'>
-                    <div class='info-label'>📝 Description</div>
-                    <div class='info-value'>{{RequestDescription}}</div>
-                </div>
-                <div class='info-item'>
-                    <div class='info-label'>👨‍💼 Rejected by</div>
-                    <div class='info-value'>{{ApproverName}} ({{ApproverEmail}})</div>
-                </div>
-                <div class='info-item'>
-                    <div class='info-label'>💬 Rejection Reason</div>
-                    <div class='info-value'>{{RejectionReason}}</div>
-                </div>
-                <div class='info-item'>
-                    <div class='info-label'>📅 Rejection Date</div>
-                    <div class='info-value'>{{RejectionDate}}</div>
-                </div>
-            </div>
-            <div style='text-align: center;'>
-                <a href='{{RequestUrl}}' class='action-button'>📋 View Request Details</a>
-            </div>
-            <div style='background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 6px; margin-top: 20px;'>
-                <strong>Next Steps:</strong> You may review the rejection reason and consider submitting a revised request if appropriate. If you have questions about this decision, please contact your administrator.
-            </div>
-        </div>
-        <div class='footer'>
-            <p>This is an automated notification from the Requestr system.<br>
-            Please do not reply to this email.</p>
-        </div>
-    </div>
-</body>
-</html>",
-                IsEnabled = true
-            },
+            // WORKFLOW_STEP_PENDING - Orange theme (sent to approvers)
             new()
             {
                 Name = "Workflow Step Pending",
                 TemplateKey = NotificationTemplateKeys.WorkflowStepPending,
-                Subject = "⏳ Action Required: {{WorkflowStepName}} - {{RequestId}}",
-                Body = @"
-<!DOCTYPE html>
+                Subject = "Action Required: {{WorkflowStepName}} - Request {{RequestId}}",
+                Body = @"<!DOCTYPE html>
 <html>
 <head>
     <meta charset='utf-8'>
@@ -688,6 +461,7 @@ public class NotificationTemplateService : INotificationTemplateService
         .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
         .header { background: linear-gradient(135deg, #fd7e14, #e55a00); color: white; padding: 30px 20px; text-align: center; }
         .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+        .header p { margin: 10px 0 0 0; opacity: 0.9; }
         .content { padding: 30px 20px; }
         .urgent-banner { background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 6px; margin-bottom: 20px; text-align: center; font-weight: 500; }
         .info-grid { display: grid; gap: 15px; margin: 20px 0; }
@@ -702,53 +476,191 @@ public class NotificationTemplateService : INotificationTemplateService
 <body>
     <div class='container'>
         <div class='header'>
-            <h1>⏳ Action Required</h1>
-            <p style='margin: 10px 0 0 0; opacity: 0.9;'>A workflow step needs your attention</p>
+            <h1>Action Required</h1>
+            <p>A workflow step needs your attention</p>
         </div>
         <div class='content'>
             <div class='urgent-banner'>
-                ⚡ This workflow step requires your immediate attention to keep the request moving forward.
+                This workflow step requires your attention to keep the request moving forward.
             </div>
             <div class='info-grid'>
                 <div class='info-item'>
-                    <div class='info-label'>🔄 Workflow Name</div>
+                    <div class='info-label'>Workflow</div>
                     <div class='info-value'>{{WorkflowName}}</div>
                 </div>
                 <div class='info-item'>
-                    <div class='info-label'>📍 Current Step</div>
+                    <div class='info-label'>Current Step</div>
                     <div class='info-value'>{{WorkflowStepName}} <span class='priority-badge'>PENDING</span></div>
                 </div>
                 <div class='info-item'>
-                    <div class='info-label'>🔢 Request ID</div>
+                    <div class='info-label'>Request ID</div>
                     <div class='info-value'>{{RequestId}}</div>
                 </div>
                 <div class='info-item'>
-                    <div class='info-label'>📋 Form Name</div>
+                    <div class='info-label'>Form Name</div>
                     <div class='info-value'>{{FormName}}</div>
                 </div>
                 <div class='info-item'>
-                    <div class='info-label'>📝 Description</div>
+                    <div class='info-label'>Request Type</div>
                     <div class='info-value'>{{RequestDescription}}</div>
                 </div>
                 <div class='info-item'>
-                    <div class='info-label'>👤 Assigned To</div>
-                    <div class='info-value'>{{AssignedUserName}} ({{AssignedUserEmail}})</div>
-                </div>
-                <div class='info-item'>
-                    <div class='info-label'>📅 Due Date</div>
-                    <div class='info-value'>{{DueDate}}</div>
+                    <div class='info-label'>Requested by</div>
+                    <div class='info-value'>{{CreatingUser}} ({{CreatingUserEmail}})</div>
                 </div>
             </div>
             <div style='text-align: center;'>
-                <a href='{{RequestUrl}}' class='action-button'>🚀 Take Action Now</a>
+                <a href='{{RequestUrl}}' class='action-button'>Take Action Now</a>
             </div>
             <div style='background: #e7f3ff; border: 1px solid #b8daff; color: #004085; padding: 15px; border-radius: 6px; margin-top: 20px;'>
-                <strong>What's Next:</strong> Please review the request details and take the appropriate action to move this workflow step forward. Other team members may be waiting on your decision.
+                <strong>What's Next:</strong> Please review the request details and take the appropriate action to move this workflow forward.
             </div>
         </div>
         <div class='footer'>
-            <p>This is an automated notification from the Requestr system.<br>
-            Please do not reply to this email.</p>
+            <p>This is an automated notification from {{SystemName}}.<br>Please do not reply to this email.</p>
+        </div>
+    </div>
+</body>
+</html>",
+                IsEnabled = true
+            },
+            // REQUEST_APPROVED - Green theme (sent to requestor when workflow completes successfully)
+            new()
+            {
+                Name = "Request Approved",
+                TemplateKey = NotificationTemplateKeys.RequestApproved,
+                Subject = "Request Approved: {{FormName}} - {{RequestId}}",
+                Body = @"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>Request Approved</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background-color: #f8f9fa; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #28a745, #1e7e34); color: white; padding: 30px 20px; text-align: center; }
+        .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+        .header p { margin: 10px 0 0 0; opacity: 0.9; }
+        .content { padding: 30px 20px; }
+        .success-banner { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 6px; margin-bottom: 20px; text-align: center; font-weight: 500; }
+        .info-grid { display: grid; gap: 15px; margin: 20px 0; }
+        .info-item { background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #28a745; }
+        .info-label { font-weight: 600; color: #495057; font-size: 14px; margin-bottom: 5px; }
+        .info-value { color: #212529; font-size: 16px; }
+        .action-button { display: inline-block; background: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500; margin: 20px 0; }
+        .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #6c757d; font-size: 14px; border-top: 1px solid #dee2e6; }
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h1>Request Approved</h1>
+            <p>Your request has been approved</p>
+        </div>
+        <div class='content'>
+            <div class='success-banner'>
+                Great news! Your request has been approved and the changes have been applied.
+            </div>
+            <div class='info-grid'>
+                <div class='info-item'>
+                    <div class='info-label'>Form Name</div>
+                    <div class='info-value'>{{FormName}}</div>
+                </div>
+                <div class='info-item'>
+                    <div class='info-label'>Request ID</div>
+                    <div class='info-value'>{{RequestId}}</div>
+                </div>
+                <div class='info-item'>
+                    <div class='info-label'>Request Type</div>
+                    <div class='info-value'>{{RequestDescription}}</div>
+                </div>
+                <div class='info-item'>
+                    <div class='info-label'>Approved by</div>
+                    <div class='info-value'>{{ApproverName}} ({{ApproverEmail}})</div>
+                </div>
+            </div>
+            <div style='text-align: center;'>
+                <a href='{{RequestUrl}}' class='action-button'>View Request Details</a>
+            </div>
+        </div>
+        <div class='footer'>
+            <p>This is an automated notification from {{SystemName}}.<br>Please do not reply to this email.</p>
+        </div>
+    </div>
+</body>
+</html>",
+                IsEnabled = true
+            },
+            // REQUEST_REJECTED - Red theme (sent to requestor if the request is rejected)
+            new()
+            {
+                Name = "Request Rejected",
+                TemplateKey = NotificationTemplateKeys.RequestRejected,
+                Subject = "Request Rejected: {{FormName}} - {{RequestId}}",
+                Body = @"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>Request Rejected</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background-color: #f8f9fa; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #dc3545, #c82333); color: white; padding: 30px 20px; text-align: center; }
+        .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+        .header p { margin: 10px 0 0 0; opacity: 0.9; }
+        .content { padding: 30px 20px; }
+        .rejection-banner { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 15px; border-radius: 6px; margin-bottom: 20px; text-align: center; font-weight: 500; }
+        .info-grid { display: grid; gap: 15px; margin: 20px 0; }
+        .info-item { background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #dc3545; }
+        .info-label { font-weight: 600; color: #495057; font-size: 14px; margin-bottom: 5px; }
+        .info-value { color: #212529; font-size: 16px; }
+        .action-button { display: inline-block; background: #dc3545; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500; margin: 20px 0; }
+        .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #6c757d; font-size: 14px; border-top: 1px solid #dee2e6; }
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h1>Request Rejected</h1>
+            <p>Your request has been rejected</p>
+        </div>
+        <div class='content'>
+            <div class='rejection-banner'>
+                Unfortunately, your request has been rejected. Please review the details below.
+            </div>
+            <div class='info-grid'>
+                <div class='info-item'>
+                    <div class='info-label'>Form Name</div>
+                    <div class='info-value'>{{FormName}}</div>
+                </div>
+                <div class='info-item'>
+                    <div class='info-label'>Request ID</div>
+                    <div class='info-value'>{{RequestId}}</div>
+                </div>
+                <div class='info-item'>
+                    <div class='info-label'>Request Type</div>
+                    <div class='info-value'>{{RequestDescription}}</div>
+                </div>
+                <div class='info-item'>
+                    <div class='info-label'>Rejected by</div>
+                    <div class='info-value'>{{ApproverName}} ({{ApproverEmail}})</div>
+                </div>
+                <div class='info-item'>
+                    <div class='info-label'>Rejection Reason</div>
+                    <div class='info-value'>{{RejectionReason}}</div>
+                </div>
+            </div>
+            <div style='text-align: center;'>
+                <a href='{{RequestUrl}}' class='action-button'>View Request Details</a>
+            </div>
+            <div style='background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 6px; margin-top: 20px;'>
+                <strong>Next Steps:</strong> You may review the rejection reason and consider submitting a revised request if appropriate.
+            </div>
+        </div>
+        <div class='footer'>
+            <p>This is an automated notification from {{SystemName}}.<br>Please do not reply to this email.</p>
         </div>
     </div>
 </body>
@@ -842,9 +754,6 @@ public class AdvancedNotificationService : IAdvancedNotificationService, INotifi
     {
         try
         {
-            // Always log custom notification details for testing/debugging
-            LogNotificationDetails("CUSTOM", subject, body, toEmail, toName, new Dictionary<string, string>());
-
             return await _emailConfigurationService.SendTestEmailAsync(toEmail, subject, body);
         }
         catch (Exception ex)
