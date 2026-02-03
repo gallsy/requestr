@@ -3074,11 +3074,14 @@ public class WorkflowService : IWorkflowService
                 return;
             }
 
+            // Get base URL from configuration
+            var baseUrl = _configuration["AppBranding:BaseUrl"] ?? "http://localhost:8080";
+
             // Determine the correct URL - bulk requests should link to the bulk request page
             int? bulkFormRequestId = formRequestData.BulkFormRequestId;
             string requestUrl = bulkFormRequestId.HasValue 
-                ? $"/bulk-requests/{bulkFormRequestId.Value}" 
-                : $"/requests/{formRequestId}";
+                ? $"{baseUrl}/bulk-requests/{bulkFormRequestId.Value}" 
+                : $"{baseUrl}/requests/{formRequestId}";
 
             // Build notification variables
             var variables = new Dictionary<string, string>
