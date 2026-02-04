@@ -1,0 +1,36 @@
+using Requestr.Core.Models;
+
+namespace Requestr.Core.Services.FormRequests;
+
+/// <summary>
+/// Service for approval and rejection of form requests.
+/// Handles both legacy approval flow and workflow-based approvals.
+/// </summary>
+public interface IFormRequestApprovalService
+{
+    /// <summary>
+    /// Approves a form request using the legacy approval flow.
+    /// </summary>
+    Task<bool> ApproveAsync(int id, string approvedBy, string approvedByName);
+    
+    /// <summary>
+    /// Rejects a form request using the legacy approval flow.
+    /// </summary>
+    Task<bool> RejectAsync(int id, string rejectedBy, string rejectedByName, string reason);
+    
+    /// <summary>
+    /// Processes a workflow action (approve/reject) for a form request.
+    /// </summary>
+    Task<bool> ProcessWorkflowActionAsync(int formRequestId, string actionType, string userId, 
+        string? comments = null, Dictionary<string, object?>? fieldUpdates = null);
+    
+    /// <summary>
+    /// Gets the current workflow step for a form request.
+    /// </summary>
+    Task<WorkflowStepInstance?> GetCurrentWorkflowStepAsync(int formRequestId);
+    
+    /// <summary>
+    /// Gets completed workflow steps for a form request.
+    /// </summary>
+    Task<List<WorkflowStepInstance>> GetCompletedWorkflowStepsAsync(int formRequestId);
+}

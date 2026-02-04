@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Requestr.Core.Interfaces;
+using Requestr.Core.Repositories;
 using Requestr.Core.Services;
+using Requestr.Core.Services.FormRequests;
 
 namespace Requestr.Core.Extensions;
 
@@ -8,6 +10,13 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddRequestrCore(this IServiceCollection services)
     {
+        // Database Infrastructure
+        services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
+        
+        // Repositories
+        services.AddScoped<IFormRequestRepository, FormRequestRepository>();
+        services.AddScoped<IFormRequestHistoryRepository, FormRequestHistoryRepository>();
+        
         // Data Services
         services.AddScoped<IDatabaseService, DatabaseService>();
         services.AddScoped<IDataService, DataService>();
@@ -17,6 +26,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFormRequestService, FormRequestService>();
         services.AddScoped<IBulkFormRequestService, BulkFormRequestService>();
         services.AddScoped<IDataViewService, DataViewService>();
+        
+        // Decomposed FormRequest Services (Phase 2)
+        // These provide single-responsibility alternatives to the monolithic FormRequestService
+        services.AddScoped<IFormRequestQueryService, FormRequestQueryService>();
+        services.AddScoped<IFormRequestCommandService, FormRequestCommandService>();
+        services.AddScoped<IFormRequestApprovalService, FormRequestApprovalService>();
+        services.AddScoped<IFormRequestApplicationService, FormRequestApplicationService>();
+        services.AddScoped<IFormRequestHistoryService, FormRequestHistoryService>();
         
         // Workflow Services
         services.AddScoped<IWorkflowService, WorkflowService>();
