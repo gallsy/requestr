@@ -2,6 +2,7 @@
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Utilities
+@using Requestr.Core.Services.Workflow
 @using Requestr.Web.Components.Shared
 @using System.Linq
 @using Microsoft.AspNetCore.Authorization
@@ -9,7 +10,7 @@
 @using BlazorBootstrap
 @inject IBulkFormRequestService BulkFormRequestService
 @inject IConflictDetectionService ConflictDetectionService
-@inject IWorkflowService WorkflowService
+@inject IWorkflowInstanceService WorkflowInstanceService
 @inject ILogger<BulkRequestDetails> Logger
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -310,7 +311,7 @@ else
             try
             {
                 // Check if user has participated in this workflow (completed a step or is assigned)
-                var hasParticipated = await WorkflowService.HasUserParticipatedInWorkflowAsync(
+                var hasParticipated = await WorkflowInstanceService.HasUserParticipatedInWorkflowAsync(
                     _currentUserId, _userRoles, _bulkRequest.WorkflowInstanceId.Value);
                 if (hasParticipated)
                 {

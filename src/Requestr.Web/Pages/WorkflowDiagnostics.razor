@@ -5,7 +5,6 @@
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
 @inject IFormRequestService FormRequestService
-@inject IWorkflowService WorkflowService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<WorkflowDiagnostics> Logger
 @attribute [Authorize(Roles = "Admin")]

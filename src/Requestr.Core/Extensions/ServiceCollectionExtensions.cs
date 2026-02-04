@@ -43,16 +43,16 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFormRequestApplicationService, FormRequestApplicationService>();
         services.AddScoped<IFormRequestHistoryService, FormRequestHistoryService>();
         
-        // Workflow Services (Legacy - retained for compatibility)
-        services.AddScoped<IWorkflowService, WorkflowService>();
+        // Workflow Designer and Configuration Services
         services.AddScoped<IWorkflowDesignerService, WorkflowDesignerService>();
         services.AddScoped<IFormWorkflowConfigurationService, FormWorkflowConfigurationService>();
         services.AddScoped<IFormPermissionService, FormPermissionService>();
         
         // Decomposed Workflow Services (Phase 3)
-        // These provide single-responsibility alternatives to the monolithic WorkflowService
+        // CQRS-based workflow definition services
         services.AddScoped<IWorkflowDefinitionCommandService, WorkflowDefinitionCommandService>();
         services.AddScoped<IWorkflowDefinitionQueryService, WorkflowDefinitionQueryService>();
+        // Workflow lifecycle and execution services
         services.AddScoped<IWorkflowInstanceService, WorkflowInstanceService>();
         services.AddScoped<IWorkflowExecutionService, WorkflowExecutionService>();
         services.AddScoped<IWorkflowProgressService, WorkflowProgressService>();

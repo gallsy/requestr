@@ -152,13 +152,37 @@ public class WorkflowInstanceService : IWorkflowInstanceService
     }
 
     /// <inheritdoc />
-    public async Task<bool> HasUserParticipatedInWorkflowAsync(int workflowInstanceId, string userId)
+    public async Task<bool> HasUserParticipatedInWorkflowAsync(string userId, List<string> userRoles, int workflowInstanceId)
     {
         var instance = await _instanceRepository.GetByIdAsync(workflowInstanceId);
         if (instance == null) return false;
 
-        return instance.StepInstances.Any(si =>
-            si.CompletedBy == userId || si.AssignedTo == userId);
+        // Check if user has completed any step
+        if (instance.StepInstances.Any(si => si.CompletedBy == userId))
+        {
+            return true;
+        }
+
+        // Check if user is assigned to any step
+        if (instance.StepInstances.Any(si => si.AssignedTo == userId))
+        {
+            return true;
+        }
+
+        // Check if any of user's roles are assigned to a step
+        var definition = await _definitionRepository.GetByIdAsync(instance.WorkflowDefinitionId);
+        if (definition != null)
+        {
+            foreach (var step in definition.Steps)
+            {
+                if (step.AssignedRoles?.Any(role => userRoles.Contains(role, StringComparer.OrdinalIgnoreCase)) == true)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private async Task AutoCompleteStartStepAsync(

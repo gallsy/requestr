@@ -73,6 +73,14 @@ public static class WorkflowQueries
         DELETE FROM WorkflowStepFieldConfigurations WHERE WorkflowStepId IN (SELECT Id FROM WorkflowSteps WHERE WorkflowDefinitionId = @Id);
         DELETE FROM WorkflowSteps WHERE WorkflowDefinitionId = @Id";
     
+    /// <summary>
+    /// Gets field configurations for a workflow step by its database ID.
+    /// </summary>
+    public const string GetFieldConfigurationsByStepDbId = @"
+        SELECT Id, WorkflowStepId, FieldName, IsRequired, IsReadOnly, IsVisible
+        FROM WorkflowStepFieldConfigurations
+        WHERE WorkflowStepId = @WorkflowStepId";
+    
     #endregion
     
     #region Workflow Transition Queries

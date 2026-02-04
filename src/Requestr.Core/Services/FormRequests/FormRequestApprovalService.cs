@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using Requestr.Core.Repositories;
+using Requestr.Core.Services.Workflow;
 using System.Text.Json;
 
 namespace Requestr.Core.Services.FormRequests;
@@ -16,7 +17,7 @@ public class FormRequestApprovalService : IFormRequestApprovalService
     private readonly IFormRequestHistoryService _historyService;
     private readonly IFormRequestApplicationService _applicationService;
     private readonly IFormDefinitionService _formDefinitionService;
-    private readonly IWorkflowService _workflowService;
+    private readonly IWorkflowExecutionService _workflowExecutionService;
     private readonly IInputValidationService _inputValidationService;
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<FormRequestApprovalService> _logger;
@@ -26,7 +27,7 @@ public class FormRequestApprovalService : IFormRequestApprovalService
         IFormRequestHistoryService historyService,
         IFormRequestApplicationService applicationService,
         IFormDefinitionService formDefinitionService,
-        IWorkflowService workflowService,
+        IWorkflowExecutionService workflowExecutionService,
         IInputValidationService inputValidationService,
         IDbConnectionFactory connectionFactory,
         ILogger<FormRequestApprovalService> logger)
@@ -35,7 +36,7 @@ public class FormRequestApprovalService : IFormRequestApprovalService
         _historyService = historyService;
         _applicationService = applicationService;
         _formDefinitionService = formDefinitionService;
-        _workflowService = workflowService;
+        _workflowExecutionService = workflowExecutionService;
         _inputValidationService = inputValidationService;
         _connectionFactory = connectionFactory;
         _logger = logger;
@@ -299,7 +300,7 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                 ? _inputValidationService.SanitizeComments(comments)
                 : comments;
 
-            var result = await _workflowService.ProcessWorkflowActionAsync(
+            var result = await _workflowExecutionService.ProcessWorkflowActionAsync(
                 formRequest.WorkflowInstanceId.Value,
                 actionType,
                 userId,
@@ -371,7 +372,7 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                 return null;
             }
 
-            return await _workflowService.GetCurrentWorkflowStepAsync(formRequest.WorkflowInstanceId.Value);
+            return await _workflowExecutionService.GetCurrentWorkflowStepAsync(formRequest.WorkflowInstanceId.Value);
         }
         catch (Exception ex)
         {
@@ -390,7 +391,7 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                 return new List<WorkflowStepInstance>();
             }
 
-            return await _workflowService.GetCompletedWorkflowStepsAsync(formRequest.WorkflowInstanceId.Value);
+            return await _workflowExecutionService.GetCompletedWorkflowStepsAsync(formRequest.WorkflowInstanceId.Value);
         }
         catch (Exception ex)
         {

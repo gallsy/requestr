@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using Requestr.Core.Repositories;
+using Requestr.Core.Services.Workflow;
 using Requestr.Core.Validation;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
@@ -16,7 +17,8 @@ public class FormRequestCommandService : IFormRequestCommandService
     private readonly IFormRequestRepository _formRequestRepository;
     private readonly IFormRequestHistoryService _historyService;
     private readonly IFormDefinitionService _formDefinitionService;
-    private readonly IWorkflowService _workflowService;
+    private readonly IWorkflowDefinitionQueryService _workflowDefinitionQueryService;
+    private readonly IWorkflowInstanceService _workflowInstanceService;
     private readonly IInputValidationService _inputValidationService;
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<FormRequestCommandService> _logger;
@@ -25,7 +27,8 @@ public class FormRequestCommandService : IFormRequestCommandService
         IFormRequestRepository formRequestRepository,
         IFormRequestHistoryService historyService,
         IFormDefinitionService formDefinitionService,
-        IWorkflowService workflowService,
+        IWorkflowDefinitionQueryService workflowDefinitionQueryService,
+        IWorkflowInstanceService workflowInstanceService,
         IInputValidationService inputValidationService,
         IDbConnectionFactory connectionFactory,
         ILogger<FormRequestCommandService> logger)
@@ -33,7 +36,8 @@ public class FormRequestCommandService : IFormRequestCommandService
         _formRequestRepository = formRequestRepository;
         _historyService = historyService;
         _formDefinitionService = formDefinitionService;
-        _workflowService = workflowService;
+        _workflowDefinitionQueryService = workflowDefinitionQueryService;
+        _workflowInstanceService = workflowInstanceService;
         _inputValidationService = inputValidationService;
         _connectionFactory = connectionFactory;
         _logger = logger;
@@ -68,7 +72,7 @@ public class FormRequestCommandService : IFormRequestCommandService
             }
 
             // Check if the form has a workflow definition
-            var workflowDefinition = await _workflowService.GetWorkflowDefinitionByFormAsync(formRequest.FormDefinitionId);
+            var workflowDefinition = await _workflowDefinitionQueryService.GetWorkflowDefinitionByFormAsync(formRequest.FormDefinitionId);
             
             // Set initial status based on whether workflow exists
             formRequest.Status = workflowDefinition != null ? RequestStatus.Pending : RequestStatus.Approved;
@@ -79,16 +83,16 @@ public class FormRequestCommandService : IFormRequestCommandService
             // Start workflow if one exists
             if (workflowDefinition != null)
             {
-                var workflowInstance = await _workflowService.StartWorkflowAsync(
-                    createdRequest.Id, workflowDefinition.Id, connection, transaction);
-                createdRequest.WorkflowInstanceId = workflowInstance.Id;
+                var workflowInstanceId = await _workflowInstanceService.StartWorkflowAsync(
+                    connection, transaction, createdRequest.Id, workflowDefinition.Id, formRequest.RequestedBy);
+                createdRequest.WorkflowInstanceId = workflowInstanceId;
 
                 // Update the form request with the workflow instance ID
                 await _formRequestRepository.UpdateWorkflowInstanceIdAsync(
-                    createdRequest.Id, workflowInstance.Id, connection, transaction);
+                    createdRequest.Id, workflowInstanceId, connection, transaction);
 
                 _logger.LogInformation("Started workflow {WorkflowId} for form request {RequestId}", 
-                    workflowInstance.Id, createdRequest.Id);
+                    workflowInstanceId, createdRequest.Id);
             }
             else
             {

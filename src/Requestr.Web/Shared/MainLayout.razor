@@ -1,7 +1,8 @@
 @inherits LayoutComponentBase
 @inject ThemeService ThemeService
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
-@inject IWorkflowService WorkflowService
+@using Requestr.Core.Services.Workflow
+@inject IWorkflowExecutionService WorkflowExecutionService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @implements IDisposable
 
@@ -111,7 +112,7 @@
 
                 if (!string.IsNullOrEmpty(CurrentUserId))
                 {
-                    var pendingSteps = await WorkflowService.GetPendingStepsForUserAsync(CurrentUserId, UserRoles);
+                    var pendingSteps = await WorkflowExecutionService.GetPendingStepsForUserAsync(CurrentUserId, UserRoles);
                     UserHasPendingWorkflowSteps = pendingSteps?.Any() == true;
                 }
             }

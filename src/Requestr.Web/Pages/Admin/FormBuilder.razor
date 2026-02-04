@@ -7,6 +7,7 @@
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Models
 @using Requestr.Core.Services
+@using Requestr.Core.Services.Workflow
 @using System.Text.Json
 @using BlazorBootstrap
 @inject IFormDefinitionService FormDefinitionService
@@ -14,7 +15,7 @@
 @inject IDataService DataService
 @inject IFormPermissionService FormPermissionService
 @inject IFormRequestService FormRequestService
-@inject IWorkflowService WorkflowService
+@inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
 @inject IWorkflowDesignerService WorkflowDesignerService
 @inject IFormWorkflowConfigurationService FormWorkflowConfigurationService
 @inject IToastNotificationService toastService
@@ -1923,7 +1924,7 @@
     {
         try
         {
-            _availableWorkflows = await WorkflowService.GetWorkflowDefinitionsAsync();
+            _availableWorkflows = await WorkflowDefinitionQueryService.GetWorkflowDefinitionsAsync();
         }
         catch (Exception ex)
         {
@@ -1983,7 +1984,7 @@
                 await LoadFormPermissions();
             }
 
-            var workflow = await WorkflowService.GetWorkflowDefinitionAsync(_selectedWorkflowId.Value);
+            var workflow = await WorkflowDefinitionQueryService.GetWorkflowDefinitionAsync(_selectedWorkflowId.Value);
             if (workflow?.Steps?.Any() == true)
             {
                 Logger.LogInformation("Found {Count} workflow steps", workflow.Steps.Count());

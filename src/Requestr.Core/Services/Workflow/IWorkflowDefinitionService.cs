@@ -12,8 +12,8 @@ public interface IWorkflowDefinitionCommandService
     /// Creates a new workflow definition with steps and transitions.
     /// </summary>
     /// <param name="definition">The workflow definition to create.</param>
-    /// <returns>The ID of the created workflow definition.</returns>
-    Task<int> CreateWorkflowDefinitionAsync(WorkflowDefinition definition);
+    /// <returns>The created workflow definition with its assigned ID.</returns>
+    Task<WorkflowDefinition> CreateWorkflowDefinitionAsync(WorkflowDefinition definition);
 
     /// <summary>
     /// Updates an existing workflow definition, replacing all steps and transitions.
@@ -70,4 +70,11 @@ public interface IWorkflowDefinitionQueryService
     /// <param name="stepId">The step ID within the workflow.</param>
     /// <returns>List of field configurations for the step.</returns>
     Task<List<WorkflowStepFieldConfiguration>> GetStepFieldConfigurationsAsync(int workflowDefinitionId, string stepId);
+
+    /// <summary>
+    /// Gets field configurations for a workflow step by its database ID.
+    /// </summary>
+    /// <param name="workflowStepId">The database ID of the workflow step.</param>
+    /// <returns>List of field configurations for the step.</returns>
+    Task<List<WorkflowStepFieldConfiguration>> GetStepFieldConfigurationsByStepIdAsync(int workflowStepId);
 }

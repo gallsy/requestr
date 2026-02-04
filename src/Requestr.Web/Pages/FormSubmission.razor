@@ -2,6 +2,7 @@
 @page "/forms/{FormId:int}/edit/{RequestId:int}"
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
+@using Requestr.Core.Services.Workflow
 @using Requestr.Web.Authorization
 @using Requestr.Web.Utilities
 @inject IFormDefinitionService FormDefinitionService
@@ -9,7 +10,7 @@
 @inject IDataService DataService
 @inject IDatabaseService DatabaseService
 @inject IFormAuthorizationService FormAuthorizationService
-@inject IWorkflowService WorkflowService
+@inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -851,7 +852,7 @@ else
                 createdRequest = await FormRequestService.CreateAsync(formRequest);
                 
                 // Check if form has workflow to determine success message
-                var hasWorkflow = await WorkflowService.GetWorkflowDefinitionByFormAsync(FormId) != null;
+                var hasWorkflow = await WorkflowDefinitionQueryService.GetWorkflowDefinitionByFormAsync(FormId) != null;
                 _successMessage = hasWorkflow
                     ? "Request submitted successfully and is pending approval!"
                     : "Request submitted and processed successfully!";

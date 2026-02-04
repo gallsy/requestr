@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
+using Requestr.Core.Services.Workflow;
 using Requestr.Core.Validation;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
@@ -17,7 +18,10 @@ public class FormRequestService : IFormRequestService
     private readonly ILogger<FormRequestService> _logger;
     private readonly IDataService _dataService;
     private readonly IFormDefinitionService _formDefinitionService;
-    private readonly IWorkflowService _workflowService;
+    private readonly IWorkflowDefinitionQueryService _workflowDefinitionQueryService;
+    private readonly IWorkflowInstanceService _workflowInstanceService;
+    private readonly IWorkflowExecutionService _workflowExecutionService;
+    private readonly IWorkflowProgressService _workflowProgressService;
     private readonly IAdvancedNotificationService _notificationService;
     private readonly IInputValidationService _inputValidationService;
     private readonly string _connectionString;
@@ -27,7 +31,10 @@ public class FormRequestService : IFormRequestService
         ILogger<FormRequestService> logger,
         IDataService dataService,
         IFormDefinitionService formDefinitionService,
-        IWorkflowService workflowService,
+        IWorkflowDefinitionQueryService workflowDefinitionQueryService,
+        IWorkflowInstanceService workflowInstanceService,
+        IWorkflowExecutionService workflowExecutionService,
+        IWorkflowProgressService workflowProgressService,
         IAdvancedNotificationService notificationService,
         IInputValidationService inputValidationService)
     {
@@ -35,7 +42,10 @@ public class FormRequestService : IFormRequestService
         _logger = logger;
         _dataService = dataService;
         _formDefinitionService = formDefinitionService;
-        _workflowService = workflowService;
+        _workflowDefinitionQueryService = workflowDefinitionQueryService;
+        _workflowInstanceService = workflowInstanceService;
+        _workflowExecutionService = workflowExecutionService;
+        _workflowProgressService = workflowProgressService;
         _notificationService = notificationService;
         _inputValidationService = inputValidationService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
@@ -285,7 +295,7 @@ public class FormRequestService : IFormRequestService
             }
 
             // Check if the form has a workflow definition
-            var workflowDefinition = await _workflowService.GetWorkflowDefinitionByFormAsync(formRequest.FormDefinitionId);
+            var workflowDefinition = await _workflowDefinitionQueryService.GetWorkflowDefinitionByFormAsync(formRequest.FormDefinitionId);
             
             var sql = @"
                 INSERT INTO FormRequests (FormDefinitionId, RequestType, FieldValues, OriginalValues, Status, RequestedBy, RequestedAt, Comments, AppliedRecordKey, FailureMessage, WorkflowInstanceId)
@@ -316,16 +326,16 @@ public class FormRequestService : IFormRequestService
             if (workflowDefinition != null)
             {
                 // Use the overload that accepts existing connection and transaction to avoid deadlocks
-                var workflowInstance = await _workflowService.StartWorkflowAsync(id, workflowDefinition.Id, connection, transaction);
-                formRequest.WorkflowInstanceId = workflowInstance.Id;
+                var workflowInstanceId = await _workflowInstanceService.StartWorkflowAsync(connection, transaction, id, workflowDefinition.Id, formRequest.RequestedBy);
+                formRequest.WorkflowInstanceId = workflowInstanceId;
 
                 // Update the form request with the workflow instance ID
                 await connection.ExecuteAsync(
                     "UPDATE FormRequests SET WorkflowInstanceId = @WorkflowInstanceId WHERE Id = @Id",
-                    new { WorkflowInstanceId = workflowInstance.Id, Id = id },
+                    new { WorkflowInstanceId = workflowInstanceId, Id = id },
                     transaction, commandTimeout: 300);
 
-                _logger.LogInformation("Started workflow {WorkflowId} for form request {RequestId}", workflowInstance.Id, id);
+                _logger.LogInformation("Started workflow {WorkflowId} for form request {RequestId}", workflowInstanceId, id);
             }
             else
             {
@@ -1817,7 +1827,7 @@ public class FormRequestService : IFormRequestService
             }
 
             // Process the workflow action
-            var result = await _workflowService.ProcessWorkflowActionAsync(
+            var result = await _workflowExecutionService.ProcessWorkflowActionAsync(
                 formRequest.WorkflowInstanceId.Value,
                 actionType,
                 userId,
@@ -1900,7 +1910,7 @@ public class FormRequestService : IFormRequestService
             _logger.LogInformation("Form request {FormRequestId} has WorkflowInstanceId: {WorkflowInstanceId}", 
                 formRequestId, formRequest.WorkflowInstanceId);
 
-            var result = await _workflowService.GetCurrentWorkflowStepAsync(formRequest.WorkflowInstanceId.Value);
+            var result = await _workflowExecutionService.GetCurrentWorkflowStepAsync(formRequest.WorkflowInstanceId.Value);
             
             _logger.LogInformation("GetCurrentWorkflowStepAsync result for formRequestId {FormRequestId}: {StepId}", 
                 formRequestId, result?.StepId ?? "null");
@@ -1924,7 +1934,7 @@ public class FormRequestService : IFormRequestService
                 return new List<WorkflowStepInstance>();
             }
 
-            return await _workflowService.GetCompletedWorkflowStepsAsync(formRequest.WorkflowInstanceId.Value);
+            return await _workflowExecutionService.GetCompletedWorkflowStepsAsync(formRequest.WorkflowInstanceId.Value);
         }
         catch (Exception ex)
         {
@@ -2136,7 +2146,7 @@ public class FormRequestService : IFormRequestService
             diagnostics.Add("  Potential Issues:");
             if (formRequest.WorkflowInstanceId.HasValue && formRequest.Status == RequestStatus.Approved)
             {
-                var workflowProgress = await _workflowService.GetWorkflowProgressAsync(formRequestId);
+                var workflowProgress = await _workflowProgressService.GetWorkflowProgressAsync(formRequestId);
                 if (workflowProgress?.Status == WorkflowInstanceStatus.Completed)
                 {
                     diagnostics.Add("    - Workflow is complete but request is not applied to database");

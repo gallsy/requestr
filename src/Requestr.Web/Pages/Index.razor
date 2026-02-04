@@ -2,11 +2,14 @@
 @using Microsoft.AspNetCore.Authorization
 @using System.Linq
 @using Requestr.Core.Models
+@using Requestr.Core.Services.Workflow
 @using Requestr.Web.Authorization
 @attribute [Authorize]
 @inject IFormDefinitionService FormDefinitionService
 @inject IFormRequestService FormRequestService
-@inject IWorkflowService WorkflowService
+@inject IWorkflowExecutionService WorkflowExecutionService
+@inject IWorkflowInstanceService WorkflowInstanceService
+@inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
 @inject IFormAuthorizationService FormAuthorizationService
 @inject ILogger<Index> Logger
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -304,7 +307,7 @@
             PendingRequests = allUserRequests.Where(r => r.Status == RequestStatus.Pending).ToList();
 
             // Always load pending workflow steps for the current user
-            PendingWorkflowSteps = await WorkflowService.GetPendingStepsForUserAsync(CurrentUserId, UserRoles);
+            PendingWorkflowSteps = await WorkflowExecutionService.GetPendingStepsForUserAsync(CurrentUserId, UserRoles);
             
             // Pre-cache workflow and form data for display if there are pending steps
             if (PendingWorkflowSteps?.Any() == true)
@@ -333,12 +336,12 @@
         {
             try
             {
-                var instance = await WorkflowService.GetWorkflowInstanceAsync(instanceId);
+                var instance = await WorkflowInstanceService.GetWorkflowInstanceAsync(instanceId);
                 if (instance != null)
                 {
                     _workflowInstanceCache[instanceId] = instance;
                     
-                    var definition = await WorkflowService.GetWorkflowDefinitionAsync(instance.WorkflowDefinitionId);
+                    var definition = await WorkflowDefinitionQueryService.GetWorkflowDefinitionAsync(instance.WorkflowDefinitionId);
                     if (definition != null)
                     {
                         _workflowDefinitionCache[instanceId] = definition;

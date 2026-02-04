@@ -65,8 +65,9 @@ public interface IWorkflowInstanceService
     /// <summary>
     /// Checks if a user has participated in a workflow.
     /// </summary>
-    /// <param name="workflowInstanceId">The workflow instance ID.</param>
     /// <param name="userId">The user ID.</param>
+    /// <param name="userRoles">The user's roles.</param>
+    /// <param name="workflowInstanceId">The workflow instance ID.</param>
     /// <returns>True if the user has participated.</returns>
-    Task<bool> HasUserParticipatedInWorkflowAsync(int workflowInstanceId, string userId);
+    Task<bool> HasUserParticipatedInWorkflowAsync(string userId, List<string> userRoles, int workflowInstanceId);
 }

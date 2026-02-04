@@ -59,6 +59,11 @@ public interface IWorkflowStepRepository
     Task<WorkflowStep?> GetByStepIdAsync(int workflowDefinitionId, string stepId);
     
     /// <summary>
+    /// Gets field configurations for a workflow step by its database ID.
+    /// </summary>
+    Task<List<WorkflowStepFieldConfiguration>> GetFieldConfigurationsByStepDbIdAsync(int workflowStepId);
+    
+    /// <summary>
     /// Creates a new workflow step.
     /// </summary>
     Task<int> CreateAsync(WorkflowStep step, System.Data.IDbConnection connection, System.Data.IDbTransaction transaction);

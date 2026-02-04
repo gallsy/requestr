@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using Requestr.Core.Models.DTOs;
+using Requestr.Core.Services.Workflow;
 using System.Text.Json;
 
 namespace Requestr.Core.Services;
@@ -18,7 +19,7 @@ public class BulkFormRequestService : IBulkFormRequestService
     private readonly ILogger<BulkFormRequestService> _logger;
     private readonly IFormDefinitionService _formDefinitionService;
     private readonly IFormRequestService _formRequestService;
-    private readonly IWorkflowService _workflowService;
+    private readonly IWorkflowInstanceService _workflowInstanceService;
     private readonly IInputValidationService _inputValidationService;
     private readonly string _connectionString;
 
@@ -27,14 +28,14 @@ public class BulkFormRequestService : IBulkFormRequestService
         ILogger<BulkFormRequestService> logger,
         IFormDefinitionService formDefinitionService,
         IFormRequestService formRequestService,
-        IWorkflowService workflowService,
+        IWorkflowInstanceService workflowInstanceService,
         IInputValidationService inputValidationService)
     {
         _configuration = configuration;
         _logger = logger;
         _formDefinitionService = formDefinitionService;
         _formRequestService = formRequestService;
-        _workflowService = workflowService;
+        _workflowInstanceService = workflowInstanceService;
         _inputValidationService = inputValidationService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
@@ -522,11 +523,12 @@ public class BulkFormRequestService : IBulkFormRequestService
                         BulkFormRequestId = tempFormRequest.BulkFormRequestId
                     }, transaction);
 
-                    var workflowInstance = await _workflowService.StartWorkflowAsync(
+                    var workflowInstanceId = await _workflowInstanceService.StartWorkflowAsync(
+                        connection,
+                        transaction,
                         tempFormRequestId, 
-                        formDefinition.WorkflowDefinitionId.Value, 
-                        connection, 
-                        (SqlTransaction)transaction);
+                        formDefinition.WorkflowDefinitionId.Value,
+                        userId);
 
                     // Update bulk request with workflow instance ID
                     var updateBulkSql = @"
@@ -536,7 +538,7 @@ public class BulkFormRequestService : IBulkFormRequestService
 
                     await connection.ExecuteAsync(updateBulkSql, new
                     {
-                        WorkflowInstanceId = workflowInstance.Id,
+                        WorkflowInstanceId = workflowInstanceId,
                         BulkRequestId = bulkRequestId
                     }, transaction);
 
@@ -548,14 +550,14 @@ public class BulkFormRequestService : IBulkFormRequestService
 
                     await connection.ExecuteAsync(updateTempFormRequestSql, new
                     {
-                        WorkflowInstanceId = workflowInstance.Id,
+                        WorkflowInstanceId = workflowInstanceId,
                         FormRequestId = tempFormRequestId
                     }, transaction);
 
-                    bulkRequest.WorkflowInstanceId = workflowInstance.Id;
+                    bulkRequest.WorkflowInstanceId = workflowInstanceId;
 
                     _logger.LogInformation("Started workflow instance {WorkflowInstanceId} for bulk request {BulkRequestId} with temp FormRequest {TempFormRequestId}", 
-                        workflowInstance.Id, bulkRequestId, tempFormRequestId);
+                        workflowInstanceId, bulkRequestId, tempFormRequestId);
                 }
                 catch (Exception ex)
                 {

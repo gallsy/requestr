@@ -2,8 +2,10 @@
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Models
 @using Requestr.Core.Models.DTOs
+@using Requestr.Core.Services.Workflow
 @using Microsoft.JSInterop
-@inject IWorkflowService WorkflowService
+@inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
+@inject IWorkflowDefinitionCommandService WorkflowDefinitionCommandService
 @inject IWorkflowDesignerService WorkflowDesignerService
 @inject IFormDefinitionService FormDefinitionService
 @inject IToastNotificationService ToastService
@@ -558,7 +560,7 @@
     {
         try
         {
-            workflow = await WorkflowService.GetWorkflowDefinitionAsync(WorkflowId);
+            workflow = await WorkflowDefinitionQueryService.GetWorkflowDefinitionAsync(WorkflowId);
         }
         catch (Exception ex)
         {
@@ -898,7 +900,7 @@
 
         try
         {
-            await WorkflowService.UpdateWorkflowDefinitionAsync(workflow);
+            await WorkflowDefinitionCommandService.UpdateWorkflowDefinitionAsync(workflow);
             ToastService.ShowSuccess("Workflow saved successfully!");
         }
         catch (Exception ex)

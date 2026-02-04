@@ -31,20 +31,18 @@ public interface IWorkflowExecutionService
     /// <summary>
     /// Processes a workflow action (approve/reject/etc.).
     /// </summary>
-    /// <param name="formRequestId">The form request ID.</param>
-    /// <param name="action">The action to process.</param>
+    /// <param name="workflowInstanceId">The workflow instance ID.</param>
+    /// <param name="actionType">The action type (e.g., "approve", "reject").</param>
     /// <param name="userId">The user ID processing the action.</param>
-    /// <param name="userName">The user's display name.</param>
     /// <param name="comments">Optional comments.</param>
-    /// <param name="fieldValues">Field values for the step.</param>
-    /// <returns>True if the action was processed successfully.</returns>
-    Task<bool> ProcessWorkflowActionAsync(
-        int formRequestId,
-        WorkflowStepAction action,
+    /// <param name="fieldUpdates">Field values for the step.</param>
+    /// <returns>The result of the workflow action.</returns>
+    Task<WorkflowActionResult> ProcessWorkflowActionAsync(
+        int workflowInstanceId,
+        string actionType,
         string userId,
-        string userName,
         string? comments,
-        Dictionary<string, object?>? fieldValues);
+        Dictionary<string, object?>? fieldUpdates);
 
     /// <summary>
     /// Gets pending workflow steps that a user can act on.
@@ -69,18 +67,18 @@ public interface IWorkflowExecutionService
     Task<List<WorkflowStepInstance>> GetStepInstancesAsync(int workflowInstanceId);
 
     /// <summary>
-    /// Gets the current workflow step definition for a form request.
+    /// Gets the current workflow step instance for a workflow instance.
     /// </summary>
-    /// <param name="formRequestId">The form request ID.</param>
-    /// <returns>The current workflow step or null.</returns>
-    Task<WorkflowStep?> GetCurrentWorkflowStepAsync(int formRequestId);
+    /// <param name="workflowInstanceId">The workflow instance ID.</param>
+    /// <returns>The current workflow step instance or null.</returns>
+    Task<WorkflowStepInstance?> GetCurrentWorkflowStepAsync(int workflowInstanceId);
 
     /// <summary>
-    /// Gets completed workflow step instances for a form request.
+    /// Gets completed workflow step instances for a workflow instance.
     /// </summary>
-    /// <param name="formRequestId">The form request ID.</param>
+    /// <param name="workflowInstanceId">The workflow instance ID.</param>
     /// <returns>List of completed step instances.</returns>
-    Task<List<WorkflowStepInstance>> GetCompletedWorkflowStepsAsync(int formRequestId);
+    Task<List<WorkflowStepInstance>> GetCompletedWorkflowStepsAsync(int workflowInstanceId);
 
     /// <summary>
     /// Checks if a user can access a specific workflow step.

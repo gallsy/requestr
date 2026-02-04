@@ -1,7 +1,8 @@
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
+@using Requestr.Core.Services.Workflow
 @using Microsoft.Extensions.Logging
-@inject IWorkflowService WorkflowService
+@inject IWorkflowProgressService WorkflowProgressService
 @inject ILogger<WorkflowProgressDisplay> Logger
 @inject NavigationManager Navigation
 
@@ -362,7 +363,7 @@ else
         try
         {
             Logger.LogInformation("Loading workflow progress for FormRequestId: {FormRequestId}", FormRequestId);
-            Progress = await WorkflowService.GetWorkflowProgressAsync(FormRequestId);
+            Progress = await WorkflowProgressService.GetWorkflowProgressAsync(FormRequestId);
             
             if (Progress == null)
             {

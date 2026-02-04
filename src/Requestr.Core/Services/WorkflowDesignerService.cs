@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
+using Requestr.Core.Services.Workflow;
 using System.Text.Json;
 
 namespace Requestr.Core.Services;
@@ -12,17 +13,20 @@ public class WorkflowDesignerService : IWorkflowDesignerService
 {
     private readonly IConfiguration _configuration;
     private readonly ILogger<WorkflowDesignerService> _logger;
-    private readonly IWorkflowService _workflowService;
+    private readonly IWorkflowDefinitionCommandService _workflowDefinitionCommandService;
+    private readonly IWorkflowDefinitionQueryService _workflowDefinitionQueryService;
     private readonly string _connectionString;
 
     public WorkflowDesignerService(
         IConfiguration configuration, 
         ILogger<WorkflowDesignerService> logger,
-        IWorkflowService workflowService)
+        IWorkflowDefinitionCommandService workflowDefinitionCommandService,
+        IWorkflowDefinitionQueryService workflowDefinitionQueryService)
     {
         _configuration = configuration;
         _logger = logger;
-        _workflowService = workflowService;
+        _workflowDefinitionCommandService = workflowDefinitionCommandService;
+        _workflowDefinitionQueryService = workflowDefinitionQueryService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
     }
@@ -103,7 +107,7 @@ public class WorkflowDesignerService : IWorkflowDesignerService
             };
 
             _logger.LogInformation("Creating workflow definition through WorkflowService");
-            var result = await _workflowService.CreateWorkflowDefinitionAsync(workflowDefinition);
+            var result = await _workflowDefinitionCommandService.CreateWorkflowDefinitionAsync(workflowDefinition);
             
             _logger.LogInformation("Successfully created workflow definition with ID {WorkflowId}", result.Id);
             return result;
@@ -398,7 +402,7 @@ public class WorkflowDesignerService : IWorkflowDesignerService
     public async Task<List<string>> ValidateWorkflowAsync(int workflowDefinitionId)
     {
         var errors = new List<string>();
-        var workflow = await _workflowService.GetWorkflowDefinitionAsync(workflowDefinitionId);
+        var workflow = await _workflowDefinitionQueryService.GetWorkflowDefinitionAsync(workflowDefinitionId);
 
         if (workflow == null)
         {

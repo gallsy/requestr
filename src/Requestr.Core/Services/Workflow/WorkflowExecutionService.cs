@@ -151,30 +151,76 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     }
 
     /// <inheritdoc />
-    public async Task<bool> ProcessWorkflowActionAsync(
-        int formRequestId,
-        WorkflowStepAction action,
+    public async Task<WorkflowActionResult> ProcessWorkflowActionAsync(
+        int workflowInstanceId,
+        string actionType,
         string userId,
-        string userName,
         string? comments,
-        Dictionary<string, object?>? fieldValues)
+        Dictionary<string, object?>? fieldUpdates)
     {
-        // Get the workflow instance for this form request
-        var instance = await _instanceRepository.GetByFormRequestIdAsync(formRequestId);
-        if (instance == null)
+        try
         {
-            _logger.LogWarning("No workflow instance found for form request {FormRequestId}", formRequestId);
-            return false;
-        }
+            var currentStep = await GetCurrentStepInstanceAsync(workflowInstanceId);
+            if (currentStep == null)
+            {
+                return new WorkflowActionResult 
+                { 
+                    Success = false, 
+                    Message = "No current step found for workflow instance"
+                };
+            }
 
-        return await CompleteStepAsync(
-            instance.Id,
-            instance.CurrentStepId,
-            userId,
-            userName,
-            action,
-            comments,
-            fieldValues);
+            var action = actionType.ToLower() switch
+            {
+                "approve" => WorkflowStepAction.Approved,
+                "reject" => WorkflowStepAction.Rejected,
+                "complete" => WorkflowStepAction.Completed,
+                _ => throw new ArgumentException($"Unknown action type: {actionType}")
+            };
+
+            var stepCompleted = await CompleteStepAsync(
+                workflowInstanceId, 
+                currentStep.StepId, 
+                userId, 
+                userId, 
+                action, 
+                comments, 
+                fieldUpdates);
+            
+            if (stepCompleted)
+            {
+                // Check if workflow is now complete
+                var workflowInstance = await _instanceRepository.GetByIdAsync(workflowInstanceId);
+                var workflowCompleted = workflowInstance?.Status == WorkflowInstanceStatus.Completed || 
+                                       workflowInstance?.Status == WorkflowInstanceStatus.Failed;
+                var workflowApproved = workflowInstance?.Status == WorkflowInstanceStatus.Completed && 
+                                      action == WorkflowStepAction.Approved;
+                var workflowRejected = workflowInstance?.Status == WorkflowInstanceStatus.Failed;
+
+                return new WorkflowActionResult
+                {
+                    Success = true,
+                    Message = workflowRejected ? "Workflow rejected" : $"Step {action.ToString().ToLower()} successfully",
+                    WorkflowCompleted = workflowCompleted,
+                    WorkflowApproved = workflowApproved,
+                    PreviousStepName = currentStep.StepId,
+                    CurrentStepName = workflowInstance?.CurrentStepId,
+                    ActorName = userId,
+                    AdditionalData = workflowRejected ? new Dictionary<string, object?> { ["rejected"] = true } : new Dictionary<string, object?>()
+                };
+            }
+
+            return new WorkflowActionResult { Success = false, Message = "Failed to complete step" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing workflow action {ActionType} for instance {WorkflowInstanceId}", actionType, workflowInstanceId);
+            return new WorkflowActionResult 
+            { 
+                Success = false, 
+                Message = $"Error processing action: {ex.Message}"
+            };
+        }
     }
 
     /// <inheritdoc />
@@ -196,24 +242,15 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     }
 
     /// <inheritdoc />
-    public async Task<WorkflowStep?> GetCurrentWorkflowStepAsync(int formRequestId)
+    public async Task<WorkflowStepInstance?> GetCurrentWorkflowStepAsync(int workflowInstanceId)
     {
-        var instance = await _instanceRepository.GetByFormRequestIdAsync(formRequestId);
-        if (instance == null) return null;
-
-        var definition = await _definitionRepository.GetByIdAsync(instance.WorkflowDefinitionId);
-        if (definition == null) return null;
-
-        return definition.Steps.FirstOrDefault(s => s.StepId == instance.CurrentStepId);
+        return await _stepInstanceRepository.GetCurrentAsync(workflowInstanceId);
     }
 
     /// <inheritdoc />
-    public async Task<List<WorkflowStepInstance>> GetCompletedWorkflowStepsAsync(int formRequestId)
+    public async Task<List<WorkflowStepInstance>> GetCompletedWorkflowStepsAsync(int workflowInstanceId)
     {
-        var instance = await _instanceRepository.GetByFormRequestIdAsync(formRequestId);
-        if (instance == null) return new List<WorkflowStepInstance>();
-
-        return await _stepInstanceRepository.GetCompletedAsync(instance.Id);
+        return await _stepInstanceRepository.GetCompletedAsync(workflowInstanceId);
     }
 
     /// <inheritdoc />

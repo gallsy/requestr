@@ -32,7 +32,7 @@ public class WorkflowDefinitionCommandService : IWorkflowDefinitionCommandServic
     }
 
     /// <inheritdoc />
-    public async Task<int> CreateWorkflowDefinitionAsync(WorkflowDefinition definition)
+    public async Task<WorkflowDefinition> CreateWorkflowDefinitionAsync(WorkflowDefinition definition)
     {
         var connection = (SqlConnection)_connectionFactory.CreateConnection();
         await using (connection)
@@ -72,7 +72,9 @@ public class WorkflowDefinitionCommandService : IWorkflowDefinitionCommandServic
                 _logger.LogInformation("Created workflow definition {DefinitionId} with {StepCount} steps and {TransitionCount} transitions",
                     definitionId, definition.Steps.Count, definition.Transitions.Count);
 
-                return definitionId;
+                // Fetch and return the complete definition
+                definition.Id = definitionId;
+                return definition;
             }
             catch (Exception ex)
             {

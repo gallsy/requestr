@@ -2,6 +2,7 @@
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Utilities
+@using Requestr.Core.Services.Workflow
 @using System.Text.Json
 @using Requestr.Web.Components
 @using Requestr.Web.Components.Shared
@@ -11,7 +12,7 @@
 @inject IFormRequestService FormRequestService
 @inject IFormDefinitionService FormDefinitionService
 @inject IConflictDetectionService ConflictDetectionService
-@inject IWorkflowService WorkflowService
+@inject IWorkflowInstanceService WorkflowInstanceService
 @inject ILogger<RequestDetails> Logger
 @inject NavigationManager Navigation
 @inject IDatabaseService DatabaseService
@@ -369,7 +370,7 @@ else
             try
             {
                 // Check if user has participated in this workflow (completed a step or is assigned)
-                var hasParticipated = await WorkflowService.HasUserParticipatedInWorkflowAsync(
+                var hasParticipated = await WorkflowInstanceService.HasUserParticipatedInWorkflowAsync(
                     _currentUserId, _userRoles, _request.WorkflowInstanceId.Value);
                 if (hasParticipated)
                 {

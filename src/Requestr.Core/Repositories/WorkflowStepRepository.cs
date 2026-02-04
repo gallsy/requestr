@@ -154,6 +154,35 @@ public class WorkflowStepRepository : IWorkflowStepRepository
         _logger.LogDebug("Deleted all steps for workflow definition {DefinitionId}", workflowDefinitionId);
     }
 
+    /// <inheritdoc />
+    public async Task<List<WorkflowStepFieldConfiguration>> GetFieldConfigurationsByStepDbIdAsync(int workflowStepId)
+    {
+        var connection = (SqlConnection)_connectionFactory.CreateConnection();
+        await using (connection)
+        {
+            await connection.OpenAsync();
+
+            var configs = await connection.QueryAsync<dynamic>(
+                WorkflowQueries.GetFieldConfigurationsByStepDbId,
+                new { WorkflowStepId = workflowStepId });
+
+            var results = new List<WorkflowStepFieldConfiguration>();
+            foreach (var config in configs)
+            {
+                results.Add(new WorkflowStepFieldConfiguration
+                {
+                    Id = (int)config.Id,
+                    WorkflowStepId = (int)config.WorkflowStepId,
+                    FieldName = (string)config.FieldName,
+                    IsRequired = (bool)config.IsRequired,
+                    IsReadOnly = (bool)config.IsReadOnly,
+                    IsVisible = (bool)config.IsVisible
+                });
+            }
+            return results;
+        }
+    }
+
     private WorkflowStep MapWorkflowStep(WorkflowStepDb stepDb)
     {
         var step = new WorkflowStep

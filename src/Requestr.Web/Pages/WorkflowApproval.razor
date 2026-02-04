@@ -2,12 +2,15 @@
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Utilities
+@using Requestr.Core.Services.Workflow
 @using Requestr.Web.Components.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.JSInterop
 @using System.Text.Json
-@inject IWorkflowService WorkflowService
+@inject IWorkflowInstanceService WorkflowInstanceService
+@inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
+@inject IWorkflowExecutionService WorkflowExecutionService
 @inject IFormRequestService FormRequestService
 @inject IFormDefinitionService FormDefinitionService
 @inject IWorkflowDesignerService WorkflowDesignerService
@@ -374,7 +377,7 @@ else
         // User can access if they have participated in this workflow (completed a step or assigned to one)
         try
         {
-            var hasParticipated = await WorkflowService.HasUserParticipatedInWorkflowAsync(
+            var hasParticipated = await WorkflowInstanceService.HasUserParticipatedInWorkflowAsync(
                 _currentUserId, _userRoles, _workflowInstance.Id);
             if (hasParticipated)
             {
@@ -394,12 +397,12 @@ else
         Logger.LogInformation("LoadWorkflowDataAsync: Starting for WorkflowInstanceId={WorkflowInstanceId}, StepId={StepId}", WorkflowInstanceId, StepId);
         
         // Load workflow instance
-        _workflowInstance = await WorkflowService.GetWorkflowInstanceAsync(WorkflowInstanceId);
+        _workflowInstance = await WorkflowInstanceService.GetWorkflowInstanceAsync(WorkflowInstanceId);
         Logger.LogInformation("LoadWorkflowDataAsync: WorkflowInstance loaded: {Found}", _workflowInstance != null);
         if (_workflowInstance == null) return;
 
         // Load workflow definition
-        _workflowDefinition = await WorkflowService.GetWorkflowDefinitionAsync(_workflowInstance.WorkflowDefinitionId);
+        _workflowDefinition = await WorkflowDefinitionQueryService.GetWorkflowDefinitionAsync(_workflowInstance.WorkflowDefinitionId);
         Logger.LogInformation("LoadWorkflowDataAsync: WorkflowDefinition loaded: {Found}", _workflowDefinition != null);
         if (_workflowDefinition == null) return;
 
@@ -439,7 +442,7 @@ else
         }
 
         // Load current step instance
-        var allStepInstances = await WorkflowService.GetStepInstancesAsync(WorkflowInstanceId);
+        var allStepInstances = await WorkflowExecutionService.GetStepInstancesAsync(WorkflowInstanceId);
         Logger.LogInformation("LoadWorkflowDataAsync: Found {Count} step instances", allStepInstances?.Count ?? 0);
         _currentStep = allStepInstances?.FirstOrDefault(s => s.StepId == StepId);
         Logger.LogInformation("LoadWorkflowDataAsync: CurrentStep for StepId '{StepId}' found: {Found}", StepId, _currentStep != null);
@@ -454,7 +457,7 @@ else
         {
             try
             {
-                _fieldConfigurations = await WorkflowService.GetStepFieldConfigurationsAsync(_currentStepDefinition.Id);
+                _fieldConfigurations = await WorkflowDefinitionQueryService.GetStepFieldConfigurationsByStepIdAsync(_currentStepDefinition.Id);
                 Logger.LogInformation("LoadWorkflowDataAsync: Loaded {Count} field configurations", _fieldConfigurations?.Count ?? 0);
             }
             catch (Exception ex)
@@ -528,13 +531,14 @@ else
             var currentUser = GetUserIdentifier(authState.User);
             var currentUserName = GetUserDisplayName(authState.User);
 
-            var success = await WorkflowService.CompleteStepAsync(
+            var success = await WorkflowExecutionService.CompleteStepAsync(
                 WorkflowInstanceId, 
                 StepId, 
                 currentUser, 
                 currentUserName, 
                 action, 
-                _approvalComments);
+                _approvalComments,
+                null);
 
             if (success)
             {

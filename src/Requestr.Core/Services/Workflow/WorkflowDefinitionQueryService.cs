@@ -53,4 +53,10 @@ public class WorkflowDefinitionQueryService : IWorkflowDefinitionQueryService
         var step = await _stepRepository.GetByStepIdAsync(workflowDefinitionId, stepId);
         return step?.FieldConfigurations ?? new List<WorkflowStepFieldConfiguration>();
     }
+
+    /// <inheritdoc />
+    public async Task<List<WorkflowStepFieldConfiguration>> GetStepFieldConfigurationsByStepIdAsync(int workflowStepId)
+    {
+        return await _stepRepository.GetFieldConfigurationsByStepDbIdAsync(workflowStepId);
+    }
 }
