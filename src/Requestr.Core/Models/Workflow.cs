@@ -171,3 +171,19 @@ public class WorkflowStepProgress
     public bool IsCurrent { get; set; }
     public List<string> AssignedRoles { get; set; } = new();
 }
+
+/// <summary>
+/// Represents a workflow history entry for audit trail purposes.
+/// </summary>
+public class WorkflowHistoryEntry
+{
+    public string StepId { get; set; } = string.Empty;
+    public string StepName { get; set; } = string.Empty;
+    public WorkflowStepInstanceStatus Status { get; set; }
+    public WorkflowStepAction? Action { get; set; }
+    public string? Comments { get; set; }
+    public DateTime? StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public string? CompletedBy { get; set; }
+    public string? CompletedByName { get; set; }
+}

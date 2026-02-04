@@ -249,5 +249,109 @@ public static class WorkflowQueries
     public const string CountStepInstances = @"
         SELECT COUNT(*) FROM WorkflowStepInstances WHERE WorkflowInstanceId = @WorkflowInstanceId";
     
+    /// <summary>
+    /// Gets step instance assigned roles from step definition.
+    /// </summary>
+    public const string GetStepInstanceWithRoles = @"
+        SELECT wsi.*, ws.AssignedRoles
+        FROM WorkflowStepInstances wsi
+        INNER JOIN WorkflowInstances wi ON wsi.WorkflowInstanceId = wi.Id
+        INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId AND ws.StepId = wsi.StepId
+        WHERE wsi.WorkflowInstanceId = @WorkflowInstanceId AND wsi.StepId = @StepId";
+
+    #endregion
+
+    #region Workflow Progress Queries
+
+    /// <summary>
+    /// Gets workflow progress data for a form request.
+    /// </summary>
+    public const string GetWorkflowProgress = @"
+        SELECT 
+            wi.Id as WorkflowInstanceId,
+            wi.FormRequestId,
+            wi.WorkflowDefinitionId,
+            wi.Status,
+            wi.CurrentStepId,
+            wi.StartedAt,
+            wi.CompletedAt,
+            wi.CompletedBy,
+            wd.Name as WorkflowName,
+            csi.Status as CurrentStepStatus,
+            csi.StartedAt as CurrentStepStartedAt,
+            csi.AssignedTo as CurrentStepAssignedTo,
+            cs.Name as CurrentStepName
+        FROM WorkflowInstances wi
+        INNER JOIN WorkflowDefinitions wd ON wi.WorkflowDefinitionId = wd.Id
+        LEFT JOIN WorkflowStepInstances csi ON wi.Id = csi.WorkflowInstanceId AND wi.CurrentStepId = csi.StepId
+        LEFT JOIN WorkflowSteps cs ON wd.Id = cs.WorkflowDefinitionId AND wi.CurrentStepId = cs.StepId
+        WHERE wi.FormRequestId = @FormRequestId";
+
+    /// <summary>
+    /// Gets step progress data for workflow instance.
+    /// </summary>
+    public const string GetStepProgress = @"
+        SELECT 
+            wsi.StepId,
+            ws.Name as StepName,
+            ws.Description as StepDescription,
+            ws.StepType,
+            ws.AssignedRoles,
+            wsi.Status,
+            wsi.AssignedTo,
+            wsi.StartedAt,
+            wsi.CompletedAt,
+            wsi.CompletedBy,
+            COALESCE(u.DisplayName, wsi.CompletedBy) as CompletedByName,
+            wsi.Action,
+            wsi.Comments
+        FROM WorkflowStepInstances wsi
+        INNER JOIN WorkflowInstances wi ON wsi.WorkflowInstanceId = wi.Id
+        INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId AND ws.StepId = wsi.StepId
+        LEFT JOIN Users u ON TRY_CONVERT(uniqueidentifier, wsi.CompletedBy) = u.UserObjectId
+        WHERE wsi.WorkflowInstanceId = @WorkflowInstanceId
+        ORDER BY 
+            CASE ws.StepType 
+                WHEN 0 THEN 0 
+                WHEN 4 THEN 999 
+                ELSE 1 
+            END,
+            wsi.StartedAt";
+
+    /// <summary>
+    /// Gets step counts for workflow progress calculation.
+    /// </summary>
+    public const string GetStepCounts = @"
+        SELECT 
+            COUNT(*) as TotalSteps,
+            SUM(CASE WHEN Status = @CompletedStatus THEN 1 ELSE 0 END) as CompletedSteps
+        FROM WorkflowStepInstances 
+        WHERE WorkflowInstanceId = @WorkflowInstanceId";
+
+    #endregion
+
+    #region Workflow History Queries
+
+    /// <summary>
+    /// Gets workflow history for a form request.
+    /// </summary>
+    public const string GetWorkflowHistory = @"
+        SELECT 
+            wsi.StepId,
+            ws.Name as StepName,
+            wsi.Status,
+            wsi.Action,
+            wsi.Comments,
+            wsi.StartedAt,
+            wsi.CompletedAt,
+            wsi.CompletedBy,
+            COALESCE(u.DisplayName, wsi.CompletedBy) as CompletedByName
+        FROM WorkflowStepInstances wsi
+        INNER JOIN WorkflowInstances wi ON wsi.WorkflowInstanceId = wi.Id
+        INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId AND ws.StepId = wsi.StepId
+        LEFT JOIN Users u ON TRY_CONVERT(uniqueidentifier, wsi.CompletedBy) = u.UserObjectId
+        WHERE wi.FormRequestId = @FormRequestId
+        ORDER BY wsi.CompletedAt DESC, wsi.StartedAt DESC";
+
     #endregion
 }

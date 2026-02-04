@@ -3,6 +3,7 @@ using Requestr.Core.Interfaces;
 using Requestr.Core.Repositories;
 using Requestr.Core.Services;
 using Requestr.Core.Services.FormRequests;
+using Requestr.Core.Services.Workflow;
 
 namespace Requestr.Core.Extensions;
 
@@ -16,6 +17,13 @@ public static class ServiceCollectionExtensions
         // Repositories
         services.AddScoped<IFormRequestRepository, FormRequestRepository>();
         services.AddScoped<IFormRequestHistoryRepository, FormRequestHistoryRepository>();
+        
+        // Workflow Repositories (Phase 3)
+        services.AddScoped<IWorkflowDefinitionRepository, WorkflowDefinitionRepository>();
+        services.AddScoped<IWorkflowStepRepository, WorkflowStepRepository>();
+        services.AddScoped<IWorkflowTransitionRepository, WorkflowTransitionRepository>();
+        services.AddScoped<IWorkflowInstanceRepository, WorkflowInstanceRepository>();
+        services.AddScoped<IWorkflowStepInstanceRepository, WorkflowStepInstanceRepository>();
         
         // Data Services
         services.AddScoped<IDatabaseService, DatabaseService>();
@@ -35,11 +43,19 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFormRequestApplicationService, FormRequestApplicationService>();
         services.AddScoped<IFormRequestHistoryService, FormRequestHistoryService>();
         
-        // Workflow Services
+        // Workflow Services (Legacy - retained for compatibility)
         services.AddScoped<IWorkflowService, WorkflowService>();
         services.AddScoped<IWorkflowDesignerService, WorkflowDesignerService>();
         services.AddScoped<IFormWorkflowConfigurationService, FormWorkflowConfigurationService>();
         services.AddScoped<IFormPermissionService, FormPermissionService>();
+        
+        // Decomposed Workflow Services (Phase 3)
+        // These provide single-responsibility alternatives to the monolithic WorkflowService
+        services.AddScoped<IWorkflowDefinitionCommandService, WorkflowDefinitionCommandService>();
+        services.AddScoped<IWorkflowDefinitionQueryService, WorkflowDefinitionQueryService>();
+        services.AddScoped<IWorkflowInstanceService, WorkflowInstanceService>();
+        services.AddScoped<IWorkflowExecutionService, WorkflowExecutionService>();
+        services.AddScoped<IWorkflowProgressService, WorkflowProgressService>();
         
         // Notification Services
         services.AddScoped<IEmailConfigurationService, EmailConfigurationService>();
