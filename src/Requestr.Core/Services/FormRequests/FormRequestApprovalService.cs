@@ -178,18 +178,18 @@ public class FormRequestApprovalService : IFormRequestApprovalService
 
     public async Task<bool> RetryFailedAsync(int id, string retriedBy, string retriedByName)
     {
+        var formRequest = await _formRequestRepository.GetByIdAsync(id);
+        if (formRequest == null || formRequest.Status != RequestStatus.Failed)
+        {
+            return false;
+        }
+
+        // Attempt the retry inside a transaction: reset status then apply
         using var connection = await _connectionFactory.CreateConnectionAsync();
         using var transaction = connection.BeginTransaction();
 
         try
         {
-            var formRequest = await _formRequestRepository.GetByIdAsync(id);
-            if (formRequest == null || formRequest.Status != RequestStatus.Failed)
-            {
-                await transaction.RollbackAsync();
-                return false;
-            }
-
             // Reset status to Approved within the transaction
             const string updateStatusSql = @"
                 UPDATE FormRequests 
@@ -213,85 +213,104 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                 transaction
             );
 
-            // Try to apply again
-            try
+            var applicationResult = await _applicationService.ApplyChangesToDatabaseAsync(
+                formRequest, connection, transaction);
+
+            if (applicationResult.Success)
             {
-                var applicationResult = await _applicationService.ApplyChangesToDatabaseAsync(
-                    formRequest, connection, transaction);
+                await _formRequestRepository.SetAppliedAsync(id, applicationResult.RecordKey, connection, transaction);
 
-                if (applicationResult.Success)
+                string successComment = formRequest.RequestType switch
                 {
-                    await _formRequestRepository.SetAppliedAsync(id, applicationResult.RecordKey, connection, transaction);
-
-                    string successComment = formRequest.RequestType switch
-                    {
-                        RequestType.Insert => $"Record successfully inserted after retry. New record key: {applicationResult.RecordKey}",
-                        RequestType.Update => $"Record successfully updated after retry. Updated record: {applicationResult.RecordKey}",
-                        RequestType.Delete => $"Record successfully deleted after retry. Deleted record: {applicationResult.RecordKey}",
-                        _ => $"Request successfully applied after retry. Record key: {applicationResult.RecordKey}"
-                    };
-
-                    await _historyService.RecordChangeAsync(
-                        id,
-                        FormRequestChangeType.Applied,
-                        new Dictionary<string, object?> { { "Status", "Approved" } },
-                        new Dictionary<string, object?> 
-                        { 
-                            { "Status", "Applied" },
-                            { "AppliedRecordKey", applicationResult.RecordKey },
-                            { "OperationType", formRequest.RequestType },
-                            { "RetryAttempt", true }
-                        },
-                        retriedBy,
-                        retriedByName,
-                        successComment,
-                        connection,
-                        transaction
-                    );
-
-                    _logger.LogInformation("Form request {Id} successfully retried and applied. Record key: {RecordKey}",
-                        id, applicationResult.RecordKey);
-                }
-                else
-                {
-                    throw new InvalidOperationException(applicationResult.ErrorMessage ?? "Retry failed");
-                }
-            }
-            catch (Exception applyEx)
-            {
-                _logger.LogError(applyEx, "Failed to apply form request {Id} during retry", id);
-
-                await _formRequestRepository.SetFailedAsync(id, $"Retry attempt failed: {applyEx.Message}", connection, transaction);
+                    RequestType.Insert => $"Record successfully inserted after retry. New record key: {applicationResult.RecordKey}",
+                    RequestType.Update => $"Record successfully updated after retry. Updated record: {applicationResult.RecordKey}",
+                    RequestType.Delete => $"Record successfully deleted after retry. Deleted record: {applicationResult.RecordKey}",
+                    _ => $"Request successfully applied after retry. Record key: {applicationResult.RecordKey}"
+                };
 
                 await _historyService.RecordChangeAsync(
                     id,
-                    FormRequestChangeType.Failed,
+                    FormRequestChangeType.Applied,
                     new Dictionary<string, object?> { { "Status", "Approved" } },
                     new Dictionary<string, object?> 
                     { 
-                        { "Status", "Failed" },
-                        { "FailureMessage", $"Retry attempt failed: {applyEx.Message}" },
+                        { "Status", "Applied" },
+                        { "AppliedRecordKey", applicationResult.RecordKey },
+                        { "OperationType", formRequest.RequestType },
                         { "RetryAttempt", true }
                     },
                     retriedBy,
                     retriedByName,
-                    $"Retry attempt failed: {applyEx.Message}",
+                    successComment,
                     connection,
                     transaction
                 );
 
+                await transaction.CommitAsync();
+
+                _logger.LogInformation("Form request {Id} successfully retried and applied. Record key: {RecordKey}",
+                    id, applicationResult.RecordKey);
+                return true;
+            }
+            else
+            {
+                // Application returned a failure result — roll back and record failure outside the transaction
                 await transaction.RollbackAsync();
+
+                _logger.LogWarning("Form request {Id} retry application returned failure: {Error}",
+                    id, applicationResult.ErrorMessage);
+
+                await RecordRetryFailureAsync(id, applicationResult.ErrorMessage ?? "Retry failed", retriedBy, retriedByName);
                 return false;
             }
-
-            await transaction.CommitAsync();
-            return true;
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
-            _logger.LogError(ex, "Error retrying failed form request {Id}", id);
-            throw;
+
+            _logger.LogError(ex, "Failed to apply form request {Id} during retry", id);
+
+            // Record the failure on a separate connection so it persists regardless of the rollback
+            await RecordRetryFailureAsync(id, ex.Message, retriedBy, retriedByName);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Records a retry failure on a new connection so the status update and history
+    /// are persisted even after the main transaction has been rolled back.
+    /// </summary>
+    private async Task RecordRetryFailureAsync(int id, string errorMessage, string retriedBy, string retriedByName)
+    {
+        try
+        {
+            using var failConnection = await _connectionFactory.CreateConnectionAsync();
+            using var failTransaction = failConnection.BeginTransaction();
+
+            await _formRequestRepository.SetFailedAsync(id, $"Retry attempt failed: {errorMessage}", failConnection, failTransaction);
+
+            await _historyService.RecordChangeAsync(
+                id,
+                FormRequestChangeType.Failed,
+                new Dictionary<string, object?> { { "Status", "Approved" } },
+                new Dictionary<string, object?> 
+                { 
+                    { "Status", "Failed" },
+                    { "FailureMessage", $"Retry attempt failed: {errorMessage}" },
+                    { "RetryAttempt", true }
+                },
+                retriedBy,
+                retriedByName,
+                $"Retry attempt failed: {errorMessage}",
+                failConnection,
+                failTransaction
+            );
+
+            await failTransaction.CommitAsync();
+        }
+        catch (Exception recordEx)
+        {
+            _logger.LogError(recordEx, "Failed to record retry failure for form request {Id}", id);
         }
     }
 

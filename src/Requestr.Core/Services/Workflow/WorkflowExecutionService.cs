@@ -120,20 +120,17 @@ public class WorkflowExecutionService : IWorkflowExecutionService
 
             await transaction.CommitAsync();
 
-            // Send notification (fire and forget)
-            _ = Task.Run(async () =>
+            // Send notification after commit
+            try
             {
-                try
-                {
-                    await SendStepActionNotificationAsync(instance.FormRequestId, stepId, 
-                        definition.Steps.FirstOrDefault(s => s.StepId == stepId)?.Name ?? stepId, 
-                        action, completedBy, completedByName, comments);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error sending step action notification");
-                }
-            });
+                await SendStepActionNotificationAsync(instance.FormRequestId, stepId, 
+                    definition.Steps.FirstOrDefault(s => s.StepId == stepId)?.Name ?? stepId, 
+                    action, completedBy, completedByName, comments);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending step action notification for step {StepId}", stepId);
+            }
 
             return true;
         }
@@ -368,24 +365,31 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         if (instance != null)
         {
             await ApproveFormRequestAsync(connection, transaction, instance.FormRequestId, completedBy);
-
-            // Send workflow completed notification (fire and forget)
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await SendWorkflowCompletedNotificationAsync(instance.FormRequestId, completedBy, true, null);
-                    // Apply data changes in background
-                    await ApplyWorkflowDataChangesAsync(workflowInstanceId, completedBy);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error in post-workflow completion tasks");
-                }
-            });
         }
 
         _logger.LogInformation("Workflow {InstanceId} completed at End step {StepId}", workflowInstanceId, stepId);
+
+        // Send notification and apply data changes after transaction is committed by the caller
+        if (instance != null)
+        {
+            try
+            {
+                await SendWorkflowCompletedNotificationAsync(instance.FormRequestId, completedBy, true, null);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending workflow completed notification for request {FormRequestId}", instance.FormRequestId);
+            }
+
+            try
+            {
+                await ApplyWorkflowDataChangesAsync(workflowInstanceId, completedBy);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error applying data changes for workflow {WorkflowInstanceId}", workflowInstanceId);
+            }
+        }
     }
 
     private async Task RejectWorkflowAsync(
@@ -423,20 +427,17 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             FormRequestId = formRequestId
         }, transaction);
 
-        // Send rejection notification (fire and forget)
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await SendWorkflowCompletedNotificationAsync(formRequestId, rejectedBy, false, rejectionReason);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error sending rejection notification");
-            }
-        });
-
         _logger.LogInformation("Rejected workflow instance {WorkflowInstanceId} by user {UserId}", workflowInstanceId, rejectedBy);
+
+        // Send rejection notification after transaction is committed by the caller
+        try
+        {
+            await SendWorkflowCompletedNotificationAsync(formRequestId, rejectedBy, false, rejectionReason);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending rejection notification for workflow {WorkflowInstanceId}", workflowInstanceId);
+        }
     }
 
     private async Task ApproveFormRequestAsync(SqlConnection connection, SqlTransaction transaction, int formRequestId, string approvedBy)

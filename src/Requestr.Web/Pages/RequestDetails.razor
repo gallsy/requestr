@@ -40,6 +40,22 @@ else
     <PageHeader Title="@(_formDefinition?.Name ?? "Request Details")" 
                 Description="@($"Request #{RequestId}")">
         <Actions>
+            @if (_request.Status == RequestStatus.Failed && _isAdmin)
+            {
+                <Button Color="ButtonColor.Warning" Disabled="_isRetrying"
+                        @onclick="RetryFailedRequestAsync">
+                    @if (_isRetrying)
+                    {
+                        <Spinner Size="SpinnerSize.Small" Class="me-1" />
+                        <span>Retrying...</span>
+                    }
+                    else
+                    {
+                        <Icon Name="IconName.ArrowRepeat" class="me-1" />
+                        <span>Retry</span>
+                    }
+                </Button>
+            }
             @if (_request.Status == RequestStatus.Pending && CanEditRequest())
             {
                 <Button Color="ButtonColor.Primary" Outline="true" 
@@ -72,6 +88,15 @@ else
             <StandardAlert AlertType="warning" 
                          Title="Data Conflicts Detected">
                 <div style="white-space: pre-line;">@_conflictWarning</div>
+            </StandardAlert>
+        }
+
+        @if (!string.IsNullOrEmpty(_retryMessage))
+        {
+            <StandardAlert AlertType="@(_retrySuccess ? "success" : "danger")"
+                         Title="@(_retrySuccess ? "Retry Successful" : "Retry Failed")"
+                         Dismissable="true">
+                @_retryMessage
             </StandardAlert>
         }
 
@@ -237,6 +262,9 @@ else
     private string _currentUserId = "";
     private List<string> _userRoles = new();
     private bool _isAdmin = false;
+    private bool _isRetrying = false;
+    private string? _retryMessage;
+    private bool _retrySuccess;
     
     // Workflow-related fields
     private WorkflowStepInstance? _currentWorkflowStep;
@@ -485,6 +513,48 @@ else
     {
         // Users can edit their own pending requests
         return _request?.Status == RequestStatus.Pending;
+    }
+
+    private async Task RetryFailedRequestAsync()
+    {
+        if (_request == null || _isRetrying) return;
+
+        _isRetrying = true;
+        _retryMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var userName = authState.User.Identity?.Name ?? _currentUserId;
+
+            var success = await FormRequestApprovalService.RetryFailedAsync(
+                _request.Id, _currentUserId, userName);
+
+            if (success)
+            {
+                _retrySuccess = true;
+                _retryMessage = "Request was successfully retried and applied to the database.";
+            }
+            else
+            {
+                _retrySuccess = false;
+                _retryMessage = "Retry attempt failed. Check the request history below for details.";
+            }
+
+            // Reload the request to reflect the new status and history
+            await LoadRequest();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error retrying request {RequestId}", RequestId);
+            _retrySuccess = false;
+            _retryMessage = $"An error occurred while retrying: {ex.Message}";
+        }
+        finally
+        {
+            _isRetrying = false;
+        }
     }
 
     private string GetStatusBadgeColor(RequestStatus status) => status switch
