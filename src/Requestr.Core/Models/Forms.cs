@@ -73,6 +73,10 @@ public class FormField : BaseEntity
     public bool TreatBlankAsNull { get; set; } = false;
     public string? HelpText { get; set; } // Tooltip text shown via info icon on the field label
     
+    // Computed value properties
+    public ComputedValueType? ComputedValueType { get; set; } // Type of auto-generated value (null/None = user-entered)
+    public ComputedValueApplyMode ComputedValueApplyMode { get; set; } = ComputedValueApplyMode.InsertAndUpdate; // When to apply the computed value
+    
     // Grid positioning properties
     public int? FormSectionId { get; set; }
     public int GridRow { get; set; } = 1;        // Row within the section (1-based)

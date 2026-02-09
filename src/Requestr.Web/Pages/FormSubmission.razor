@@ -993,6 +993,18 @@ else
 
     private bool ShouldHideFieldOnCreate(FormField field)
     {
+        // Hide computed value fields based on their apply mode
+        if (field.ComputedValueType != null && field.ComputedValueType != ComputedValueType.None)
+        {
+            return _requestType switch
+            {
+                RequestType.Insert => field.ComputedValueApplyMode is ComputedValueApplyMode.InsertAndUpdate or ComputedValueApplyMode.InsertOnly,
+                RequestType.Update => field.ComputedValueApplyMode is ComputedValueApplyMode.InsertAndUpdate or ComputedValueApplyMode.UpdateOnly,
+                _ => false
+            };
+        }
+
+        // Hide identity/computed/rowversion columns on insert
         try
         {
             if (_requestType != RequestType.Insert)

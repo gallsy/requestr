@@ -156,6 +156,9 @@ public class FormRequestApplicationService : IFormRequestApplicationService
             var convertedFieldValues = SqlTypeConverter.ConvertDictionary(formRequest.FieldValues, formDefinition.Fields);
             var convertedOriginalValues = SqlTypeConverter.ConvertDictionary(formRequest.OriginalValues, formDefinition.Fields);
 
+            // Inject computed values based on field configuration and request type
+            await InjectComputedValuesAsync(convertedFieldValues, formDefinition.Fields, formRequest);
+
             bool success;
             object? recordKey = null;
 
@@ -224,6 +227,74 @@ public class FormRequestApplicationService : IFormRequestApplicationService
         {
             _logger.LogError(ex, "Error applying changes for form request {Id}", formRequest.Id);
             return ApplicationResult.Failed(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Injects computed values into the field values dictionary based on field configuration.
+    /// Values are resolved at apply-time (e.g. current datetime, user info, new GUID).
+    /// </summary>
+    private async Task InjectComputedValuesAsync(
+        Dictionary<string, object?> fieldValues,
+        List<FormField> fields,
+        FormRequest formRequest)
+    {
+        foreach (var field in fields)
+        {
+            if (field.ComputedValueType == null || field.ComputedValueType == ComputedValueType.None)
+                continue;
+
+            // Check if this computed value should apply for the current request type
+            var shouldApply = formRequest.RequestType switch
+            {
+                RequestType.Insert => field.ComputedValueApplyMode is ComputedValueApplyMode.InsertAndUpdate or ComputedValueApplyMode.InsertOnly,
+                RequestType.Update => field.ComputedValueApplyMode is ComputedValueApplyMode.InsertAndUpdate or ComputedValueApplyMode.UpdateOnly,
+                RequestType.Delete => false, // Computed values never apply to deletes
+                _ => false
+            };
+
+            if (!shouldApply)
+                continue;
+
+            var computedValue = field.ComputedValueType switch
+            {
+                ComputedValueType.CurrentDateTimeUtc => (object)DateTime.UtcNow,
+                ComputedValueType.CurrentDateTimeLocal => (object)DateTime.Now,
+                ComputedValueType.CurrentUserId => formRequest.RequestedBy,
+                ComputedValueType.CurrentUserDisplayName => formRequest.RequestedByName,
+                ComputedValueType.CurrentUserEmail => await ResolveUserEmailAsync(formRequest.RequestedBy),
+                ComputedValueType.NewGuid => Guid.NewGuid(),
+                _ => null
+            };
+
+            if (computedValue != null)
+            {
+                fieldValues[field.Name] = computedValue;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Resolves the user's email from the Users table using their Entra object ID.
+    /// Falls back to the RequestedBy value if not found.
+    /// </summary>
+    private async Task<string> ResolveUserEmailAsync(string userObjectId)
+    {
+        try
+        {
+            if (!Guid.TryParse(userObjectId, out _))
+                return userObjectId;
+
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+            var email = await connection.QueryFirstOrDefaultAsync<string>(
+                "SELECT COALESCE(Email, UPN, @Fallback) FROM Users WHERE UserObjectId = TRY_CONVERT(uniqueidentifier, @UserObjectId)",
+                new { UserObjectId = userObjectId, Fallback = userObjectId });
+            return email ?? userObjectId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to resolve email for user {UserObjectId}, using ID as fallback", userObjectId);
+            return userObjectId;
         }
     }
 

@@ -523,11 +523,13 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             const string getFormRequestSql = @"
                 SELECT wi.FormRequestId, fr.Status, fr.BulkFormRequestId, 
                        fr.FieldValues, fr.OriginalValues, fr.RequestType,
-                       fr.FormDefinitionId,
+                       fr.FormDefinitionId, fr.RequestedBy,
+                       COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName,
                        fd.DatabaseConnectionName, fd.TableName, fd.[Schema]
                 FROM WorkflowInstances wi
                 INNER JOIN FormRequests fr ON wi.FormRequestId = fr.Id
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+                LEFT JOIN Users uReq ON uReq.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
                 WHERE wi.Id = @WorkflowInstanceId";
 
             var workflowData = await connection.QueryFirstOrDefaultAsync(getFormRequestSql, new { WorkflowInstanceId = workflowInstanceId });
@@ -628,6 +630,10 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             var fieldValues = ParseFieldValues(requestData.FieldValues, fields);
             var originalValues = ParseFieldValues(requestData.OriginalValues, fields);
             var requestType = (RequestType)requestData.RequestType;
+
+            // Inject computed values (e.g. current datetime, user info, GUID)
+            await InjectComputedValuesAsync(fieldValues, fields, requestType, 
+                requestData.RequestedBy?.ToString(), requestData.RequestedByName?.ToString());
 
             switch (requestType)
             {
@@ -1072,6 +1078,71 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         {
             _logger.LogError(ex, "Error sending step active notification for workflow {WorkflowInstanceId}, step {StepId}",
                 workflowInstanceId, stepId);
+        }
+    }
+
+    /// <summary>
+    /// Injects computed values into the field values dictionary based on field configuration.
+    /// Values are resolved at apply-time (e.g. current datetime, user info, new GUID).
+    /// </summary>
+    private async Task InjectComputedValuesAsync(
+        Dictionary<string, object?> fieldValues,
+        List<FormField> fields,
+        RequestType requestType,
+        string? requestedBy,
+        string? requestedByName)
+    {
+        foreach (var field in fields)
+        {
+            if (field.ComputedValueType == null || field.ComputedValueType == ComputedValueType.None)
+                continue;
+
+            var shouldApply = requestType switch
+            {
+                RequestType.Insert => field.ComputedValueApplyMode is ComputedValueApplyMode.InsertAndUpdate or ComputedValueApplyMode.InsertOnly,
+                RequestType.Update => field.ComputedValueApplyMode is ComputedValueApplyMode.InsertAndUpdate or ComputedValueApplyMode.UpdateOnly,
+                RequestType.Delete => false,
+                _ => false
+            };
+
+            if (!shouldApply)
+                continue;
+
+            var computedValue = field.ComputedValueType switch
+            {
+                ComputedValueType.CurrentDateTimeUtc => (object)DateTime.UtcNow,
+                ComputedValueType.CurrentDateTimeLocal => (object)DateTime.Now,
+                ComputedValueType.CurrentUserId => requestedBy,
+                ComputedValueType.CurrentUserDisplayName => requestedByName,
+                ComputedValueType.CurrentUserEmail => await ResolveUserEmailAsync(requestedBy),
+                ComputedValueType.NewGuid => Guid.NewGuid(),
+                _ => null
+            };
+
+            if (computedValue != null)
+            {
+                fieldValues[field.Name] = computedValue;
+            }
+        }
+    }
+
+    private async Task<string?> ResolveUserEmailAsync(string? userObjectId)
+    {
+        if (string.IsNullOrEmpty(userObjectId) || !Guid.TryParse(userObjectId, out _))
+            return userObjectId;
+
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+            var email = await connection.QueryFirstOrDefaultAsync<string>(
+                "SELECT COALESCE(Email, UPN, @Fallback) FROM Users WHERE UserObjectId = TRY_CONVERT(uniqueidentifier, @UserObjectId)",
+                new { UserObjectId = userObjectId, Fallback = userObjectId });
+            return email ?? userObjectId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to resolve email for user {UserObjectId}", userObjectId);
+            return userObjectId;
         }
     }
 }

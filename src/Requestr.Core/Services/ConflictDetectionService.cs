@@ -111,6 +111,21 @@ public class ConflictDetectionService : IConflictDetectionService
             {
                 var fieldName = originalValue.Key;
                 var storedOriginalValue = originalValue.Value;
+
+                // Skip computed value fields — their values will be overwritten at apply-time
+                var fieldDef = formDefinition.Fields.FirstOrDefault(f =>
+                    string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase));
+                if (fieldDef?.ComputedValueType != null && fieldDef.ComputedValueType != ComputedValueType.None)
+                {
+                    var isComputedForThisRequestType = formRequest.RequestType switch
+                    {
+                        RequestType.Update => fieldDef.ComputedValueApplyMode is ComputedValueApplyMode.InsertAndUpdate or ComputedValueApplyMode.UpdateOnly,
+                        RequestType.Delete => false,
+                        _ => false
+                    };
+                    if (isComputedForThisRequestType)
+                        continue;
+                }
                 
                 if (currentRecord.ContainsKey(fieldName))
                 {

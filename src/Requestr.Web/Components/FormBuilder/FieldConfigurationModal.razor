@@ -24,10 +24,19 @@
             </div>
             <div class="row mb-2">
                 <div class="col-md-6">
-                    <label class="form-label">Default Value</label>
-                    <input type="text" class="form-control" @bind="Field.DefaultValue" />
+                    @if (HasComputedValue)
+                    {
+                        <label class="form-label">Default Value</label>
+                        <input type="text" class="form-control" disabled value="(auto-generated)" />
+                        <small class="form-text text-muted">Value is auto-generated at apply time</small>
+                    }
+                    else
+                    {
+                        <label class="form-label">Default Value</label>
+                        <input type="text" class="form-control" @bind="Field.DefaultValue" />
+                    }
                 </div>
-                @if (SupportsValidation(Field.ControlType ?? Field.DataType))
+                @if (!HasComputedValue && SupportsValidation(Field.ControlType ?? Field.DataType))
                 {
                     <div class="col-md-6">
                         <label class="form-label">Validation Regex</label>
@@ -105,6 +114,31 @@
                     <small class="form-text text-muted">When provided, an info icon will appear next to the field label</small>
                 </div>
             </div>
+            <div class="row mb-2">
+                <div class="col-md-6">
+                    <label class="form-label">Computed Value</label>
+                    <select class="form-select" value="@ComputedValueTypeInt" @onchange="OnComputedValueTypeChanged">
+                        <option value="0">None (user-entered)</option>
+                        @foreach (var option in GetComputedValueOptions())
+                        {
+                            <option value="@((int)option.Value)">@option.Label</option>
+                        }
+                    </select>
+                    <small class="form-text text-muted">When set, the value is auto-generated when the request is applied to the database</small>
+                </div>
+                @if (HasComputedValue)
+                {
+                    <div class="col-md-6">
+                        <label class="form-label">Apply On</label>
+                        <select class="form-select" @bind="Field.ComputedValueApplyMode">
+                            <option value="@ComputedValueApplyMode.InsertAndUpdate">Insert &amp; Update</option>
+                            <option value="@ComputedValueApplyMode.InsertOnly">Insert Only</option>
+                            <option value="@ComputedValueApplyMode.UpdateOnly">Update Only</option>
+                        </select>
+                        <small class="form-text text-muted">Which request types should auto-generate this value</small>
+                    </div>
+                }
+            </div>
         }
     </BodyTemplate>
     <FooterTemplate>
@@ -138,6 +172,10 @@
     private string ModalTitle => Field != null ? $"Configure Field: {Field.DisplayName}" : "Configure Field";
 
     private List<(string Value, string Text)> AvailableControlTypes => GetAvailableControlTypes();
+
+    private bool HasComputedValue => Field?.ComputedValueType != null && Field.ComputedValueType != ComputedValueType.None;
+    
+    private int ComputedValueTypeInt => Field?.ComputedValueType != null ? (int)Field.ComputedValueType : 0;
 
     public async Task ShowAsync()
     {
@@ -268,6 +306,57 @@
                 options.Add(("select", "Dropdown"));
                 options.Add(("checkbox", "Checkbox"));
                 break;
+        }
+
+        return options;
+    }
+
+    private void OnComputedValueTypeChanged(ChangeEventArgs e)
+    {
+        if (Field == null) return;
+        var intValue = int.Parse(e.Value?.ToString() ?? "0");
+        if (intValue == 0)
+        {
+            Field.ComputedValueType = null;
+            Field.ComputedValueApplyMode = ComputedValueApplyMode.InsertAndUpdate;
+        }
+        else
+        {
+            Field.ComputedValueType = (ComputedValueType)intValue;
+        }
+    }
+
+    private List<(ComputedValueType Value, string Label)> GetComputedValueOptions()
+    {
+        var options = new List<(ComputedValueType Value, string Label)>();
+        var sqlType = SqlType?.ToLower() ?? "varchar";
+
+        // DateTime types
+        if (sqlType.Contains("datetime") || sqlType.Contains("smalldatetime") || sqlType.Contains("date"))
+        {
+            options.Add((ComputedValueType.CurrentDateTimeUtc, "Current Date/Time (UTC)"));
+            options.Add((ComputedValueType.CurrentDateTimeLocal, "Current Date/Time (Local)"));
+        }
+
+        // String types — can hold user ID, display name, or email
+        if (sqlType.Contains("varchar") || sqlType.Contains("nvarchar") || sqlType.Contains("char") || 
+            sqlType.Contains("nchar") || sqlType.Contains("text") || sqlType.Contains("ntext"))
+        {
+            options.Add((ComputedValueType.CurrentUserId, "Current User ID"));
+            options.Add((ComputedValueType.CurrentUserDisplayName, "Current User Display Name"));
+            options.Add((ComputedValueType.CurrentUserEmail, "Current User Email"));
+        }
+
+        // GUID type
+        if (sqlType.Contains("uniqueidentifier"))
+        {
+            options.Add((ComputedValueType.NewGuid, "New GUID"));
+        }
+
+        // Also allow string columns to hold GUIDs (as text)
+        if (sqlType.Contains("varchar") || sqlType.Contains("nvarchar") || sqlType.Contains("char") || sqlType.Contains("nchar"))
+        {
+            options.Add((ComputedValueType.NewGuid, "New GUID"));
         }
 
         return options;

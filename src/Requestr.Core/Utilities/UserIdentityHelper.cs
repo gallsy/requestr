@@ -34,4 +34,18 @@ public static class UserIdentityHelper
                user.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")?.Value ??
                user.Identity?.Name ?? "Unknown User";
     }
+
+    /// <summary>
+    /// Extracts the user's email address from the claims principal.
+    /// Checks email claim, preferred_username, and UPN in order.
+    /// </summary>
+    public static string GetEmail(ClaimsPrincipal user)
+    {
+        return user.FindFirst(ClaimTypes.Email)?.Value ??
+               user.FindFirst("email")?.Value ??
+               user.FindFirst("preferred_username")?.Value ??
+               user.FindFirst("upn")?.Value ??
+               user.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")?.Value ??
+               user.Identity?.Name ?? "Unknown";
+    }
 }
