@@ -16,7 +16,8 @@ public static class FormRequestQueries
         fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) as ApprovedByName,
         fr.ApprovedAt, fr.RejectionReason, fr.Comments,
         fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
-        fd.Name as FormName, fd.Description as FormDescription";
+        fd.Name as FormName, fd.Description as FormDescription,
+        fd.DatabaseConnectionName as FormDatabaseConnectionName, fd.TableName as FormTableName, fd.[Schema] as FormSchema";
     
     /// <summary>
     /// Base FROM clause with standard joins.

@@ -347,9 +347,12 @@ public class FormRequestApprovalService : IFormRequestApprovalService
             }
 
             // Update form request status based on workflow status
-            if (result.WorkflowCompleted)
+            // Note: When workflow is approved, ApplyWorkflowDataChangesAsync (called as a 
+            // post-commit action in WorkflowExecutionService) already sets the status to Applied.
+            // We only need to update status here for rejections.
+            if (result.WorkflowCompleted && !result.WorkflowApproved)
             {
-                formRequest.Status = result.WorkflowApproved ? RequestStatus.Approved : RequestStatus.Rejected;
+                formRequest.Status = RequestStatus.Rejected;
             }
 
             // Apply any field updates
@@ -362,7 +365,9 @@ public class FormRequestApprovalService : IFormRequestApprovalService
             }
 
             // Persist changes if status changed or field values updated
-            if (result.WorkflowCompleted || fieldUpdates?.Any() == true)
+            // Skip update when workflow was approved — status is already set to Applied by the data application step
+            bool needsUpdate = (result.WorkflowCompleted && !result.WorkflowApproved) || fieldUpdates?.Any() == true;
+            if (needsUpdate)
             {
                 await _formRequestRepository.UpdateAsync(formRequest);
             }

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using Requestr.Core.Repositories;
+using Requestr.Core.Utilities;
 
 namespace Requestr.Core.Services.Workflow;
 
@@ -19,6 +20,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     private readonly IWorkflowDefinitionRepository _definitionRepository;
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly IDataService _dataService;
+    private readonly IFormDefinitionService _formDefinitionService;
     private readonly INotificationService _notificationService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<WorkflowExecutionService> _logger;
@@ -27,12 +29,24 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     private const string RequestRejected = "REQUEST_REJECTED";
     private const string WorkflowStepPending = "WORKFLOW_STEP_PENDING";
 
+    /// <summary>
+    /// Captures actions that must run after the transaction has been committed,
+    /// to avoid self-deadlocking when new connections try to read rows locked by the open transaction.
+    /// </summary>
+    private record PostCommitActions(
+        int? FormRequestIdForNotification = null,
+        string? CompletedBy = null,
+        bool WasApproved = false,
+        string? Comments = null,
+        int? WorkflowInstanceIdForDataApplication = null);
+
     public WorkflowExecutionService(
         IWorkflowInstanceRepository instanceRepository,
         IWorkflowStepInstanceRepository stepInstanceRepository,
         IWorkflowDefinitionRepository definitionRepository,
         IDbConnectionFactory connectionFactory,
         IDataService dataService,
+        IFormDefinitionService formDefinitionService,
         INotificationService notificationService,
         IConfiguration configuration,
         ILogger<WorkflowExecutionService> logger)
@@ -42,6 +56,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         _definitionRepository = definitionRepository;
         _connectionFactory = connectionFactory;
         _dataService = dataService;
+        _formDefinitionService = formDefinitionService;
         _notificationService = notificationService;
         _configuration = configuration;
         _logger = logger;
@@ -104,9 +119,10 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                 stepId, action, workflowInstanceId);
 
             // Handle the action
+            PostCommitActions? postCommitActions = null;
             if (action == WorkflowStepAction.Rejected)
             {
-                await RejectWorkflowAsync((SqlConnection)connection, (SqlTransaction)transaction, workflowInstanceId, completedBy, comments, instance.FormRequestId);
+                postCommitActions = await RejectWorkflowAsync((SqlConnection)connection, (SqlTransaction)transaction, workflowInstanceId, completedBy, comments, instance.FormRequestId);
             }
             else
             {
@@ -114,7 +130,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                 var nextStepId = await GetNextStepIdAsync(definition, stepId);
                 if (!string.IsNullOrEmpty(nextStepId))
                 {
-                    await MoveToNextStepAsync((SqlConnection)connection, (SqlTransaction)transaction, workflowInstanceId, nextStepId, definition, completedBy);
+                    postCommitActions = await MoveToNextStepAsync((SqlConnection)connection, (SqlTransaction)transaction, workflowInstanceId, nextStepId, definition, completedBy);
                 }
             }
 
@@ -130,6 +146,13 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error sending step action notification for step {StepId}", stepId);
+            }
+
+            // Execute deferred post-commit actions (notification + data application)
+            // These open their own connections and would deadlock if run inside the transaction.
+            if (postCommitActions != null)
+            {
+                await ExecutePostCommitActionsAsync(postCommitActions);
             }
 
             return true;
@@ -303,7 +326,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         return transitions.First().ToStepId;
     }
 
-    private async Task MoveToNextStepAsync(
+    private async Task<PostCommitActions?> MoveToNextStepAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         int workflowInstanceId,
@@ -321,7 +344,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         var nextStep = definition.Steps.FirstOrDefault(s => s.StepId == nextStepId);
         if (nextStep?.StepType == WorkflowStepType.End)
         {
-            await AutoCompleteEndStepAsync(connection, transaction, workflowInstanceId, nextStepId, completedBy);
+            return await AutoCompleteEndStepAsync(connection, transaction, workflowInstanceId, nextStepId, completedBy);
         }
         else
         {
@@ -339,9 +362,10 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         }
 
         _logger.LogDebug("Moved workflow {InstanceId} to step {StepId}", workflowInstanceId, nextStepId);
+        return null;
     }
 
-    private async Task AutoCompleteEndStepAsync(
+    private async Task<PostCommitActions?> AutoCompleteEndStepAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         int workflowInstanceId,
@@ -369,30 +393,20 @@ public class WorkflowExecutionService : IWorkflowExecutionService
 
         _logger.LogInformation("Workflow {InstanceId} completed at End step {StepId}", workflowInstanceId, stepId);
 
-        // Send notification and apply data changes after transaction is committed by the caller
+        // Return deferred actions — these open their own connections and must run AFTER commit
         if (instance != null)
         {
-            try
-            {
-                await SendWorkflowCompletedNotificationAsync(instance.FormRequestId, completedBy, true, null);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error sending workflow completed notification for request {FormRequestId}", instance.FormRequestId);
-            }
-
-            try
-            {
-                await ApplyWorkflowDataChangesAsync(workflowInstanceId, completedBy);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error applying data changes for workflow {WorkflowInstanceId}", workflowInstanceId);
-            }
+            return new PostCommitActions(
+                FormRequestIdForNotification: instance.FormRequestId,
+                CompletedBy: completedBy,
+                WasApproved: true,
+                WorkflowInstanceIdForDataApplication: workflowInstanceId);
         }
+
+        return null;
     }
 
-    private async Task RejectWorkflowAsync(
+    private async Task<PostCommitActions> RejectWorkflowAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         int workflowInstanceId,
@@ -429,14 +443,50 @@ public class WorkflowExecutionService : IWorkflowExecutionService
 
         _logger.LogInformation("Rejected workflow instance {WorkflowInstanceId} by user {UserId}", workflowInstanceId, rejectedBy);
 
-        // Send rejection notification after transaction is committed by the caller
-        try
+        // Return deferred action — notification must run AFTER commit to avoid deadlock
+        return new PostCommitActions(
+            FormRequestIdForNotification: formRequestId,
+            CompletedBy: rejectedBy,
+            WasApproved: false,
+            Comments: rejectionReason);
+    }
+
+    /// <summary>
+    /// Executes notification and data application actions that were deferred to run
+    /// after the workflow transaction has been committed, avoiding self-deadlock.
+    /// </summary>
+    private async Task ExecutePostCommitActionsAsync(PostCommitActions actions)
+    {
+        if (actions.FormRequestIdForNotification.HasValue && actions.CompletedBy != null)
         {
-            await SendWorkflowCompletedNotificationAsync(formRequestId, rejectedBy, false, rejectionReason);
+            try
+            {
+                await SendWorkflowCompletedNotificationAsync(
+                    actions.FormRequestIdForNotification.Value,
+                    actions.CompletedBy,
+                    actions.WasApproved,
+                    actions.Comments);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending workflow completed notification for request {FormRequestId}",
+                    actions.FormRequestIdForNotification.Value);
+            }
         }
-        catch (Exception ex)
+
+        if (actions.WorkflowInstanceIdForDataApplication.HasValue && actions.CompletedBy != null)
         {
-            _logger.LogError(ex, "Error sending rejection notification for workflow {WorkflowInstanceId}", workflowInstanceId);
+            try
+            {
+                await ApplyWorkflowDataChangesAsync(
+                    actions.WorkflowInstanceIdForDataApplication.Value,
+                    actions.CompletedBy);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error applying data changes for workflow {WorkflowInstanceId}",
+                    actions.WorkflowInstanceIdForDataApplication.Value);
+            }
         }
     }
 
@@ -473,6 +523,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             const string getFormRequestSql = @"
                 SELECT wi.FormRequestId, fr.Status, fr.BulkFormRequestId, 
                        fr.FieldValues, fr.OriginalValues, fr.RequestType,
+                       fr.FormDefinitionId,
                        fd.DatabaseConnectionName, fd.TableName, fd.[Schema]
                 FROM WorkflowInstances wi
                 INNER JOIN FormRequests fr ON wi.FormRequestId = fr.Id
@@ -570,8 +621,12 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     {
         try
         {
-            var fieldValues = ParseFieldValues(requestData.FieldValues);
-            var originalValues = ParseFieldValues(requestData.OriginalValues);
+            int formDefinitionId = (int)requestData.FormDefinitionId;
+            var formDefinition = await _formDefinitionService.GetFormDefinitionAsync(formDefinitionId);
+            var fields = formDefinition?.Fields ?? new List<FormField>();
+
+            var fieldValues = ParseFieldValues(requestData.FieldValues, fields);
+            var originalValues = ParseFieldValues(requestData.OriginalValues, fields);
             var requestType = (RequestType)requestData.RequestType;
 
             switch (requestType)
@@ -642,7 +697,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
 
             // Get bulk request and form definition details
             const string getBulkRequestSql = @"
-                SELECT bfr.RequestType, fd.DatabaseConnectionName, fd.TableName, fd.[Schema]
+                SELECT bfr.RequestType, bfr.FormDefinitionId, fd.DatabaseConnectionName, fd.TableName, fd.[Schema]
                 FROM BulkFormRequests bfr
                 INNER JOIN FormDefinitions fd ON bfr.FormDefinitionId = fd.Id
                 WHERE bfr.Id = @BulkRequestId";
@@ -657,6 +712,9 @@ public class WorkflowExecutionService : IWorkflowExecutionService
 
             // Extract typed values from dynamic to avoid RuntimeBinderException with LINQ extension methods
             var requestType = (RequestType)(int)bulkRequestData.RequestType;
+            int bulkFormDefinitionId = (int)bulkRequestData.FormDefinitionId;
+            var bulkFormDefinition = await _formDefinitionService.GetFormDefinitionAsync(bulkFormDefinitionId);
+            var bulkFields = bulkFormDefinition?.Fields ?? new List<FormField>();
             string dbConnectionName = (string)bulkRequestData.DatabaseConnectionName;
             string tableName = (string)bulkRequestData.TableName;
             string schema = (string)bulkRequestData.Schema;
@@ -695,8 +753,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                     var fieldValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(fieldValuesJson) ?? new Dictionary<string, object?>();
                     var originalValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(originalValuesJson) ?? new Dictionary<string, object?>();
 
-                    fieldValues = ConvertJsonElements(fieldValues);
-                    originalValues = ConvertJsonElements(originalValues);
+                    fieldValues = SqlTypeConverter.ConvertDictionary(fieldValues, bulkFields);
+                    originalValues = SqlTypeConverter.ConvertDictionary(originalValues, bulkFields);
 
                     bool itemSuccess = false;
                     string processingResult = "";
@@ -718,7 +776,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                                 tableName,
                                 schema);
 
-                            if (!primaryKeyColumns.Any())
+                            if (primaryKeyColumns.Count == 0)
                                 throw new InvalidOperationException($"No primary key found for table {schema}.{tableName}");
 
                             var whereConditions = new Dictionary<string, object?>();
@@ -727,7 +785,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                                 if (originalValues.ContainsKey(pkColumn))
                                     whereConditions[pkColumn] = originalValues[pkColumn];
                                 else
-                                    throw new InvalidOperationException($"Primary key column '{pkColumn}' not found in original values for item {item.Id}");
+                                    throw new InvalidOperationException($"Primary key column '{pkColumn}' not found in original values for item {(int)item.Id}");
                             }
 
                             itemSuccess = await _dataService.UpdateDataAsync(
@@ -745,7 +803,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                                 tableName,
                                 schema);
 
-                            if (!deletePkColumns.Any())
+                            if (deletePkColumns.Count == 0)
                                 throw new InvalidOperationException($"No primary key found for table {schema}.{tableName}");
 
                             var deleteConditions = new Dictionary<string, object?>();
@@ -754,7 +812,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                                 if (originalValues.ContainsKey(pkColumn))
                                     deleteConditions[pkColumn] = originalValues[pkColumn];
                                 else
-                                    throw new InvalidOperationException($"Primary key column '{pkColumn}' not found in original values for item {item.Id}");
+                                    throw new InvalidOperationException($"Primary key column '{pkColumn}' not found in original values for item {(int)item.Id}");
                             }
 
                             itemSuccess = await _dataService.DeleteDataAsync(
@@ -839,7 +897,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         }
     }
 
-    private Dictionary<string, object?> ParseFieldValues(object? fieldValuesObj)
+    private Dictionary<string, object?> ParseFieldValues(object? fieldValuesObj, IReadOnlyList<FormField> fields)
     {
         if (fieldValuesObj == null) return new Dictionary<string, object?>();
 
@@ -849,37 +907,12 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         try
         {
             var result = JsonSerializer.Deserialize<Dictionary<string, object?>>(json) ?? new Dictionary<string, object?>();
-            return ConvertJsonElements(result);
+            return SqlTypeConverter.ConvertDictionary(result, fields);
         }
         catch
         {
             return new Dictionary<string, object?>();
         }
-    }
-
-    private Dictionary<string, object?> ConvertJsonElements(Dictionary<string, object?> dict)
-    {
-        var result = new Dictionary<string, object?>();
-        foreach (var kvp in dict)
-        {
-            if (kvp.Value is JsonElement element)
-            {
-                result[kvp.Key] = element.ValueKind switch
-                {
-                    JsonValueKind.String => element.GetString(),
-                    JsonValueKind.Number => element.TryGetInt64(out var l) ? l : element.GetDouble(),
-                    JsonValueKind.True => true,
-                    JsonValueKind.False => false,
-                    JsonValueKind.Null => null,
-                    _ => element.ToString()
-                };
-            }
-            else
-            {
-                result[kvp.Key] = kvp.Value;
-            }
-        }
-        return result;
     }
 
     private async Task SendStepActionNotificationAsync(int formRequestId, string stepId, string stepName, WorkflowStepAction action, string userId, string userName, string? comments)

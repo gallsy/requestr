@@ -6,7 +6,7 @@ using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using Requestr.Core.Repositories;
 using Requestr.Core.Services.Workflow;
-using System.Text.Json;
+using Requestr.Core.Utilities;
 
 namespace Requestr.Core.Services.FormRequests;
 
@@ -165,8 +165,8 @@ public class FormRequestApplicationService : IFormRequestApplicationService
                 return ApplicationResult.Failed($"Form definition with ID {formRequest.FormDefinitionId} not found");
             }
 
-            var convertedFieldValues = ConvertJsonElementsToValues(formRequest.FieldValues);
-            var convertedOriginalValues = ConvertJsonElementsToValues(formRequest.OriginalValues);
+            var convertedFieldValues = SqlTypeConverter.ConvertDictionary(formRequest.FieldValues, formDefinition.Fields);
+            var convertedOriginalValues = SqlTypeConverter.ConvertDictionary(formRequest.OriginalValues, formDefinition.Fields);
 
             bool success;
             object? recordKey = null;
@@ -302,57 +302,6 @@ public class FormRequestApplicationService : IFormRequestApplicationService
         }
 
         return whereConditions;
-    }
-
-    private Dictionary<string, object?> ConvertJsonElementsToValues(Dictionary<string, object?> data)
-    {
-        var result = new Dictionary<string, object?>();
-        
-        foreach (var kvp in data)
-        {
-            if (kvp.Value is JsonElement jsonElement)
-            {
-                result[kvp.Key] = ConvertJsonElement(jsonElement);
-            }
-            else
-            {
-                result[kvp.Key] = kvp.Value;
-            }
-        }
-        
-        return result;
-    }
-
-    private object? ConvertJsonElement(JsonElement element)
-    {
-        return element.ValueKind switch
-        {
-            JsonValueKind.String => ConvertStringValue(element.GetString()),
-            JsonValueKind.Number => element.TryGetInt32(out int intValue) ? intValue : element.GetDouble(),
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            JsonValueKind.Null => null,
-            JsonValueKind.Undefined => null,
-            _ => element.ToString()
-        };
-    }
-
-    private static object? ConvertStringValue(string? value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return value;
-
-        if (DateTime.TryParse(value, out var dateTime))
-        {
-            return dateTime;
-        }
-
-        if (DateTimeOffset.TryParse(value, out var dateTimeOffset))
-        {
-            return dateTimeOffset.DateTime;
-        }
-
-        return value;
     }
 
     public async Task<string> GetWorkflowDiagnosticsAsync(int formRequestId)

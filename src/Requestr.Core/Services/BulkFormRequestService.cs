@@ -1,4 +1,3 @@
-using System.Globalization;
 using Dapper;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
@@ -9,6 +8,7 @@ using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using Requestr.Core.Models.DTOs;
 using Requestr.Core.Services.Workflow;
+using Requestr.Core.Utilities;
 using System.Text.Json;
 
 namespace Requestr.Core.Services;
@@ -335,18 +335,8 @@ public class BulkFormRequestService : IBulkFormRequestService
                 return null;
             }
 
-            // Convert the sanitized value to appropriate type based on control type
-            // DataType contains HTML control types like "checkbox", "datetime-local", "date", "number", "text"
-            var controlType = (field.DataType ?? field.ControlType ?? "text").ToLowerInvariant();
-            
-            object? convertedValue = controlType switch
-            {
-                "checkbox" => ParseBoolean(sanitizedValue),
-                "number" => decimal.TryParse(sanitizedValue, out var num) ? num : (object?)sanitizedValue,
-                "datetime-local" or "datetime" => ParseExcelDateTime(sanitizedValue),
-                "date" => ParseExcelDateTime(sanitizedValue).Date,
-                _ => (object?)sanitizedValue
-            };
+            // Convert the sanitized value to appropriate type based on SQL data type
+            object? convertedValue = SqlTypeConverter.ConvertToSqlType(sanitizedValue, field.SqlDataType);
             
             return convertedValue;
         }
@@ -356,34 +346,6 @@ public class BulkFormRequestService : IBulkFormRequestService
             result.IsValid = false;
             return null;
         }
-    }
-
-    /// <summary>
-    /// Parses a date value from Excel, handling both OLE Automation numbers and string formats.
-    /// Excel stores dates as OLE Automation dates (days since Dec 30, 1899).
-    /// </summary>
-    private static DateTime ParseExcelDateTime(string value)
-    {
-        // First try to parse as an OLE Automation date (numeric value from Excel)
-        if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var oaDate))
-        {
-            // Excel uses OLE Automation date format
-            return DateTime.FromOADate(oaDate);
-        }
-
-        // Fall back to standard DateTime parsing for string formats
-        return DateTime.Parse(value);
-    }
-
-    private static bool ParseBoolean(string value)
-    {
-        var normalized = value.Trim().ToUpperInvariant();
-        return normalized switch
-        {
-            "TRUE" or "YES" or "1" => true,
-            "FALSE" or "NO" or "0" => false,
-            _ => bool.Parse(value)
-        };
     }
 
     public async Task<BulkFormRequest> CreateBulkFormRequestAsync(CreateBulkFormRequestDto createDto, string userId, string userName)

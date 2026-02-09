@@ -1,8 +1,8 @@
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using Requestr.Core.Services.FormRequests;
+using Requestr.Core.Utilities;
 
 namespace Requestr.Core.Services;
 
@@ -68,9 +68,11 @@ public class ConflictDetectionService : IConflictDetectionService
                 if (formRequest.OriginalValues.ContainsKey(pkColumn))
                 {
                     var originalValue = formRequest.OriginalValues[pkColumn];
+                    var field = formDefinition.Fields.FirstOrDefault(f =>
+                        string.Equals(f.Name, pkColumn, StringComparison.OrdinalIgnoreCase));
                     
-                    // Convert JsonElement to proper type for Dapper
-                    var convertedValue = ConvertJsonElementToValue(originalValue);
+                    // Convert using schema-aware converter
+                    var convertedValue = SqlTypeConverter.ConvertToSqlType(originalValue, field?.SqlDataType);
                     whereConditions[pkColumn] = convertedValue;
                 }
                 else
@@ -258,45 +260,6 @@ public class ConflictDetectionService : IConflictDetectionService
         }
     }
 
-    private object? ConvertJsonElementToValue(object? value)
-    {
-        if (value == null) return null;
-        
-        // If it's already not a JsonElement, return as-is
-        if (value is not JsonElement jsonElement)
-            return value;
-            
-        // Convert JsonElement to appropriate type
-        return jsonElement.ValueKind switch
-        {
-            JsonValueKind.String => TryParseJsonString(jsonElement.GetString()),
-            JsonValueKind.Number => jsonElement.TryGetInt64(out var longVal) ? longVal : 
-                                   jsonElement.TryGetDouble(out var doubleVal) ? doubleVal : 
-                                   jsonElement.GetDecimal(),
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            JsonValueKind.Null => null,
-            _ => jsonElement.ToString()
-        };
-    }
-
-    /// <summary>
-    /// Attempts to parse a JSON string value into a more specific type (DateTime, etc.)
-    /// </summary>
-    private object? TryParseJsonString(string? value)
-    {
-        if (value == null) return null;
-        
-        // Try parsing as DateTime (ISO 8601 format from JSON serialization)
-        if (DateTime.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, 
-            System.Globalization.DateTimeStyles.RoundtripKind, out var dateTime))
-        {
-            return dateTime;
-        }
-        
-        return value;
-    }
-
     private bool AreValuesEqual(object? value1, object? value2)
     {
         // Handle nulls
@@ -310,8 +273,8 @@ public class ConflictDetectionService : IConflictDetectionService
         if (value1 == null || value2 == null) return false;
 
         // Convert JsonElements to proper types
-        value1 = ConvertJsonElementToValue(value1);
-        value2 = ConvertJsonElementToValue(value2);
+        value1 = SqlTypeConverter.UnwrapJsonElement(value1);
+        value2 = SqlTypeConverter.UnwrapJsonElement(value2);
         
         // Re-check nulls after conversion
         if (value1 == null && value2 == null) return true;

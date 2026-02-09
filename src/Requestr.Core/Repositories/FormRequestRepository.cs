@@ -603,7 +603,14 @@ public class FormRequestRepository : IFormRequestRepository
             FailureMessage = (string?)row.FailureMessage,
             WorkflowInstanceId = (int?)row.WorkflowInstanceId,
             BulkFormRequestId = row.BulkFormRequestId != null ? (int?)row.BulkFormRequestId : null,
-            FormDefinition = new FormDefinition { Name = (string)row.FormName, Description = (string)row.FormDescription },
+            FormDefinition = new FormDefinition
+            {
+                Name = (string)row.FormName,
+                Description = (string)row.FormDescription,
+                DatabaseConnectionName = (string)(row.FormDatabaseConnectionName ?? string.Empty),
+                TableName = (string)(row.FormTableName ?? string.Empty),
+                Schema = (string)(row.FormSchema ?? "dbo")
+            },
             FieldValues = JsonSerializer.Deserialize<Dictionary<string, object?>>((string)(row.FieldValuesJson ?? "{}")) ?? new Dictionary<string, object?>(),
             OriginalValues = JsonSerializer.Deserialize<Dictionary<string, object?>>((string)(row.OriginalValuesJson ?? "{}")) ?? new Dictionary<string, object?>()
         };
