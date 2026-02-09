@@ -3,12 +3,15 @@
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Models.DTOs
 @using System.Linq
+@using Requestr.Web.Authorization
 @inject IDataViewService DataViewService
 @inject IFormDefinitionService FormDefinitionService
 @inject IBulkFormRequestService BulkFormRequestService
+@inject IFormAuthorizationService FormAuthorizationService
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JSRuntime
+@inject ILogger<BulkActions> Logger
 @attribute [Authorize]
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
@@ -18,10 +21,21 @@
 {
     <LoadingSpinner Message="Loading form definition..." />
 }
+else if (!_hasPermission)
+{
+    <EmptyState Title="Access Denied" 
+                Description="You do not have permission to perform bulk actions for this form.">
+        <Action>
+            <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">
+                Back to Home
+            </button>
+        </Action>
+    </EmptyState>
+}
 else if (_formDefinition == null)
 {
     <EmptyState Title="Form Definition Not Found" 
-                Description="The requested form definition could not be found or you don't have permission to access it.">
+                Description="The requested form definition could not be found.">
         <Action>
             <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">
                 Back to Home
@@ -167,6 +181,7 @@ else
     [Parameter] public int FormDefinitionId { get; set; }
 
     private bool _isLoading = true;
+    private bool _hasPermission = false;
     private string _errorMessage = string.Empty;
     private string _successMessage = string.Empty;
 
@@ -177,6 +192,13 @@ else
     protected override async Task OnInitializedAsync()
     {
         await LoadCurrentUser();
+        
+        if (!_hasPermission)
+        {
+            _isLoading = false;
+            return;
+        }
+        
         await LoadFormDefinition();
         await LoadRecentBulkRequests();
     }
@@ -184,7 +206,9 @@ else
     private async Task LoadCurrentUser()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        _currentUserId = GetUserIdentifier(authState.User);
+        _currentUserId = UserIdentityHelper.GetUserId(authState.User);
+        _hasPermission = await FormAuthorizationService.UserHasPermissionAsync(
+            authState.User, FormDefinitionId, FormPermissionType.BulkActions);
     }
 
     private async Task LoadFormDefinition()
@@ -195,7 +219,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error loading form definition: {ex.Message}";
+            Logger.LogError(ex, "Error loading form definition {FormDefinitionId}", FormDefinitionId);
+            _errorMessage = "An unexpected error occurred while loading the form definition. Please try again.";
         }
     }
 
@@ -211,7 +236,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error loading recent bulk requests: {ex.Message}";
+            Logger.LogError(ex, "Error loading recent bulk requests for form {FormDefinitionId}", FormDefinitionId);
+            _errorMessage = "An unexpected error occurred while loading recent bulk requests. Please try again.";
             _isLoading = false;
         }
     }
@@ -234,8 +260,4 @@ else
         _ => "bg-secondary"
     };
 
-    private string GetUserIdentifier(System.Security.Claims.ClaimsPrincipal user)
-    {
-        return user.Identity?.Name ?? "Unknown";
-    }
 }

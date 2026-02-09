@@ -649,7 +649,9 @@
     private ColumnInfo? _draggedColumn;
     private FormField? _draggedField;
     private Dictionary<string, string> _fieldOriginalSqlTypes = new(); // Track original SQL types for each field
+#pragma warning disable CS0414 // Assigned but never read — reserved for future drag-and-drop UI
     private bool _isDragOver = false;
+#pragma warning restore CS0414
     private string ActiveTab = "details"; // Default to Form Details tab
     private string _fieldFilter = "";
     private bool _showGridGuides = false;
@@ -677,7 +679,9 @@
     private Dictionary<string, Dictionary<FormPermissionType, bool>> _currentPermissions = new();
     
     // Role management fields
+#pragma warning disable CS0414 // Assigned but never read — reserved for future role-add UI
     private bool _isAddingRole = false;
+#pragma warning restore CS0414
     private string _newRoleName = "";
 
     // Schema drift detection fields
@@ -694,7 +698,9 @@
     private List<WorkflowDefinition>? _availableWorkflows = new();
     private int? _selectedWorkflowId;
     private List<WorkflowStepConfigModel>? _workflowStepConfigs = new();
+#pragma warning disable CS0414 // Assigned but never read — reserved for future workflow loading indicator
     private bool _isLoadingWorkflow = false;
+#pragma warning restore CS0414
 
     // Model for step configuration UI
     public class WorkflowStepConfigModel
@@ -2164,7 +2170,7 @@
         }
     }
 
-    private async Task UpdateParallelApprovalSetting(WorkflowStepConfigModel stepConfig, bool requireAll)
+    private void UpdateParallelApprovalSetting(WorkflowStepConfigModel stepConfig, bool requireAll)
     {
         try
         {

@@ -73,7 +73,7 @@ public class FormRequestApprovalService : IFormRequestApprovalService
             try
             {
                 var applicationResult = await _applicationService.ApplyChangesToDatabaseAsync(
-                    formRequest, connection, transaction);
+                    formRequest);
 
                 if (applicationResult.Success)
                 {
@@ -214,7 +214,7 @@ public class FormRequestApprovalService : IFormRequestApprovalService
             );
 
             var applicationResult = await _applicationService.ApplyChangesToDatabaseAsync(
-                formRequest, connection, transaction);
+                formRequest);
 
             if (applicationResult.Success)
             {

@@ -208,7 +208,9 @@ else
     private bool _isLoading = true;
     private bool _isFromApprovals;
     private string _errorMessage = "";
+#pragma warning disable CS0414 // Assigned but never read — reserved for future success notification UI
     private string _successMessage = "";
+#pragma warning restore CS0414
     private string _conflictWarning = "";
     private HashSet<int> _expandedRows = new();
     private string _currentUserId = "";
@@ -230,9 +232,7 @@ else
                 return;
             }
             
-            _currentUserId = authState.User.FindFirst("sub")?.Value ?? 
-                            authState.User.FindFirst("oid")?.Value ?? 
-                            authState.User.Identity?.Name ?? "";
+            _currentUserId = UserIdentityHelper.GetUserId(authState.User);
             _userRoles = ClaimsHelper.GetUserRoles(authState.User);
             _isAdmin = _userRoles.Contains("Admin");
             
@@ -267,7 +267,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error loading bulk request: {ex.Message}";
+            Logger.LogError(ex, "Error loading bulk request {BulkRequestId}", BulkRequestId);
+            _errorMessage = "An unexpected error occurred while loading the bulk request. Please try again.";
         }
         finally
         {

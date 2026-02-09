@@ -326,7 +326,7 @@ else
             // Get user info first for security check
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
-            _currentUserId = GetUserIdentifier(user);
+            _currentUserId = UserIdentityHelper.GetUserId(user);
             _userRoles = ClaimsHelper.GetUserRoles(user);
             _isAdmin = user.IsInRole("Admin") || _userRoles.Contains("Admin", StringComparer.OrdinalIgnoreCase);
             
@@ -348,7 +348,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error loading workflow step: {ex.Message}";
+            Logger.LogError(ex, "Error loading workflow step data");
+            _errorMessage = "An unexpected error occurred while loading the workflow step. Please try again.";
         }
         finally
         {
@@ -529,8 +530,8 @@ else
             _successMessage = "";
 
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var currentUser = GetUserIdentifier(authState.User);
-            var currentUserName = GetUserDisplayName(authState.User);
+            var currentUser = UserIdentityHelper.GetUserId(authState.User);
+            var currentUserName = UserIdentityHelper.GetDisplayName(authState.User);
 
             var success = await FormRequestApprovalService.ProcessWorkflowActionAsync(
                 _formRequest!.Id,
@@ -558,7 +559,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error processing step: {ex.Message}";
+            Logger.LogError(ex, "Error processing workflow step");
+            _errorMessage = "An unexpected error occurred while processing the step. Please try again.";
         }
         finally
         {
@@ -610,24 +612,7 @@ else
         };
     }
 
-    private string GetUserIdentifier(System.Security.Claims.ClaimsPrincipal user)
-    {
-        return user.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value ??
-               user.FindFirst("oid")?.Value ??
-               user.FindFirst("sub")?.Value ??
-               user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ??
-               user.Identity?.Name ?? "Unknown";
-    }
 
-    private string GetUserDisplayName(System.Security.Claims.ClaimsPrincipal user)
-    {
-        return user.FindFirst("name")?.Value ??
-               user.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name")?.Value ??
-               user.FindFirst("preferred_username")?.Value ??
-               user.FindFirst("upn")?.Value ??
-               user.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")?.Value ??
-               user.Identity?.Name ?? "Unknown User";
-    }
     
     private async Task OnWorkflowFieldChanged((string FieldName, object? Value) change)
     {

@@ -1,4 +1,3 @@
-using Microsoft.Data.SqlClient;
 using Requestr.Core.Models;
 
 namespace Requestr.Core.Services.FormRequests;
@@ -18,11 +17,6 @@ public interface IFormRequestApplicationService
     /// Applies form request changes to the target database.
     /// </summary>
     Task<ApplicationResult> ApplyChangesToDatabaseAsync(FormRequest formRequest);
-    
-    /// <summary>
-    /// Applies form request changes to the target database within an existing transaction.
-    /// </summary>
-    Task<ApplicationResult> ApplyChangesToDatabaseAsync(FormRequest formRequest, SqlConnection? connection, SqlTransaction? transaction);
     
     /// <summary>
     /// Manually applies an approved request that wasn't automatically applied.

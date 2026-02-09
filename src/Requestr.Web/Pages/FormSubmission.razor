@@ -15,6 +15,7 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<FormSubmission> Logger
 @attribute [Authorize]
 
 <PageTitle>@_formDefinition?.Name</PageTitle>
@@ -500,7 +501,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error loading form: {ex.Message}";
+            Logger.LogError(ex, "Error loading form {FormId}", FormId);
+            _errorMessage = "An unexpected error occurred while loading the form. Please try again.";
         }
         finally
         {
@@ -587,7 +589,8 @@ else
             }
             catch (Exception ex)
             {
-                _errorMessage = $"Error loading record: {ex.Message}";
+                Logger.LogError(ex, "Error loading record for form {FormId}", FormId);
+                _errorMessage = "An unexpected error occurred while loading the record. Please try again.";
             }
         }
     }
@@ -666,7 +669,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error loading request: {ex.Message}";
+            Logger.LogError(ex, "Error loading request {RequestId}", RequestId);
+            _errorMessage = "An unexpected error occurred while loading the request. Please try again.";
         }
     }
 
@@ -825,8 +829,8 @@ else
                 RequestType = _requestType,
                 FieldValues = allFieldValues,
                 Comments = _comments,
-                RequestedBy = user.Identity?.Name ?? "Unknown",
-                RequestedByName = user.Identity?.Name ?? "Unknown",
+                RequestedBy = UserIdentityHelper.GetUserId(user),
+                RequestedByName = UserIdentityHelper.GetDisplayName(user),
                 RequestedAt = DateTime.UtcNow
             };
 
@@ -873,7 +877,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error submitting request: {ex.Message}";
+            Logger.LogError(ex, "Error submitting request for form {FormId}", FormId);
+            _errorMessage = "An unexpected error occurred while submitting the request. Please try again.";
         }
         finally
         {

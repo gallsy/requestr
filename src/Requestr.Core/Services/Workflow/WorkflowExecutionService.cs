@@ -234,7 +234,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             return new WorkflowActionResult 
             { 
                 Success = false, 
-                Message = $"Error processing action: {ex.Message}"
+                Message = "An unexpected error occurred while processing the workflow action."
             };
         }
     }

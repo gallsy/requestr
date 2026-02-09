@@ -287,9 +287,7 @@
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             if (authState.User.Identity?.IsAuthenticated == true)
             {
-                CurrentUserId = authState.User.FindFirst("sub")?.Value ?? 
-                               authState.User.FindFirst("oid")?.Value ?? 
-                               authState.User.Identity.Name;
+                CurrentUserId = UserIdentityHelper.GetUserId(authState.User);
 
                 // Get user roles from claims
                 UserRoles = ClaimsHelper.GetUserRoles(authState.User);

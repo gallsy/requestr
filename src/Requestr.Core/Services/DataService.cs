@@ -316,7 +316,7 @@ public class DataService : IDataService
             using var connection = new SqlConnection(connectionString);
             await connection.OpenAsync();
 
-            var sql = $"SELECT * FROM [{schema}].[{tableName}]";
+            var sql = $"SELECT TOP 10000 * FROM [{schema}].[{tableName}]";
             object? parameters = null;
 
             if (whereConditions != null && whereConditions.Any())
@@ -384,10 +384,10 @@ public class DataService : IDataService
         
         var dataSql = $@"
             SELECT TOP 50 
-                {primaryKeyColumn} as Id,
-                CONCAT({string.Join(", ' - ', ", columnList.Take(2))}) as DisplayText
+                [{primaryKeyColumn}] as Id,
+                CONCAT({string.Join(", ' - ', ", columnList.Take(2).Select(c => $"[{c}]"))}) as DisplayText
             FROM [{schema}].[{tableName}]
-            ORDER BY {primaryKeyColumn}";
+            ORDER BY [{primaryKeyColumn}]";
         
         try
         {

@@ -289,9 +289,7 @@ else
                 return;
             }
             
-            _currentUserId = authState.User.FindFirst("sub")?.Value ?? 
-                            authState.User.FindFirst("oid")?.Value ?? 
-                            authState.User.Identity?.Name ?? "";
+            _currentUserId = UserIdentityHelper.GetUserId(authState.User);
             _userRoles = ClaimsHelper.GetUserRoles(authState.User);
             _isAdmin = _userRoles.Contains("Admin");
             
@@ -449,9 +447,9 @@ else
         }
 
         // Only use datetime comparison if BOTH values look like datetimes (contain date separators and time components)
-        var looksLikeDateTime1 = (value1.Contains("-") || value1.Contains("/")) && 
+        var looksLikeDateTime1 = (value1!.Contains("-") || value1.Contains("/")) && 
                                   (value1.Contains(":") || value1.Contains("T"));
-        var looksLikeDateTime2 = (value2.Contains("-") || value2.Contains("/")) && 
+        var looksLikeDateTime2 = (value2!.Contains("-") || value2.Contains("/")) && 
                                   (value2.Contains(":") || value2.Contains("T"));
         
         if (looksLikeDateTime1 && looksLikeDateTime2 &&

@@ -132,7 +132,7 @@ public class FormRequestApplicationService : IFormRequestApplicationService
             try
             {
                 await _formRequestRepository.UpdateStatusAsync(formRequestId, RequestStatus.Failed, 
-                    $"Error applying request: {ex.Message}");
+                    "An error occurred while applying the request to the target database.");
             }
             catch (Exception updateEx)
             {
@@ -144,18 +144,6 @@ public class FormRequestApplicationService : IFormRequestApplicationService
     }
 
     public async Task<ApplicationResult> ApplyChangesToDatabaseAsync(FormRequest formRequest)
-    {
-        var formDefinition = await _formDefinitionService.GetFormDefinitionAsync(formRequest.FormDefinitionId);
-        if (formDefinition == null)
-        {
-            return ApplicationResult.Failed("Form definition not found");
-        }
-
-        return await ApplyChangesToDatabaseAsync(formRequest, null, null);
-    }
-
-    public async Task<ApplicationResult> ApplyChangesToDatabaseAsync(
-        FormRequest formRequest, SqlConnection? connection, SqlTransaction? transaction)
     {
         try
         {
@@ -444,8 +432,8 @@ public class FormRequestApplicationService : IFormRequestApplicationService
                 }
             }
 
-            var baseUrl = _configuration["Branding:BaseUrl"] ?? "http://localhost:8080";
-            var systemName = _configuration["Branding:ApplicationName"] ?? "Requestr";
+var baseUrl = _configuration["AppBranding:BaseUrl"] ?? "http://localhost:8080";
+        var systemName = _configuration["AppBranding:ApplicationName"] ?? "Requestr";
 
             var variables = new Dictionary<string, string>
             {

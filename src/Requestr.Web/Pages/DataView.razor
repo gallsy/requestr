@@ -730,7 +730,7 @@ else
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error initializing DataView for form {FormDefinitionId}", FormDefinitionId);
-            _errorMessage = $"Error loading data view: {ex.Message}";
+            _errorMessage = "An unexpected error occurred while loading the data view. Please try again.";
         }
         finally
         {
@@ -763,7 +763,7 @@ else
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error checking permissions for form {FormDefinitionId}", FormDefinitionId);
-            _errorMessage = $"Error checking permissions: {ex.Message}";
+            _errorMessage = "An unexpected error occurred while checking permissions. Please try again.";
         }
     }
 
@@ -787,7 +787,7 @@ else
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error loading form definition for form {FormDefinitionId}", FormDefinitionId);
-            _errorMessage = $"Error loading form definition: {ex.Message}";
+            _errorMessage = "An unexpected error occurred while loading the form definition. Please try again.";
         }
     }
 
@@ -812,7 +812,7 @@ else
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error loading data for form {FormDefinitionId}", FormDefinitionId);
-            _errorMessage = $"Error loading data: {ex.Message}";
+            _errorMessage = "An unexpected error occurred while loading the data. Please try again.";
         }
     }
 
@@ -898,7 +898,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error loading page: {ex.Message}";
+            Logger.LogError(ex, "Error loading page for form {FormDefinitionId}", FormDefinitionId);
+            _errorMessage = "An unexpected error occurred while loading the page. Please try again.";
         }
     }
 
@@ -1070,7 +1071,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error validating Excel file: {ex.Message}";
+            Logger.LogError(ex, "Error validating Excel file for form {FormDefinitionId}", FormDefinitionId);
+            _errorMessage = "An unexpected error occurred while validating the Excel file. Please try again.";
         }
         finally
         {
@@ -1092,8 +1094,8 @@ else
             _errorMessage = string.Empty;
 
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var currentUser = GetUserIdentifier(authState.User);
-            var currentUserName = GetUserDisplayName(authState.User);
+            var currentUser = UserIdentityHelper.GetUserId(authState.User);
+            var currentUserName = UserIdentityHelper.GetDisplayName(authState.User);
 
             // Create form requests from CSV data
             var formRequests = new List<CreateFormRequestDto>();
@@ -1129,7 +1131,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error processing Excel upload: {ex.Message}";
+            Logger.LogError(ex, "Error processing Excel upload for form {FormDefinitionId}", FormDefinitionId);
+            _errorMessage = "An unexpected error occurred while processing the Excel upload. Please try again.";
         }
         finally
         {
@@ -1169,8 +1172,8 @@ else
             _errorMessage = string.Empty;
 
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var currentUser = GetUserIdentifier(authState.User);
-            var currentUserName = GetUserDisplayName(authState.User);
+            var currentUser = UserIdentityHelper.GetUserId(authState.User);
+            var currentUserName = UserIdentityHelper.GetDisplayName(authState.User);
 
             // Get the selected records
             var selectedRecords = await DataViewService.GetSelectedRecordsAsync(FormDefinitionId, _selectedRecords.ToList());
@@ -1223,7 +1226,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error creating bulk update request: {ex.Message}";
+            Logger.LogError(ex, "Error creating bulk update request for form {FormDefinitionId}", FormDefinitionId);
+            _errorMessage = "An unexpected error occurred while creating the bulk update request. Please try again.";
         }
         finally
         {
@@ -1239,8 +1243,8 @@ else
             _errorMessage = string.Empty;
 
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var currentUser = GetUserIdentifier(authState.User);
-            var currentUserName = GetUserDisplayName(authState.User);
+            var currentUser = UserIdentityHelper.GetUserId(authState.User);
+            var currentUserName = UserIdentityHelper.GetDisplayName(authState.User);
 
             // Get the selected records
             var selectedRecords = await DataViewService.GetSelectedRecordsAsync(FormDefinitionId, _selectedRecords.ToList());
@@ -1262,7 +1266,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error creating bulk delete request: {ex.Message}";
+            Logger.LogError(ex, "Error creating bulk delete request for form {FormDefinitionId}", FormDefinitionId);
+            _errorMessage = "An unexpected error occurred while creating the bulk delete request. Please try again.";
         }
         finally
         {
@@ -1270,15 +1275,7 @@ else
         }
     }
 
-    private string GetUserIdentifier(System.Security.Claims.ClaimsPrincipal user)
-    {
-        return user.Identity?.Name ?? "Unknown";
-    }
 
-    private string GetUserDisplayName(System.Security.Claims.ClaimsPrincipal user)
-    {
-        return user.Identity?.Name ?? "Unknown User";
-    }
 
     private void GoToEdit(string recordId)
     {
