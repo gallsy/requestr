@@ -28,4 +28,9 @@ public interface IFormRequestApplicationService
     /// Manually applies an approved request that wasn't automatically applied.
     /// </summary>
     Task<bool> ManuallyApplyAsync(int formRequestId);
+
+    /// <summary>
+    /// Gets diagnostic information about a form request's workflow status.
+    /// </summary>
+    Task<string> GetWorkflowDiagnosticsAsync(int formRequestId);
 }

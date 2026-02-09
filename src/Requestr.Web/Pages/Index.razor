@@ -6,7 +6,7 @@
 @using Requestr.Web.Authorization
 @attribute [Authorize]
 @inject IFormDefinitionService FormDefinitionService
-@inject IFormRequestService FormRequestService
+@inject IFormRequestQueryService FormRequestQueryService
 @inject IWorkflowExecutionService WorkflowExecutionService
 @inject IWorkflowInstanceService WorkflowInstanceService
 @inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
@@ -303,7 +303,7 @@
             }
 
             // Load user's pending requests
-            var allUserRequests = await FormRequestService.GetFormRequestsByUserAsync(CurrentUserId);
+            var allUserRequests = await FormRequestQueryService.GetByUserAsync(CurrentUserId);
             PendingRequests = allUserRequests.Where(r => r.Status == RequestStatus.Pending).ToList();
 
             // Always load pending workflow steps for the current user
@@ -347,7 +347,7 @@
                         _workflowDefinitionCache[instanceId] = definition;
                     }
                     
-                    var formRequest = await FormRequestService.GetByIdAsync(instance.FormRequestId);
+                    var formRequest = await FormRequestQueryService.GetByIdAsync(instance.FormRequestId);
                     if (formRequest != null)
                     {
                         _formRequestCache[instanceId] = formRequest;

@@ -19,6 +19,11 @@ public interface IFormRequestApprovalService
     Task<bool> RejectAsync(int id, string rejectedBy, string rejectedByName, string reason);
     
     /// <summary>
+    /// Retries a failed form request.
+    /// </summary>
+    Task<bool> RetryFailedAsync(int id, string retriedBy, string retriedByName);
+    
+    /// <summary>
     /// Processes a workflow action (approve/reject) for a form request.
     /// </summary>
     Task<bool> ProcessWorkflowActionAsync(int formRequestId, string actionType, string userId, 
@@ -33,4 +38,9 @@ public interface IFormRequestApprovalService
     /// Gets completed workflow steps for a form request.
     /// </summary>
     Task<List<WorkflowStepInstance>> GetCompletedWorkflowStepsAsync(int formRequestId);
+
+    /// <summary>
+    /// Processes stuck workflow requests that have completed workflows but haven't been applied.
+    /// </summary>
+    Task<int> ProcessStuckWorkflowRequestsAsync(string processedBy);
 }

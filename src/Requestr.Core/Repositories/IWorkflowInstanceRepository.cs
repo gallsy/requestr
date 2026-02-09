@@ -91,7 +91,7 @@ public interface IWorkflowStepInstanceRepository
     /// <summary>
     /// Updates a step instance to completed status.
     /// </summary>
-    Task UpdateToCompletedAsync(int workflowInstanceId, string stepId, string completedBy, string completedByName, 
+    Task UpdateToCompletedAsync(int workflowInstanceId, string stepId, string completedBy, 
         WorkflowStepAction action, string? comments, Dictionary<string, object?>? fieldValues,
         System.Data.IDbConnection connection, System.Data.IDbTransaction transaction);
 }

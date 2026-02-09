@@ -25,6 +25,14 @@ public interface IFormRequestHistoryService
         string changedBy, string changedByName, string? comments = null);
     
     /// <summary>
+    /// Records a change to a form request within an existing connection and transaction.
+    /// </summary>
+    Task RecordChangeAsync(int formRequestId, FormRequestChangeType changeType,
+        Dictionary<string, object?>? previousValues, Dictionary<string, object?>? newValues,
+        string changedBy, string changedByName, string? comments,
+        System.Data.IDbConnection connection, System.Data.IDbTransaction transaction);
+    
+    /// <summary>
     /// Gets debug information about a form request's history.
     /// </summary>
     Task<string> GetDebugInfoAsync(int formRequestId);

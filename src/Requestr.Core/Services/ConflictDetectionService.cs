@@ -2,24 +2,25 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
+using Requestr.Core.Services.FormRequests;
 
 namespace Requestr.Core.Services;
 
 public class ConflictDetectionService : IConflictDetectionService
 {
     private readonly IDataService _dataService;
-    private readonly IFormRequestService _formRequestService;
+    private readonly IFormRequestQueryService _formRequestQueryService;
     private readonly IBulkFormRequestService _bulkFormRequestService;
     private readonly ILogger<ConflictDetectionService> _logger;
 
     public ConflictDetectionService(
         IDataService dataService, 
-        IFormRequestService formRequestService,
+        IFormRequestQueryService formRequestQueryService,
         IBulkFormRequestService bulkFormRequestService,
         ILogger<ConflictDetectionService> logger)
     {
         _dataService = dataService;
-        _formRequestService = formRequestService;
+        _formRequestQueryService = formRequestQueryService;
         _bulkFormRequestService = bulkFormRequestService;
         _logger = logger;
     }
@@ -196,7 +197,7 @@ public class ConflictDetectionService : IConflictDetectionService
     {
         try
         {
-            var formRequest = await _formRequestService.GetByIdAsync(formRequestId);
+            var formRequest = await _formRequestQueryService.GetByIdAsync(formRequestId);
             if (formRequest == null)
             {
                 return new ConflictDetectionResult

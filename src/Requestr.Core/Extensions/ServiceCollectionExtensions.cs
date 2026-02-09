@@ -31,12 +31,10 @@ public static class ServiceCollectionExtensions
         
         // Business Services
         services.AddScoped<IFormDefinitionService, FormDefinitionService>();
-        services.AddScoped<IFormRequestService, FormRequestService>();
         services.AddScoped<IBulkFormRequestService, BulkFormRequestService>();
         services.AddScoped<IDataViewService, DataViewService>();
         
-        // Decomposed FormRequest Services (Phase 2)
-        // These provide single-responsibility alternatives to the monolithic FormRequestService
+        // FormRequest Services
         services.AddScoped<IFormRequestQueryService, FormRequestQueryService>();
         services.AddScoped<IFormRequestCommandService, FormRequestCommandService>();
         services.AddScoped<IFormRequestApprovalService, FormRequestApprovalService>();

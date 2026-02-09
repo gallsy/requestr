@@ -11,7 +11,8 @@
 @inject IWorkflowInstanceService WorkflowInstanceService
 @inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
 @inject IWorkflowExecutionService WorkflowExecutionService
-@inject IFormRequestService FormRequestService
+@inject IFormRequestQueryService FormRequestQueryService
+@inject IFormRequestApprovalService FormRequestApprovalService
 @inject IFormDefinitionService FormDefinitionService
 @inject IWorkflowDesignerService WorkflowDesignerService
 @inject IBulkFormRequestService BulkFormRequestService
@@ -407,7 +408,7 @@ else
         if (_workflowDefinition == null) return;
 
         // Load form request
-        _formRequest = await FormRequestService.GetByIdAsync(_workflowInstance.FormRequestId);
+        _formRequest = await FormRequestQueryService.GetByIdAsync(_workflowInstance.FormRequestId);
         Logger.LogInformation("LoadWorkflowDataAsync: FormRequest loaded: {Found}", _formRequest != null);
         if (_formRequest == null) return;
 
@@ -531,12 +532,10 @@ else
             var currentUser = GetUserIdentifier(authState.User);
             var currentUserName = GetUserDisplayName(authState.User);
 
-            var success = await WorkflowExecutionService.CompleteStepAsync(
-                WorkflowInstanceId, 
-                StepId, 
-                currentUser, 
-                currentUserName, 
-                action, 
+            var success = await FormRequestApprovalService.ProcessWorkflowActionAsync(
+                _formRequest!.Id,
+                actionType,
+                currentUser,
                 _approvalComments,
                 null);
 

@@ -197,7 +197,6 @@ public class WorkflowInstanceService : IWorkflowInstanceService
             workflowInstanceId,
             stepId,
             "System",
-            "System",
             WorkflowStepAction.Completed,
             "Auto-completed Start step",
             null,
@@ -235,7 +234,6 @@ public class WorkflowInstanceService : IWorkflowInstanceService
         await _stepInstanceRepository.UpdateToCompletedAsync(
             workflowInstanceId,
             stepId,
-            "System",
             "System",
             WorkflowStepAction.Completed,
             "Auto-completed End step",

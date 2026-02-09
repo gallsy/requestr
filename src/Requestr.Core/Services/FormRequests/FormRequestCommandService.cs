@@ -115,7 +115,9 @@ public class FormRequestCommandService : IFormRequestCommandService
                 },
                 createdRequest.RequestedBy,
                 createdRequest.RequestedByName,
-                workflowDefinition != null ? "Request created and workflow started" : "Request created (no workflow)"
+                workflowDefinition != null ? "Request created and workflow started" : "Request created (no workflow)",
+                connection,
+                transaction
             );
 
             await transaction.CommitAsync();

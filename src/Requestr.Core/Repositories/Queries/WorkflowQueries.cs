@@ -248,7 +248,7 @@ public static class WorkflowQueries
     public const string UpdateStepToCompleted = @"
         UPDATE WorkflowStepInstances 
         SET Status = @Status, CompletedAt = @CompletedAt, CompletedBy = @CompletedBy, 
-            CompletedByName = @CompletedByName, Action = @Action, Comments = @Comments, FieldValues = @FieldValues
+            Action = @Action, Comments = @Comments, FieldValues = @FieldValues
         WHERE WorkflowInstanceId = @WorkflowInstanceId AND StepId = @StepId";
     
     /// <summary>

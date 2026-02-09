@@ -51,4 +51,21 @@ public interface IFormRequestQueryService
     /// Gets IDs of approved requests that haven't been applied.
     /// </summary>
     Task<List<int>> GetApprovedNotAppliedIdsAsync();
+
+    /// <summary>
+    /// Gets form requests accessible to a user based on their roles.
+    /// Admin users can see all requests; other users see requests they created
+    /// or requests where their roles are assigned to approval steps.
+    /// </summary>
+    Task<List<FormRequest>> GetAccessibleFormRequestsAsync(string userId, List<string> userRoles);
+
+    /// <summary>
+    /// Gets a form request with its history entries.
+    /// </summary>
+    Task<FormRequest?> GetWithHistoryAsync(int id);
+
+    /// <summary>
+    /// Gets pending requests (Pending or Approved status) for a specific form definition.
+    /// </summary>
+    Task<List<FormRequest>> GetPendingByFormDefinitionAsync(int formDefinitionId);
 }

@@ -169,7 +169,6 @@ public class WorkflowStepInstanceRepository : IWorkflowStepInstanceRepository
         int workflowInstanceId,
         string stepId,
         string completedBy,
-        string completedByName,
         WorkflowStepAction action,
         string? comments,
         Dictionary<string, object?>? fieldValues,
@@ -189,7 +188,6 @@ public class WorkflowStepInstanceRepository : IWorkflowStepInstanceRepository
                 Status = (int)WorkflowStepInstanceStatus.Completed,
                 CompletedAt = DateTime.UtcNow,
                 CompletedBy = completedBy,
-                CompletedByName = completedByName,
                 Action = (int)action,
                 Comments = comments,
                 FieldValues = fieldValuesJson

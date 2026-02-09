@@ -9,7 +9,8 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using BlazorBootstrap
-@inject IFormRequestService FormRequestService
+@inject IFormRequestQueryService FormRequestQueryService
+@inject IFormRequestApprovalService FormRequestApprovalService
 @inject IFormDefinitionService FormDefinitionService
 @inject IConflictDetectionService ConflictDetectionService
 @inject IWorkflowInstanceService WorkflowInstanceService
@@ -266,7 +267,7 @@ else
             _userRoles = ClaimsHelper.GetUserRoles(authState.User);
             _isAdmin = _userRoles.Contains("Admin");
             
-            _request = await FormRequestService.GetFormRequestWithHistoryAsync(RequestId);
+            _request = await FormRequestQueryService.GetWithHistoryAsync(RequestId);
             
             if (_request == null)
             {
@@ -445,8 +446,8 @@ else
         {
             if (_request != null)
             {
-                _currentWorkflowStep = await FormRequestService.GetCurrentWorkflowStepAsync(_request.Id);
-                _completedWorkflowSteps = await FormRequestService.GetCompletedWorkflowStepsAsync(_request.Id);
+                _currentWorkflowStep = await FormRequestApprovalService.GetCurrentWorkflowStepAsync(_request.Id);
+                _completedWorkflowSteps = await FormRequestApprovalService.GetCompletedWorkflowStepsAsync(_request.Id);
             }
         }
         catch (Exception)

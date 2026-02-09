@@ -9,7 +9,7 @@
 @using System.Text.Json
 @using Requestr.Web.Components
 @attribute [Authorize]
-@inject IFormRequestService FormRequestService
+@inject IFormRequestQueryService FormRequestQueryService
 @inject IBulkFormRequestService BulkFormRequestService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
@@ -318,7 +318,7 @@
         try
         {
             // Load individual requests using the new access-controlled method
-            AllFormRequests = await FormRequestService.GetAccessibleFormRequestsAsync(CurrentUserId, UserRoles);
+            AllFormRequests = await FormRequestQueryService.GetAccessibleFormRequestsAsync(CurrentUserId, UserRoles);
             AllFormRequests = AllFormRequests.Where(r => r.BulkFormRequestId == null).OrderByDescending(r => r.RequestedAt).ToList();
             
             // Load bulk requests based on user access (own requests + requests they can approve)

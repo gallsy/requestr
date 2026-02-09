@@ -16,7 +16,6 @@ public class FormRequestApprovalService : IFormRequestApprovalService
     private readonly IFormRequestRepository _formRequestRepository;
     private readonly IFormRequestHistoryService _historyService;
     private readonly IFormRequestApplicationService _applicationService;
-    private readonly IFormDefinitionService _formDefinitionService;
     private readonly IWorkflowExecutionService _workflowExecutionService;
     private readonly IInputValidationService _inputValidationService;
     private readonly IDbConnectionFactory _connectionFactory;
@@ -26,7 +25,6 @@ public class FormRequestApprovalService : IFormRequestApprovalService
         IFormRequestRepository formRequestRepository,
         IFormRequestHistoryService historyService,
         IFormRequestApplicationService applicationService,
-        IFormDefinitionService formDefinitionService,
         IWorkflowExecutionService workflowExecutionService,
         IInputValidationService inputValidationService,
         IDbConnectionFactory connectionFactory,
@@ -35,7 +33,6 @@ public class FormRequestApprovalService : IFormRequestApprovalService
         _formRequestRepository = formRequestRepository;
         _historyService = historyService;
         _applicationService = applicationService;
-        _formDefinitionService = formDefinitionService;
         _workflowExecutionService = workflowExecutionService;
         _inputValidationService = inputValidationService;
         _connectionFactory = connectionFactory;
@@ -67,7 +64,9 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                 new Dictionary<string, object?> { { "Status", "Approved" } },
                 approvedBy,
                 approvedByName,
-                "Request approved"
+                "Request approved",
+                connection,
+                transaction
             );
 
             // Apply changes to target database
@@ -100,7 +99,9 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                         },
                         "System",
                         "System",
-                        successComment
+                        successComment,
+                        connection,
+                        transaction
                     );
 
                     _logger.LogInformation("Form request {Id} approved and applied. Record key: {RecordKey}",
@@ -128,7 +129,9 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                     },
                     "System",
                     "System",
-                    $"Failed to apply request to target database: {applyEx.Message}"
+                    $"Failed to apply request to target database: {applyEx.Message}",
+                    connection,
+                    transaction
                 );
             }
 
@@ -187,8 +190,12 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                 return false;
             }
 
-            // Reset status to Approved
-            await _formRequestRepository.UpdateStatusAsync(id, RequestStatus.Approved, null);
+            // Reset status to Approved within the transaction
+            const string updateStatusSql = @"
+                UPDATE FormRequests 
+                SET Status = @Status, FailureMessage = NULL 
+                WHERE Id = @Id";
+            await connection.ExecuteAsync(updateStatusSql, new { Id = id, Status = (int)RequestStatus.Approved }, transaction);
 
             await _historyService.RecordChangeAsync(
                 id,
@@ -201,7 +208,9 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                 new Dictionary<string, object?> { { "Status", "Approved" } },
                 retriedBy,
                 retriedByName,
-                "Request retry initiated"
+                "Request retry initiated",
+                connection,
+                transaction
             );
 
             // Try to apply again
@@ -235,7 +244,9 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                         },
                         retriedBy,
                         retriedByName,
-                        successComment
+                        successComment,
+                        connection,
+                        transaction
                     );
 
                     _logger.LogInformation("Form request {Id} successfully retried and applied. Record key: {RecordKey}",
@@ -264,7 +275,9 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                     },
                     retriedBy,
                     retriedByName,
-                    $"Retry attempt failed: {applyEx.Message}"
+                    $"Retry attempt failed: {applyEx.Message}",
+                    connection,
+                    transaction
                 );
 
                 await transaction.RollbackAsync();
@@ -327,6 +340,11 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                 {
                     formRequest.FieldValues[update.Key] = update.Value;
                 }
+            }
+
+            // Persist changes if status changed or field values updated
+            if (result.WorkflowCompleted || fieldUpdates?.Any() == true)
+            {
                 await _formRequestRepository.UpdateAsync(formRequest);
             }
 

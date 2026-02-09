@@ -106,7 +106,7 @@ public class WorkflowDesignerService : IWorkflowDesignerService
                 }
             };
 
-            _logger.LogInformation("Creating workflow definition through WorkflowService");
+            _logger.LogInformation("Creating workflow definition through WorkflowDesignerService");
             var result = await _workflowDefinitionCommandService.CreateWorkflowDefinitionAsync(workflowDefinition);
             
             _logger.LogInformation("Successfully created workflow definition with ID {WorkflowId}", result.Id);

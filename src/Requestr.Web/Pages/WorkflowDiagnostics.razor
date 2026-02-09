@@ -4,7 +4,9 @@
 @using Requestr.Core.Interfaces
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
-@inject IFormRequestService FormRequestService
+@inject IFormRequestQueryService FormRequestQueryService
+@inject IFormRequestApprovalService FormRequestApprovalService
+@inject IFormRequestApplicationService FormRequestApplicationService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<WorkflowDiagnostics> Logger
 @attribute [Authorize(Roles = "Admin")]
@@ -222,14 +224,14 @@
             StateHasChanged();
 
             // Get stuck requests (completed workflows but not applied)
-            StuckRequests = await FormRequestService.GetRequestsWithCompletedWorkflowsButNotAppliedAsync();
+            StuckRequests = await FormRequestQueryService.GetWithCompletedWorkflowsNotAppliedAsync();
 
             // Get approved but not applied count for context
-            var approvedIds = await FormRequestService.GetApprovedButNotAppliedRequestIdsAsync();
+            var approvedIds = await FormRequestQueryService.GetApprovedNotAppliedIdsAsync();
             ApprovedCount = approvedIds.Count;
 
             // For applied count, we need to get all requests and filter
-            var allRequests = await FormRequestService.GetFormRequestsAsync();
+            var allRequests = await FormRequestQueryService.GetAllAsync();
             AppliedCount = allRequests.Count(r => r.Status == RequestStatus.Applied);
 
             HasLoaded = true;
@@ -259,7 +261,7 @@
             var user = authState.User;
             var userId = user?.Identity?.Name ?? "System";
 
-            var processedCount = await FormRequestService.ProcessStuckWorkflowRequestsAsync(userId);
+            var processedCount = await FormRequestApprovalService.ProcessStuckWorkflowRequestsAsync(userId);
 
             StatusMessage = $"Successfully processed {processedCount} stuck workflow request(s).";
             IsSuccess = true;
@@ -290,7 +292,7 @@
             StatusMessage = null;
             StateHasChanged();
 
-            var success = await FormRequestService.ManuallyApplyApprovedRequestAsync(requestId);
+            var success = await FormRequestApplicationService.ManuallyApplyAsync(requestId);
 
             if (success)
             {
@@ -330,7 +332,7 @@
         try
         {
             SelectedRequestId = requestId;
-            DiagnosticsText = await FormRequestService.GetWorkflowDiagnosticsAsync(requestId);
+            DiagnosticsText = await FormRequestApplicationService.GetWorkflowDiagnosticsAsync(requestId);
             await diagnosticsModal.ShowAsync();
             StateHasChanged();
         }

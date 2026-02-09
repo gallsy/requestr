@@ -6,7 +6,8 @@
 @using Requestr.Web.Authorization
 @using Requestr.Web.Utilities
 @inject IFormDefinitionService FormDefinitionService
-@inject IFormRequestService FormRequestService
+@inject IFormRequestQueryService FormRequestQueryService
+@inject IFormRequestCommandService FormRequestCommandService
 @inject IDataService DataService
 @inject IDatabaseService DatabaseService
 @inject IFormAuthorizationService FormAuthorizationService
@@ -597,7 +598,7 @@ else
 
         try
         {
-            var request = await FormRequestService.GetByIdAsync(RequestId.Value);
+            var request = await FormRequestQueryService.GetByIdAsync(RequestId.Value);
             if (request != null)
             {
                 _requestType = request.RequestType;
@@ -844,12 +845,12 @@ else
             if (RequestId.HasValue)
             {
                 formRequest.Id = RequestId.Value;
-                await FormRequestService.UpdateAsync(formRequest);
+                await FormRequestCommandService.UpdateAsync(formRequest);
                 _successMessage = "Request updated successfully!";
             }
             else
             {
-                createdRequest = await FormRequestService.CreateAsync(formRequest);
+                createdRequest = await FormRequestCommandService.CreateAsync(formRequest);
                 
                 // Check if form has workflow to determine success message
                 var hasWorkflow = await WorkflowDefinitionQueryService.GetWorkflowDefinitionByFormAsync(FormId) != null;

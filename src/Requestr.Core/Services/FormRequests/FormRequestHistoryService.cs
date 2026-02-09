@@ -1,4 +1,3 @@
-using Dapper;
 using Microsoft.Extensions.Logging;
 using Requestr.Core.Models;
 using Requestr.Core.Repositories;
@@ -12,16 +11,13 @@ namespace Requestr.Core.Services.FormRequests;
 public class FormRequestHistoryService : IFormRequestHistoryService
 {
     private readonly IFormRequestHistoryRepository _historyRepository;
-    private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<FormRequestHistoryService> _logger;
 
     public FormRequestHistoryService(
         IFormRequestHistoryRepository historyRepository,
-        IDbConnectionFactory connectionFactory,
         ILogger<FormRequestHistoryService> logger)
     {
         _historyRepository = historyRepository;
-        _connectionFactory = connectionFactory;
         _logger = logger;
     }
 
@@ -79,6 +75,43 @@ public class FormRequestHistoryService : IFormRequestHistoryService
             await _historyRepository.AddAsync(history);
             
             _logger.LogDebug("Recorded {ChangeType} change for form request {FormRequestId} by {ChangedBy}", 
+                changeType, formRequestId, changedBy);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error recording change for form request {FormRequestId}", formRequestId);
+            throw;
+        }
+    }
+
+    public async Task RecordChangeAsync(
+        int formRequestId,
+        FormRequestChangeType changeType,
+        Dictionary<string, object?>? previousValues,
+        Dictionary<string, object?>? newValues,
+        string changedBy,
+        string changedByName,
+        string? comments,
+        System.Data.IDbConnection connection,
+        System.Data.IDbTransaction transaction)
+    {
+        try
+        {
+            var history = new FormRequestHistory
+            {
+                FormRequestId = formRequestId,
+                ChangeType = changeType,
+                PreviousValues = previousValues ?? new Dictionary<string, object?>(),
+                NewValues = newValues ?? new Dictionary<string, object?>(),
+                ChangedBy = changedBy,
+                ChangedByName = changedByName,
+                ChangedAt = DateTime.UtcNow,
+                Comments = comments
+            };
+
+            await _historyRepository.AddAsync(history, connection, transaction);
+            
+            _logger.LogDebug("Recorded {ChangeType} change for form request {FormRequestId} by {ChangedBy} (in transaction)", 
                 changeType, formRequestId, changedBy);
         }
         catch (Exception ex)

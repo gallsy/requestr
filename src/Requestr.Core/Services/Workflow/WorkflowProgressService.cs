@@ -13,18 +13,15 @@ namespace Requestr.Core.Services.Workflow;
 /// </summary>
 public class WorkflowProgressService : IWorkflowProgressService
 {
-    private readonly IWorkflowInstanceRepository _instanceRepository;
     private readonly IWorkflowDefinitionRepository _definitionRepository;
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<WorkflowProgressService> _logger;
 
     public WorkflowProgressService(
-        IWorkflowInstanceRepository instanceRepository,
         IWorkflowDefinitionRepository definitionRepository,
         IDbConnectionFactory connectionFactory,
         ILogger<WorkflowProgressService> logger)
     {
-        _instanceRepository = instanceRepository;
         _definitionRepository = definitionRepository;
         _connectionFactory = connectionFactory;
         _logger = logger;

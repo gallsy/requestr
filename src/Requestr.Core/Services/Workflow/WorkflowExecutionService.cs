@@ -17,7 +17,6 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     private readonly IWorkflowInstanceRepository _instanceRepository;
     private readonly IWorkflowStepInstanceRepository _stepInstanceRepository;
     private readonly IWorkflowDefinitionRepository _definitionRepository;
-    private readonly IWorkflowTransitionRepository _transitionRepository;
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly IDataService _dataService;
     private readonly INotificationService _notificationService;
@@ -32,7 +31,6 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         IWorkflowInstanceRepository instanceRepository,
         IWorkflowStepInstanceRepository stepInstanceRepository,
         IWorkflowDefinitionRepository definitionRepository,
-        IWorkflowTransitionRepository transitionRepository,
         IDbConnectionFactory connectionFactory,
         IDataService dataService,
         INotificationService notificationService,
@@ -42,7 +40,6 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         _instanceRepository = instanceRepository;
         _stepInstanceRepository = stepInstanceRepository;
         _definitionRepository = definitionRepository;
-        _transitionRepository = transitionRepository;
         _connectionFactory = connectionFactory;
         _dataService = dataService;
         _notificationService = notificationService;
@@ -97,7 +94,6 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                 workflowInstanceId,
                 stepId,
                 completedBy,
-                completedByName,
                 action,
                 comments,
                 fieldValues,
@@ -332,18 +328,17 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         }
         else
         {
-            // Send notification for the new active step
-            _ = Task.Run(async () =>
+            // Send notification for the new active step (within current connection/transaction)
+            try
             {
-                try
-                {
-                    await SendStepBecomesActiveNotificationAsync(connection, transaction, workflowInstanceId, nextStepId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error sending step active notification");
-                }
-            });
+                await SendStepBecomesActiveNotificationAsync(connection, transaction, workflowInstanceId, nextStepId);
+            }
+            catch (Exception ex)
+            {
+                // Don't fail the workflow progression if notification fails
+                _logger.LogError(ex, "Error sending step active notification for workflow {InstanceId}, step {StepId}",
+                    workflowInstanceId, nextStepId);
+            }
         }
 
         _logger.LogDebug("Moved workflow {InstanceId} to step {StepId}", workflowInstanceId, nextStepId);
@@ -359,7 +354,6 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         await _stepInstanceRepository.UpdateToCompletedAsync(
             workflowInstanceId,
             stepId,
-            "System",
             "System",
             WorkflowStepAction.Completed,
             "Auto-completed End step",
@@ -507,6 +501,20 @@ public class WorkflowExecutionService : IWorkflowExecutionService
 
             if (bulkFormRequestId.HasValue)
             {
+                // In the workflow path, bulk request items are still Pending.
+                // Transition them to Approved so ApplyBulkRequestItemsAsync can find and process them.
+                const string approveBulkItemsSql = @"
+                    UPDATE BulkFormRequestItems 
+                    SET Status = @ApprovedStatus 
+                    WHERE BulkFormRequestId = @BulkRequestId AND Status = @PendingStatus";
+
+                await connection.ExecuteAsync(approveBulkItemsSql, new
+                {
+                    BulkRequestId = bulkFormRequestId.Value,
+                    ApprovedStatus = (int)RequestStatus.Approved,
+                    PendingStatus = (int)RequestStatus.Pending
+                });
+
                 applicationSuccess = await ApplyBulkRequestItemsAsync(connection, bulkFormRequestId.Value);
             }
             else
@@ -627,10 +635,207 @@ public class WorkflowExecutionService : IWorkflowExecutionService
 
     private async Task<bool> ApplyBulkRequestItemsAsync(SqlConnection connection, int bulkFormRequestId)
     {
-        // Simplified bulk request processing - full implementation in original WorkflowService
-        _logger.LogInformation("Applying bulk request items for bulk request {BulkRequestId}", bulkFormRequestId);
-        // TODO: Migrate full bulk request processing logic
-        return true;
+        try
+        {
+            _logger.LogInformation("Applying bulk request items for bulk request {BulkRequestId}", bulkFormRequestId);
+
+            // Get bulk request and form definition details
+            const string getBulkRequestSql = @"
+                SELECT bfr.RequestType, fd.DatabaseConnectionName, fd.TableName, fd.[Schema]
+                FROM BulkFormRequests bfr
+                INNER JOIN FormDefinitions fd ON bfr.FormDefinitionId = fd.Id
+                WHERE bfr.Id = @BulkRequestId";
+
+            var bulkRequestData = await connection.QuerySingleOrDefaultAsync(getBulkRequestSql, new { BulkRequestId = bulkFormRequestId });
+
+            if (bulkRequestData == null)
+            {
+                _logger.LogWarning("Bulk request {BulkRequestId} not found", bulkFormRequestId);
+                return false;
+            }
+
+            // Extract typed values from dynamic to avoid RuntimeBinderException with LINQ extension methods
+            var requestType = (RequestType)(int)bulkRequestData.RequestType;
+            string dbConnectionName = (string)bulkRequestData.DatabaseConnectionName;
+            string tableName = (string)bulkRequestData.TableName;
+            string schema = (string)bulkRequestData.Schema;
+
+            // Get all approved bulk request items
+            const string getItemsSql = @"
+                SELECT Id, FieldValues, OriginalValues, RowNumber
+                FROM BulkFormRequestItems
+                WHERE BulkFormRequestId = @BulkRequestId AND Status = @ApprovedStatus
+                ORDER BY RowNumber";
+
+            var items = await connection.QueryAsync(getItemsSql, new
+            {
+                BulkRequestId = bulkFormRequestId,
+                ApprovedStatus = (int)RequestStatus.Approved
+            });
+
+            if (!items.Any())
+            {
+                _logger.LogInformation("No approved items found for bulk request {BulkRequestId}", bulkFormRequestId);
+                return true;
+            }
+
+            _logger.LogInformation("Found {ItemCount} approved items to process for bulk request {BulkRequestId}", items.Count(), bulkFormRequestId);
+
+            int successCount = 0;
+            int failureCount = 0;
+
+            foreach (var item in items)
+            {
+                try
+                {
+                    var fieldValuesJson = item.FieldValues?.ToString() ?? "{}";
+                    var originalValuesJson = item.OriginalValues?.ToString() ?? "{}";
+
+                    var fieldValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(fieldValuesJson) ?? new Dictionary<string, object?>();
+                    var originalValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(originalValuesJson) ?? new Dictionary<string, object?>();
+
+                    fieldValues = ConvertJsonElements(fieldValues);
+                    originalValues = ConvertJsonElements(originalValues);
+
+                    bool itemSuccess = false;
+                    string processingResult = "";
+
+                    switch (requestType)
+                    {
+                        case RequestType.Insert:
+                            itemSuccess = await _dataService.InsertDataAsync(
+                                dbConnectionName,
+                                tableName,
+                                schema,
+                                fieldValues);
+                            processingResult = itemSuccess ? "Successfully inserted into database" : "Failed to insert into database";
+                            break;
+
+                        case RequestType.Update:
+                            var primaryKeyColumns = await _dataService.GetPrimaryKeyColumnsAsync(
+                                dbConnectionName,
+                                tableName,
+                                schema);
+
+                            if (!primaryKeyColumns.Any())
+                                throw new InvalidOperationException($"No primary key found for table {schema}.{tableName}");
+
+                            var whereConditions = new Dictionary<string, object?>();
+                            foreach (var pkColumn in primaryKeyColumns)
+                            {
+                                if (originalValues.ContainsKey(pkColumn))
+                                    whereConditions[pkColumn] = originalValues[pkColumn];
+                                else
+                                    throw new InvalidOperationException($"Primary key column '{pkColumn}' not found in original values for item {item.Id}");
+                            }
+
+                            itemSuccess = await _dataService.UpdateDataAsync(
+                                dbConnectionName,
+                                tableName,
+                                schema,
+                                fieldValues,
+                                whereConditions);
+                            processingResult = itemSuccess ? "Successfully updated in database" : "Failed to update in database";
+                            break;
+
+                        case RequestType.Delete:
+                            var deletePkColumns = await _dataService.GetPrimaryKeyColumnsAsync(
+                                dbConnectionName,
+                                tableName,
+                                schema);
+
+                            if (!deletePkColumns.Any())
+                                throw new InvalidOperationException($"No primary key found for table {schema}.{tableName}");
+
+                            var deleteConditions = new Dictionary<string, object?>();
+                            foreach (var pkColumn in deletePkColumns)
+                            {
+                                if (originalValues.ContainsKey(pkColumn))
+                                    deleteConditions[pkColumn] = originalValues[pkColumn];
+                                else
+                                    throw new InvalidOperationException($"Primary key column '{pkColumn}' not found in original values for item {item.Id}");
+                            }
+
+                            itemSuccess = await _dataService.DeleteDataAsync(
+                                dbConnectionName,
+                                tableName,
+                                schema,
+                                deleteConditions);
+                            processingResult = itemSuccess ? "Successfully deleted from database" : "Failed to delete from database";
+                            break;
+                    }
+
+                    // Update item status
+                    const string updateItemSql = @"
+                        UPDATE BulkFormRequestItems
+                        SET Status = @Status, ProcessingResult = @ProcessingResult
+                        WHERE Id = @ItemId";
+
+                    await connection.ExecuteAsync(updateItemSql, new
+                    {
+                        ItemId = item.Id,
+                        Status = itemSuccess ? (int)RequestStatus.Applied : (int)RequestStatus.Failed,
+                        ProcessingResult = processingResult
+                    });
+
+                    if (itemSuccess)
+                    {
+                        successCount++;
+                        _logger.LogInformation("Successfully applied bulk request item {ItemId} (row {RowNumber}) to database", (object)item.Id, (object)item.RowNumber);
+                    }
+                    else
+                    {
+                        failureCount++;
+                        _logger.LogWarning("Failed to apply bulk request item {ItemId} (row {RowNumber}) to database", (object)item.Id, (object)item.RowNumber);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failureCount++;
+                    _logger.LogError(ex, "Error processing bulk request item {ItemId} (row {RowNumber})", (object)item.Id, (object)item.RowNumber);
+
+                    const string updateFailedItemSql = @"
+                        UPDATE BulkFormRequestItems
+                        SET Status = @Status, ProcessingResult = @ProcessingResult
+                        WHERE Id = @ItemId";
+
+                    await connection.ExecuteAsync(updateFailedItemSql, new
+                    {
+                        ItemId = item.Id,
+                        Status = (int)RequestStatus.Failed,
+                        ProcessingResult = $"Error: {ex.Message}"
+                    });
+                }
+            }
+
+            // Update bulk request status
+            var overallStatus = failureCount == 0 ? RequestStatus.Applied :
+                              successCount > 0 ? RequestStatus.Applied : RequestStatus.Failed;
+
+            var processingSummary = $"Processed {successCount + failureCount} items. {successCount} succeeded, {failureCount} failed.";
+
+            const string updateBulkRequestSql = @"
+                UPDATE BulkFormRequests
+                SET Status = @Status, ProcessingSummary = @ProcessingSummary
+                WHERE Id = @BulkRequestId";
+
+            await connection.ExecuteAsync(updateBulkRequestSql, new
+            {
+                BulkRequestId = bulkFormRequestId,
+                Status = (int)overallStatus,
+                ProcessingSummary = processingSummary
+            });
+
+            _logger.LogInformation("Completed bulk request processing for {BulkRequestId}. Summary: {ProcessingSummary}",
+                bulkFormRequestId, processingSummary);
+
+            return successCount > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error applying bulk request items for bulk request {BulkRequestId}", bulkFormRequestId);
+            return false;
+        }
     }
 
     private Dictionary<string, object?> ParseFieldValues(object? fieldValuesObj)
@@ -763,7 +968,76 @@ public class WorkflowExecutionService : IWorkflowExecutionService
 
     private async Task SendStepBecomesActiveNotificationAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId, string stepId)
     {
-        // Notification logic - fire and forget in caller
-        _logger.LogDebug("Step {StepId} becomes active notification requested for workflow {InstanceId}", stepId, workflowInstanceId);
+        try
+        {
+            const string sql = @"
+                SELECT 
+                    wi.Id as WorkflowInstanceId,
+                    wi.FormRequestId,
+                    fr.BulkFormRequestId,
+                    fd.Name as FormName,
+                    wd.Name as WorkflowName,
+                    fr.RequestType,
+                    COALESCE(bfr.Comments, fr.Comments) as RequestComments,
+                    fr.RequestedAt,
+                    COALESCE(uReq.Email, fr.RequestedBy) as RequestorEmail,
+                    COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName,
+                    ws.Name as StepName,
+                    ws.Description as StepDescription,
+                    ws.NotificationEmail as StepNotificationEmail
+                FROM WorkflowInstances wi
+                INNER JOIN FormRequests fr ON wi.FormRequestId = fr.Id
+                INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+                INNER JOIN WorkflowDefinitions wd ON wi.WorkflowDefinitionId = wd.Id
+                INNER JOIN WorkflowSteps ws ON ws.WorkflowDefinitionId = wd.Id AND ws.StepId = @StepId
+                LEFT JOIN BulkFormRequests bfr ON fr.BulkFormRequestId = bfr.Id
+                LEFT JOIN Users uReq ON uReq.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
+                WHERE wi.Id = @WorkflowInstanceId";
+
+            var stepData = await connection.QueryFirstOrDefaultAsync(sql, new
+            {
+                WorkflowInstanceId = workflowInstanceId,
+                StepId = stepId
+            }, transaction);
+
+            if (stepData == null || string.IsNullOrWhiteSpace((string?)stepData.StepNotificationEmail))
+            {
+                _logger.LogDebug("No notification email configured for step {StepId}", stepId);
+                return;
+            }
+
+            var baseUrl = _configuration["AppBranding:BaseUrl"] ?? "http://localhost:8080";
+            int? bulkFormRequestId = stepData.BulkFormRequestId as int?;
+            string requestUrl = bulkFormRequestId.HasValue
+                ? $"{baseUrl}/bulk-requests/{bulkFormRequestId.Value}"
+                : $"{baseUrl}/workflow/{workflowInstanceId}/step/{stepId}";
+
+            var variables = new Dictionary<string, string>
+            {
+                { "{{RequestId}}", bulkFormRequestId?.ToString() ?? stepData.FormRequestId.ToString() },
+                { "{{FormName}}", (stepData.FormName ?? "Form Request").ToString() },
+                { "{{WorkflowName}}", (stepData.WorkflowName ?? "Workflow").ToString() },
+                { "{{WorkflowStepName}}", (stepData.StepName ?? stepId).ToString() },
+                { "{{RequestDescription}}", (stepData.RequestType?.ToString() ?? "Request") },
+                { "{{RequestComments}}", (stepData.RequestComments ?? "").ToString() },
+                { "{{CreatingUser}}", (stepData.RequestedByName ?? "Unknown").ToString() },
+                { "{{CreatingUserEmail}}", (stepData.RequestorEmail ?? "").ToString() },
+                { "{{RequestCreatedDate}}", stepData.RequestedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") },
+                { "{{RequestUrl}}", requestUrl },
+                { "{{SystemName}}", "Requestr" },
+                { "{{AssignedUserName}}", "" },
+                { "{{AssignedUserEmail}}", "" },
+                { "{{DueDate}}", "" }
+            };
+
+            await _notificationService.SendNotificationAsync(WorkflowStepPending, variables, (string)stepData.StepNotificationEmail);
+            _logger.LogInformation("Sent step pending notification for workflow {InstanceId}, step {StepId} to {Email}",
+                workflowInstanceId, stepId, (string)stepData.StepNotificationEmail);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending step active notification for workflow {WorkflowInstanceId}, step {StepId}",
+                workflowInstanceId, stepId);
+        }
     }
 }

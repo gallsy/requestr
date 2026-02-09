@@ -14,7 +14,7 @@
 @inject IDatabaseService DatabaseService
 @inject IDataService DataService
 @inject IFormPermissionService FormPermissionService
-@inject IFormRequestService FormRequestService
+@inject IFormRequestQueryService FormRequestQueryService
 @inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
 @inject IWorkflowDesignerService WorkflowDesignerService
 @inject IFormWorkflowConfigurationService FormWorkflowConfigurationService
@@ -1609,7 +1609,7 @@
             // Only check if the user hasn't already confirmed to proceed
             if (!_proceedWithSaveOverride && _staleFields.Any() && FormId.HasValue)
             {
-                _affectedRequests = await FormRequestService.GetPendingRequestsByFormDefinitionAsync(FormId.Value);
+                _affectedRequests = await FormRequestQueryService.GetPendingByFormDefinitionAsync(FormId.Value);
                 if (_affectedRequests.Any())
                 {
                     // Show the warning modal instead of saving

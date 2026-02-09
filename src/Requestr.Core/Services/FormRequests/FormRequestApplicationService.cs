@@ -1,9 +1,11 @@
 using Dapper;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using Requestr.Core.Repositories;
+using Requestr.Core.Services.Workflow;
 using System.Text.Json;
 
 namespace Requestr.Core.Services.FormRequests;
@@ -40,7 +42,9 @@ public class FormRequestApplicationService : IFormRequestApplicationService
     private readonly IFormDefinitionService _formDefinitionService;
     private readonly IDataService _dataService;
     private readonly IAdvancedNotificationService _notificationService;
+    private readonly IWorkflowProgressService _workflowProgressService;
     private readonly IDbConnectionFactory _connectionFactory;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<FormRequestApplicationService> _logger;
 
     public FormRequestApplicationService(
@@ -49,7 +53,9 @@ public class FormRequestApplicationService : IFormRequestApplicationService
         IFormDefinitionService formDefinitionService,
         IDataService dataService,
         IAdvancedNotificationService notificationService,
+        IWorkflowProgressService workflowProgressService,
         IDbConnectionFactory connectionFactory,
+        IConfiguration configuration,
         ILogger<FormRequestApplicationService> logger)
     {
         _formRequestRepository = formRequestRepository;
@@ -57,7 +63,9 @@ public class FormRequestApplicationService : IFormRequestApplicationService
         _formDefinitionService = formDefinitionService;
         _dataService = dataService;
         _notificationService = notificationService;
+        _workflowProgressService = workflowProgressService;
         _connectionFactory = connectionFactory;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -347,16 +355,182 @@ public class FormRequestApplicationService : IFormRequestApplicationService
         return value;
     }
 
+    public async Task<string> GetWorkflowDiagnosticsAsync(int formRequestId)
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+
+            var diagnostics = new List<string>();
+
+            var formRequest = await _formRequestRepository.GetByIdAsync(formRequestId);
+            if (formRequest == null)
+            {
+                return "Form request not found.";
+            }
+
+            diagnostics.Add($"Form Request {formRequestId} Diagnostics:");
+            diagnostics.Add($"  Status: {formRequest.Status}");
+            diagnostics.Add($"  Requested At: {formRequest.RequestedAt}");
+            diagnostics.Add($"  Workflow Instance ID: {formRequest.WorkflowInstanceId}");
+
+            if (formRequest.WorkflowInstanceId.HasValue)
+            {
+                var workflowSql = @"
+                    SELECT wi.*, wd.Name as WorkflowName
+                    FROM WorkflowInstances wi
+                    INNER JOIN WorkflowDefinitions wd ON wi.WorkflowDefinitionId = wd.Id
+                    WHERE wi.Id = @WorkflowInstanceId";
+
+                var workflowData = await connection.QueryFirstOrDefaultAsync(workflowSql, new { WorkflowInstanceId = formRequest.WorkflowInstanceId });
+                
+                if (workflowData != null)
+                {
+                    diagnostics.Add($"  Workflow: {workflowData.WorkflowName}");
+                    
+                    var statusValue = workflowData.Status;
+                    string statusName;
+                    if (int.TryParse(statusValue?.ToString(), out int statusInt))
+                    {
+                        statusName = Enum.GetName(typeof(WorkflowInstanceStatus), statusInt) ?? statusValue?.ToString() ?? "Unknown";
+                    }
+                    else
+                    {
+                        statusName = statusValue?.ToString() ?? "Unknown";
+                    }
+                    
+                    diagnostics.Add($"  Workflow Status: {statusName}");
+                    diagnostics.Add($"  Current Step: {workflowData.CurrentStepId}");
+                    diagnostics.Add($"  Started At: {workflowData.StartedAt}");
+                    diagnostics.Add($"  Completed At: {workflowData.CompletedAt}");
+
+                    var stepsSql = @"
+                        SELECT wsi.*, ws.Name as StepName, ws.StepType
+                        FROM WorkflowStepInstances wsi
+                        INNER JOIN WorkflowSteps ws ON wsi.StepId = ws.StepId AND ws.WorkflowDefinitionId = @WorkflowDefinitionId
+                        WHERE wsi.WorkflowInstanceId = @WorkflowInstanceId
+                        ORDER BY wsi.StartedAt";
+
+                    var steps = await connection.QueryAsync(stepsSql, new 
+                    { 
+                        WorkflowInstanceId = formRequest.WorkflowInstanceId,
+                        WorkflowDefinitionId = workflowData.WorkflowDefinitionId
+                    });
+
+                    diagnostics.Add("  Workflow Steps:");
+                    foreach (var step in steps)
+                    {
+                        var stepStatusValue = step.Status;
+                        string stepStatusName;
+                        if (int.TryParse(stepStatusValue?.ToString(), out int stepStatusInt))
+                        {
+                            stepStatusName = Enum.GetName(typeof(WorkflowStepInstanceStatus), stepStatusInt) ?? stepStatusValue?.ToString() ?? "Unknown";
+                        }
+                        else
+                        {
+                            stepStatusName = stepStatusValue?.ToString() ?? "Unknown";
+                        }
+                        
+                        diagnostics.Add($"    - {step.StepName} ({step.StepType}): {stepStatusName}");
+                        if (step.CompletedAt != null)
+                        {
+                            diagnostics.Add($"      Completed: {step.CompletedAt} by {step.CompletedByName}");
+                        }
+                        if (!string.IsNullOrEmpty(step.Comments))
+                        {
+                            diagnostics.Add($"      Comments: {step.Comments}");
+                        }
+                    }
+                }
+            }
+
+            diagnostics.Add("  Potential Issues:");
+            if (formRequest.WorkflowInstanceId.HasValue && formRequest.Status == RequestStatus.Approved)
+            {
+                var workflowProgress = await _workflowProgressService.GetWorkflowProgressAsync(formRequestId);
+                if (workflowProgress?.Status == WorkflowInstanceStatus.Completed)
+                {
+                    diagnostics.Add("    - Workflow is complete but request is not applied to database");
+                    diagnostics.Add("    - This request should be processed manually");
+                }
+            }
+
+            if (!string.IsNullOrEmpty(formRequest.FailureMessage))
+            {
+                diagnostics.Add($"    - Failure Message: {formRequest.FailureMessage}");
+            }
+
+            return string.Join(Environment.NewLine, diagnostics);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting workflow diagnostics for form request {FormRequestId}", formRequestId);
+            return $"Error getting diagnostics: {ex.Message}";
+        }
+    }
+
     private async Task SendRequestAppliedNotificationAsync(FormRequest formRequest, FormDefinition formDefinition)
     {
         try
         {
-            // TODO: Implement notification sending using IAdvancedNotificationService
-            _logger.LogInformation("Notification would be sent for applied form request {Id}", formRequest.Id);
+            // Get the requestor's email from the Users table
+            string? requestorEmail = null;
+            using (var connection = await _connectionFactory.CreateConnectionAsync())
+            {
+                var sql = @"SELECT Email FROM Users WHERE Id = @UserId OR Email = @UserId";
+                requestorEmail = await connection.QueryFirstOrDefaultAsync<string>(sql, new { UserId = formRequest.RequestedBy });
+            }
+
+            if (string.IsNullOrEmpty(requestorEmail))
+            {
+                if (formRequest.RequestedBy?.Contains("@") == true)
+                {
+                    requestorEmail = formRequest.RequestedBy;
+                }
+                else
+                {
+                    _logger.LogWarning("Could not determine email for requestor {RequestedBy} for request {RequestId}",
+                        formRequest.RequestedBy, formRequest.Id);
+                    return;
+                }
+            }
+
+            var baseUrl = _configuration["Branding:BaseUrl"] ?? "http://localhost:8080";
+            var systemName = _configuration["Branding:ApplicationName"] ?? "Requestr";
+
+            var variables = new Dictionary<string, string>
+            {
+                { "{{RequestId}}", formRequest.Id.ToString() },
+                { "{{FormName}}", formDefinition.Name },
+                { "{{RequestType}}", formRequest.RequestType.ToString() },
+                { "{{RequestorName}}", formRequest.RequestedByName ?? formRequest.RequestedBy },
+                { "{{RequestCreatedDate}}", formRequest.RequestedAt.ToString("yyyy-MM-dd HH:mm:ss") },
+                { "{{AppliedDate}}", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") },
+                { "{{RequestComments}}", formRequest.Comments ?? "" },
+                { "{{RequestUrl}}", $"{baseUrl}/admin/requests/details/{formRequest.Id}" },
+                { "{{SystemName}}", systemName }
+            };
+
+            if (formRequest.FieldValues != null)
+            {
+                foreach (var field in formRequest.FieldValues)
+                {
+                    variables[$"{{{{Field_{field.Key}}}}}"] = field.Value?.ToString() ?? "";
+                }
+            }
+
+            await _notificationService.SendNotificationAsync(
+                NotificationTemplateKeys.RequestApproved,
+                variables,
+                requestorEmail);
+
+            _logger.LogInformation("Sent request approved notification for request {RequestId} to {Email}",
+                formRequest.Id, requestorEmail);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to send notification for applied form request {Id}", formRequest.Id);
+            _logger.LogError(ex, "Error sending request applied notification for request {RequestId}", formRequest.Id);
+            // Don't throw - notification failures shouldn't break the request application
         }
     }
 }

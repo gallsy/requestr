@@ -18,7 +18,6 @@ public class BulkFormRequestService : IBulkFormRequestService
     private readonly IConfiguration _configuration;
     private readonly ILogger<BulkFormRequestService> _logger;
     private readonly IFormDefinitionService _formDefinitionService;
-    private readonly IFormRequestService _formRequestService;
     private readonly IWorkflowInstanceService _workflowInstanceService;
     private readonly IInputValidationService _inputValidationService;
     private readonly string _connectionString;
@@ -27,14 +26,12 @@ public class BulkFormRequestService : IBulkFormRequestService
         IConfiguration configuration,
         ILogger<BulkFormRequestService> logger,
         IFormDefinitionService formDefinitionService,
-        IFormRequestService formRequestService,
         IWorkflowInstanceService workflowInstanceService,
         IInputValidationService inputValidationService)
     {
         _configuration = configuration;
         _logger = logger;
         _formDefinitionService = formDefinitionService;
-        _formRequestService = formRequestService;
         _workflowInstanceService = workflowInstanceService;
         _inputValidationService = inputValidationService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
