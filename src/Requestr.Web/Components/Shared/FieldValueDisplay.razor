@@ -9,6 +9,10 @@
             {
                 <span class="badge bg-warning text-dark ms-2" style="font-size: 0.7rem;">Changed</span>
             }
+            @if (IsComputed)
+            {
+                <span class="badge bg-info text-dark ms-2" style="font-size: 0.7rem;"><i class="bi bi-gear-fill me-1"></i>Auto</span>
+            }
         </div>
         <div class="col-md-8">
             @if (ShowOriginal && HasOriginal)
@@ -28,7 +32,14 @@
             }
             else
             {
-                <span>@FormatValue(NewValue)</span>
+                @if (IsComputedPending)
+                {
+                    <span class="text-muted fst-italic"><i class="bi bi-gear me-1"></i>@ComputedDescription</span>
+                }
+                else
+                {
+                    <span>@FormatValue(NewValue)</span>
+                }
             }
         </div>
     </div>
@@ -42,6 +53,12 @@
     [Parameter] public bool ShowOriginal { get; set; } = false;
     [Parameter] public bool ShowBorder { get; set; } = true;
     [Parameter] public RequestType RequestType { get; set; } = RequestType.Insert;
+    /// <summary>Whether this field has a computed value configured</summary>
+    [Parameter] public bool IsComputed { get; set; } = false;
+    /// <summary>Whether the computed value is pending (not yet applied)</summary>
+    [Parameter] public bool IsComputedPending { get; set; } = false;
+    /// <summary>Description of what the computed value will be</summary>
+    [Parameter] public string? ComputedDescription { get; set; }
 
     private string ResolvedDisplayName => !string.IsNullOrEmpty(DisplayName) ? DisplayName : FieldName;
     

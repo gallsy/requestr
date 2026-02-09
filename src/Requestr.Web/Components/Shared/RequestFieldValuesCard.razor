@@ -53,6 +53,7 @@
                         var displayName = GetDisplayName(field.Key);
                         var originalValue = GetOriginalValue(field.Key);
                         var showBorder = field.Key != lastField.Key;
+                        var computedInfo = GetComputedFieldInfo(field.Key);
                         
                         <FieldValueDisplay 
                             FieldName="@field.Key"
@@ -61,7 +62,10 @@
                             OriginalValue="@originalValue"
                             ShowOriginal="@ShowOriginalValues"
                             ShowBorder="@showBorder"
-                            RequestType="@RequestType" />
+                            RequestType="@RequestType"
+                            IsComputed="@computedInfo.IsComputed"
+                            IsComputedPending="@computedInfo.IsPending"
+                            ComputedDescription="@computedInfo.Description" />
                     }
                 </div>
             }
@@ -143,11 +147,30 @@
 
     private IEnumerable<KeyValuePair<string, object?>> GetDisplayableFields()
     {
-        if (FieldValues == null) return Enumerable.Empty<KeyValuePair<string, object?>>();
+        var fields = FieldValues ?? new Dictionary<string, object?>();
         
-        return FieldValues.Where(f => 
+        var result = fields.Where(f => 
             !string.IsNullOrEmpty(f.Key) && 
-            (ExcludeFields == null || !ExcludeFields.Contains(f.Key)));
+            (ExcludeFields == null || !ExcludeFields.Contains(f.Key)))
+            .ToList();
+
+        // Add computed fields that aren't already in FieldValues so they're visible
+        if (FormFields != null)
+        {
+            foreach (var formField in FormFields)
+            {
+                if (formField.ComputedValueType != null && formField.ComputedValueType != ComputedValueType.None)
+                {
+                    var alreadyPresent = result.Any(r => string.Equals(r.Key, formField.Name, StringComparison.OrdinalIgnoreCase));
+                    if (!alreadyPresent)
+                    {
+                        result.Add(new KeyValuePair<string, object?>(formField.Name, null));
+                    }
+                }
+            }
+        }
+
+        return result;
     }
 
     private string GetDisplayName(string fieldName)
@@ -155,6 +178,51 @@
         var field = FormFields?.FirstOrDefault(f => 
             string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase));
         return field?.DisplayName ?? fieldName;
+    }
+
+    private (bool IsComputed, bool IsPending, string? Description) GetComputedFieldInfo(string fieldName)
+    {
+        var formField = FormFields?.FirstOrDefault(f =>
+            string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase));
+
+        if (formField?.ComputedValueType == null || formField.ComputedValueType == ComputedValueType.None)
+            return (false, false, null);
+
+        var description = GetComputedValueDescription(formField.ComputedValueType.Value, formField.ComputedValueApplyMode);
+        
+        // Check if this computed value will be applied for the current request type.
+        // If so, any existing value in FieldValues is stale and will be overwritten at apply time.
+        var willBeComputed = RequestType switch
+        {
+            RequestType.Insert => formField.ComputedValueApplyMode is ComputedValueApplyMode.InsertAndUpdate or ComputedValueApplyMode.InsertOnly,
+            RequestType.Update => formField.ComputedValueApplyMode is ComputedValueApplyMode.InsertAndUpdate or ComputedValueApplyMode.UpdateOnly,
+            _ => false
+        };
+        
+        return (true, willBeComputed, description);
+    }
+
+    private static string GetComputedValueDescription(ComputedValueType type, ComputedValueApplyMode mode)
+    {
+        var typeDesc = type switch
+        {
+            ComputedValueType.CurrentDateTimeUtc => "Current date/time (UTC)",
+            ComputedValueType.CurrentDateTimeLocal => "Current date/time (local)",
+            ComputedValueType.CurrentUserId => "Current user ID",
+            ComputedValueType.CurrentUserDisplayName => "Current user name",
+            ComputedValueType.CurrentUserEmail => "Current user email",
+            ComputedValueType.NewGuid => "New unique ID",
+            _ => "Auto-generated"
+        };
+
+        var modeDesc = mode switch
+        {
+            ComputedValueApplyMode.InsertOnly => " on insert",
+            ComputedValueApplyMode.UpdateOnly => " on update",
+            _ => ""
+        };
+
+        return $"{typeDesc}{modeDesc} — set when applied";
     }
 
     private object? GetOriginalValue(string fieldName)

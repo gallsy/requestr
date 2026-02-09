@@ -175,7 +175,7 @@ else
                                                         <RequestFieldValuesCard 
                                                             FieldValues="@item.FieldValues"
                                                             OriginalValues="@item.OriginalValues"
-                                                            FormFields="@_formRequest.FormDefinition.Fields"
+                                                            FormFields="@_formDefinition?.Fields"
                                                             RequestType="@_formRequest.RequestType"
                                                             ProcessingResult="@item.ProcessingResult"
                                                             Status="@item.Status"
@@ -194,7 +194,7 @@ else
                                 <RequestFieldValuesCard 
                                     FieldValues="@_formRequest.FieldValues"
                                     OriginalValues="@_formRequest.OriginalValues"
-                                    FormFields="@_formRequest.FormDefinition.Fields"
+                                    FormFields="@_formDefinition?.Fields"
                                     RequestType="@_formRequest.RequestType" />
                             }
                         }
@@ -282,6 +282,7 @@ else
     private WorkflowStepInstance? _currentStep;
     private WorkflowStep? _currentStepDefinition;
     private FormRequest? _formRequest;
+    private FormDefinition? _formDefinition;
     private BulkFormRequest? _bulkFormRequest; // Add bulk request support
     private List<WorkflowStepFieldConfiguration> _fieldConfigurations = new();
     
@@ -412,6 +413,9 @@ else
         _formRequest = await FormRequestQueryService.GetByIdAsync(_workflowInstance.FormRequestId);
         Logger.LogInformation("LoadWorkflowDataAsync: FormRequest loaded: {Found}", _formRequest != null);
         if (_formRequest == null) return;
+
+        // Load full form definition (with fields including computed value config)
+        _formDefinition = await FormDefinitionService.GetFormDefinitionAsync(_formRequest.FormDefinitionId);
 
         // Load column metadata for hiding identity/computed/rowversion columns on create/insert
         try
