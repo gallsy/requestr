@@ -191,7 +191,6 @@
         var description = GetComputedValueDescription(formField.ComputedValueType.Value, formField.ComputedValueApplyMode);
         
         // Check if this computed value will be applied for the current request type.
-        // If so, any existing value in FieldValues is stale and will be overwritten at apply time.
         var willBeComputed = RequestType switch
         {
             RequestType.Insert => formField.ComputedValueApplyMode is ComputedValueApplyMode.InsertAndUpdate or ComputedValueApplyMode.InsertOnly,
@@ -199,7 +198,10 @@
             _ => false
         };
         
-        return (true, willBeComputed, description);
+        // If the request has already been applied, computed values have been resolved — show actual values
+        var isPending = willBeComputed && Status != RequestStatus.Applied;
+        
+        return (true, isPending, description);
     }
 
     private static string GetComputedValueDescription(ComputedValueType type, ComputedValueApplyMode mode)

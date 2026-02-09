@@ -15,7 +15,22 @@
             }
         </div>
         <div class="col-md-8">
-            @if (ShowOriginal && HasOriginal)
+            @if (IsComputedPending)
+            {
+                @if (ShowOriginal && HasOriginal)
+                {
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="text-muted">@FormatValue(OriginalValue)</span>
+                        <i class="bi bi-arrow-right text-muted small"></i>
+                        <span class="text-muted fst-italic"><i class="bi bi-gear me-1"></i>@ComputedDescription</span>
+                    </div>
+                }
+                else
+                {
+                    <span class="text-muted fst-italic"><i class="bi bi-gear me-1"></i>@ComputedDescription</span>
+                }
+            }
+            else if (ShowOriginal && HasOriginal)
             {
                 @if (HasChanged)
                 {
@@ -32,14 +47,7 @@
             }
             else
             {
-                @if (IsComputedPending)
-                {
-                    <span class="text-muted fst-italic"><i class="bi bi-gear me-1"></i>@ComputedDescription</span>
-                }
-                else
-                {
-                    <span>@FormatValue(NewValue)</span>
-                }
+                <span>@FormatValue(NewValue)</span>
             }
         </div>
     </div>
@@ -64,7 +72,7 @@
     
     private bool HasOriginal => RequestType != RequestType.Insert && OriginalValue != null;
     
-    private bool HasChanged => HasOriginal && !AreValuesEqual(OriginalValue, NewValue);
+    private bool HasChanged => (HasOriginal && !AreValuesEqual(OriginalValue, NewValue)) || (HasOriginal && IsComputedPending);
 
     private string FormatValue(object? value)
     {
@@ -88,6 +96,19 @@
     {
         var origStr = original?.ToString()?.Trim() ?? "";
         var newStr = newVal?.ToString()?.Trim() ?? "";
-        return string.Equals(origStr, newStr, StringComparison.OrdinalIgnoreCase);
+        
+        if (string.Equals(origStr, newStr, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // DateTime values can differ in precision after JSON round-tripping — compare truncated to seconds
+        if (DateTime.TryParse(origStr, out var origDate) && DateTime.TryParse(newStr, out var newDate))
+        {
+            return origDate.Date == newDate.Date 
+                && origDate.Hour == newDate.Hour 
+                && origDate.Minute == newDate.Minute 
+                && origDate.Second == newDate.Second;
+        }
+
+        return false;
     }
 }

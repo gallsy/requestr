@@ -216,6 +216,16 @@ public class FormRequestApplicationService : IFormRequestApplicationService
 
             if (success)
             {
+                // Save computed values back to the FormRequest so they're visible in the UI
+                try
+                {
+                    await _formRequestRepository.UpdateFieldValuesAsync(formRequest.Id, convertedFieldValues);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to save computed field values back to form request {Id}", formRequest.Id);
+                }
+
                 return ApplicationResult.Succeeded(recordKey?.ToString());
             }
             else

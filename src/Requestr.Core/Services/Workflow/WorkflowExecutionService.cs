@@ -635,14 +635,16 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             await InjectComputedValuesAsync(fieldValues, fields, requestType, 
                 requestData.RequestedBy?.ToString(), requestData.RequestedByName?.ToString());
 
+            bool result;
             switch (requestType)
             {
                 case RequestType.Insert:
-                    return await _dataService.InsertDataAsync(
+                    result = await _dataService.InsertDataAsync(
                         requestData.DatabaseConnectionName,
                         requestData.TableName,
                         requestData.Schema,
                         fieldValues);
+                    break;
 
                 case RequestType.Update:
                     var primaryKeyColumns = await _dataService.GetPrimaryKeyColumnsAsync(
@@ -657,12 +659,13 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                             whereConditions[pk] = originalValues[pk];
                     }
 
-                    return await _dataService.UpdateDataAsync(
+                    result = await _dataService.UpdateDataAsync(
                         requestData.DatabaseConnectionName,
                         requestData.TableName,
                         requestData.Schema,
                         fieldValues,
                         whereConditions);
+                    break;
 
                 case RequestType.Delete:
                     var deletePkColumns = await _dataService.GetPrimaryKeyColumnsAsync(
@@ -677,16 +680,37 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                             deleteConditions[pk] = originalValues[pk];
                     }
 
-                    return await _dataService.DeleteDataAsync(
+                    result = await _dataService.DeleteDataAsync(
                         requestData.DatabaseConnectionName,
                         requestData.TableName,
                         requestData.Schema,
                         deleteConditions);
+                    break;
 
                 default:
                     _logger.LogWarning("Unknown request type {RequestType}", requestType);
                     return false;
             }
+
+            // Save computed values back to the FormRequest so they're visible in the UI
+            if (result)
+            {
+                try
+                {
+                    int formRequestId = (int)requestData.FormRequestId;
+                    using var conn = await _connectionFactory.CreateConnectionAsync();
+                    var json = System.Text.Json.JsonSerializer.Serialize(fieldValues);
+                    await conn.ExecuteAsync(
+                        "UPDATE FormRequests SET FieldValues = @FieldValues WHERE Id = @Id",
+                        new { Id = formRequestId, FieldValues = json });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to save computed field values back to form request");
+                }
+            }
+
+            return result;
         }
         catch (Exception ex)
         {

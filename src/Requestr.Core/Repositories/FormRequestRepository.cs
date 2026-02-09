@@ -579,6 +579,25 @@ public class FormRequestRepository : IFormRequestRepository
         }
     }
     
+    public async Task UpdateFieldValuesAsync(int id, Dictionary<string, object?> fieldValues)
+    {
+        try
+        {
+            using var connection = _connectionFactory.CreateConnection();
+            await ((Microsoft.Data.SqlClient.SqlConnection)connection).OpenAsync();
+            var json = System.Text.Json.JsonSerializer.Serialize(fieldValues);
+            await connection.ExecuteAsync(
+                "UPDATE FormRequests SET FieldValues = @FieldValues WHERE Id = @Id",
+                new { Id = id, FieldValues = json },
+                commandTimeout: _connectionFactory.DefaultCommandTimeout);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating field values for form request {Id}", id);
+            throw;
+        }
+    }
+    
     #endregion
     
     #region Mapping

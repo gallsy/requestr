@@ -151,5 +151,10 @@ public interface IFormRequestRepository
     /// </summary>
     Task UpdateWorkflowInstanceIdAsync(int id, int workflowInstanceId, System.Data.IDbConnection connection, System.Data.IDbTransaction transaction);
     
+    /// <summary>
+    /// Updates the FieldValues JSON for a form request (e.g. after computed values are injected at apply time).
+    /// </summary>
+    Task UpdateFieldValuesAsync(int id, Dictionary<string, object?> fieldValues);
+    
     #endregion
 }
