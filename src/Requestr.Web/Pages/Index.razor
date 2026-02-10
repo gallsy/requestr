@@ -228,20 +228,7 @@
     private string? CurrentUserId;
     private List<string> UserRoles = new();
     
-    private static string FormatRelativeTime(DateTime dateTime)
-    {
-        var now = DateTime.Now;
-        var dt = dateTime.Kind == DateTimeKind.Utc ? dateTime.ToLocalTime() : dateTime;
-        var ts = now - dt;
-
-        if (ts.TotalSeconds < 60) return "just now";
-        if (ts.TotalMinutes < 60) return $"{(int)ts.TotalMinutes}m ago";
-        if (ts.TotalHours < 24) return $"{(int)ts.TotalHours}h ago";
-        if (ts.TotalDays < 7) return $"{(int)ts.TotalDays}d ago";
-        if (ts.TotalDays < 30) return $"{(int)(ts.TotalDays / 7)}w ago";
-        if (ts.TotalDays < 365) return $"{(int)(ts.TotalDays / 30)}mo ago";
-        return $"{(int)(ts.TotalDays / 365)}y ago";
-    }
+    private static string FormatRelativeTime(DateTime dateTime) => UiHelper.FormatRelativeTime(dateTime);
 
     protected override async Task OnInitializedAsync()
     {

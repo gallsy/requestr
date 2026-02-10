@@ -252,13 +252,5 @@
         };
     }
 
-    private string GetStatusBadgeClass() => Status switch
-    {
-        RequestStatus.Pending => "bg-warning text-dark",
-        RequestStatus.Approved => "bg-success",
-        RequestStatus.Rejected => "bg-danger",
-        RequestStatus.Applied => "bg-success",
-        RequestStatus.Failed => "bg-danger",
-        _ => "bg-secondary"
-    };
+    private string GetStatusBadgeClass() => Status.HasValue ? UiHelper.GetStatusBadgeClass(Status.Value) : "bg-secondary";
 }

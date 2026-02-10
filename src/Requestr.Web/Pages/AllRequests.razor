@@ -150,7 +150,7 @@
                     <div class="card-body">
                         <div class="table-responsive">
                             <table class="table table-hover">
-                                <thead class="table-dark">
+                                <thead class="thead-themed">
                                     <tr>
                                         <th>ID</th>
                                         <th>Form</th>
@@ -530,23 +530,8 @@
         }
     }
 
-    private string GetStatusBadgeClass(RequestStatus status) => status switch
-    {
-        RequestStatus.Pending => "bg-warning text-dark",
-        RequestStatus.Approved => "bg-success",
-        RequestStatus.Rejected => "bg-danger",
-        RequestStatus.Applied => "bg-info text-dark",
-        RequestStatus.Failed => "bg-danger",
-        _ => "bg-secondary"
-    };
-
-    private string GetRequestTypeBadgeColor(RequestType requestType) => requestType switch
-    {
-        RequestType.Insert => "bg-success",
-        RequestType.Update => "bg-warning text-dark",
-        RequestType.Delete => "bg-danger",
-        _ => "bg-secondary"
-    };
+    private string GetStatusBadgeClass(RequestStatus status) => UiHelper.GetStatusBadgeClass(status);
+    private string GetRequestTypeBadgeColor(RequestType requestType) => UiHelper.GetRequestTypeBadgeClass(requestType);
 
     private string GetRequestTypeDisplayName(RequestType requestType) => requestType switch
     {

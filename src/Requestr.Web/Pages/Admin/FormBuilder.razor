@@ -2352,29 +2352,8 @@
         await SaveForm();
     }
 
-    private string GetRequestTypeBadgeClass(RequestType requestType)
-    {
-        return requestType switch
-        {
-            RequestType.Insert => "bg-success",
-            RequestType.Update => "bg-primary",
-            RequestType.Delete => "bg-danger",
-            _ => "bg-secondary"
-        };
-    }
-
-    private string GetStatusBadgeClass(RequestStatus status)
-    {
-        return status switch
-        {
-            RequestStatus.Pending => "bg-warning text-dark",
-            RequestStatus.Approved => "bg-info",
-            RequestStatus.Rejected => "bg-danger",
-            RequestStatus.Applied => "bg-success",
-            RequestStatus.Failed => "bg-danger",
-            _ => "bg-secondary"
-        };
-    }
+    private string GetRequestTypeBadgeClass(RequestType requestType) => UiHelper.GetRequestTypeBadgeClass(requestType);
+    private string GetStatusBadgeClass(RequestStatus status) => UiHelper.GetStatusBadgeClass(status);
 
     private ColumnInfo? GetColumnInfoForField(FormField? field)
     {

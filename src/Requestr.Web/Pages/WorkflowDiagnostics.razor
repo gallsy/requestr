@@ -46,7 +46,7 @@
             <!-- Summary Cards -->
             <div class="row mb-4">
                 <div class="col-md-4">
-                    <div class="card text-white bg-warning">
+                    <div class="card stat-card stat-warning">
                         <div class="card-body">
                             <div class="d-flex justify-content-between">
                                 <div>
@@ -61,7 +61,7 @@
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <div class="card text-white bg-info">
+                    <div class="card stat-card stat-info">
                         <div class="card-body">
                             <div class="d-flex justify-content-between">
                                 <div>
@@ -76,7 +76,7 @@
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <div class="card text-white bg-success">
+                    <div class="card stat-card stat-success">
                         <div class="card-body">
                             <div class="d-flex justify-content-between">
                                 <div>
@@ -105,7 +105,7 @@
                     <div class="card-body">
                         <div class="table-responsive">
                             <table class="table table-striped table-hover">
-                                <thead class="table-dark">
+                                <thead class="thead-themed">
                                     <tr>
                                         <th>ID</th>
                                         <th>Form</th>
@@ -374,27 +374,6 @@
         return IsSuccess ? "bi-check-circle-fill" : "bi-exclamation-triangle-fill";
     }
 
-    private string GetStatusBadgeClass(RequestStatus status)
-    {
-        return status switch
-        {
-            RequestStatus.Pending => "bg-warning text-dark",
-            RequestStatus.Approved => "bg-info text-white",
-            RequestStatus.Applied => "bg-success text-white",
-            RequestStatus.Rejected => "bg-danger text-white",
-            RequestStatus.Failed => "bg-dark text-white",
-            _ => "bg-secondary text-white"
-        };
-    }
-
-    private string GetRequestTypeBadgeClass(RequestType requestType)
-    {
-        return requestType switch
-        {
-            RequestType.Insert => "bg-success text-white",
-            RequestType.Update => "bg-primary text-white",
-            RequestType.Delete => "bg-danger text-white",
-            _ => "bg-secondary text-white"
-        };
-    }
+    private string GetStatusBadgeClass(RequestStatus status) => UiHelper.GetStatusBadgeClass(status);
+    private string GetRequestTypeBadgeClass(RequestType requestType) => UiHelper.GetRequestTypeBadgeClass(requestType);
 }

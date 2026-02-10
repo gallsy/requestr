@@ -73,7 +73,7 @@ else
         <div class="row">
                     <div class="col-md-6">
                         <div class="card mb-4">
-                            <div class="card-header bg-primary text-white">
+                            <div class="card-header card-header-accent">
                                 <h5 class="card-title mb-0">
                                     <i class="bi bi-upload me-2"></i>
                                     Upload Excel for Bulk Insert
@@ -92,7 +92,7 @@ else
                     
                     <div class="col-md-6">
                         <div class="card mb-4">
-                            <div class="card-header bg-info text-white">
+                            <div class="card-header card-header-accent accent-info">
                                 <h5 class="card-title mb-0">
                                     <i class="bi bi-table me-2"></i>
                                     Browse & Select Records
@@ -242,22 +242,6 @@ else
         }
     }
 
-    private string GetRequestTypeBadgeClass(RequestType requestType) => requestType switch
-    {
-        RequestType.Insert => "bg-primary",
-        RequestType.Update => "bg-info text-dark",
-        RequestType.Delete => "bg-danger",
-        _ => "bg-secondary"
-    };
-
-    private string GetStatusBadgeClass(RequestStatus status) => status switch
-    {
-        RequestStatus.Pending => "bg-warning text-dark",
-        RequestStatus.Approved => "bg-success",
-        RequestStatus.Rejected => "bg-danger",
-        RequestStatus.Applied => "bg-info",
-        RequestStatus.Failed => "bg-danger",
-        _ => "bg-secondary"
-    };
-
+    private string GetRequestTypeBadgeClass(RequestType requestType) => UiHelper.GetRequestTypeBadgeClass(requestType);
+    private string GetStatusBadgeClass(RequestStatus status) => UiHelper.GetStatusBadgeClass(status);
 }

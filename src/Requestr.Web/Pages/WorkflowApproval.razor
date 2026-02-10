@@ -49,7 +49,7 @@ else
                 Description="Review and approve or reject this request">
     </PageHeader>
 
-    <div class="container">
+    <div>
         <div class="row justify-content-center">
             <div class="col-lg-10">
                 <!-- Unified Summary Card -->
@@ -87,7 +87,7 @@ else
                                 <strong>Read-Only View:</strong> This approval step has been completed and cannot be modified.
                                 @if (!string.IsNullOrEmpty(_currentStep.CompletedByName))
                                 {
-                                    <br><small>Completed by @_currentStep.CompletedByName on @_currentStep.CompletedAt?.ToString("MMM dd, yyyy HH:mm")</small>
+                                    <br><small>Completed by @_currentStep.CompletedByName on @_currentStep.CompletedAt?.ToString(UiHelper.DateTimeFormat)</small>
                                 }
                             </StandardAlert>
                             
@@ -262,7 +262,7 @@ else
                                 @if (!string.IsNullOrEmpty(_currentStep.CompletedByName))
                                 {
                                     <small class="text-muted">
-                                        By @_currentStep.CompletedByName on @_currentStep.CompletedAt?.ToString("MMM dd, yyyy HH:mm")
+                                        By @_currentStep.CompletedByName on @_currentStep.CompletedAt?.ToString(UiHelper.DateTimeFormat)
                                     </small>
                                 }
                             </div>
@@ -580,42 +580,9 @@ else
     }
 
     // Badge color helper methods
-    private string GetStepStatusBadgeColor(WorkflowStepInstanceStatus status)
-    {
-        return status switch
-        {
-            WorkflowStepInstanceStatus.Pending => "warning",
-            WorkflowStepInstanceStatus.InProgress => "info",
-            WorkflowStepInstanceStatus.Completed => "success",
-            WorkflowStepInstanceStatus.Failed => "danger",
-            WorkflowStepInstanceStatus.Skipped => "secondary",
-            _ => "secondary"
-        };
-    }
-
-    private string GetStatusBadgeColor(RequestStatus status)
-    {
-        return status switch
-        {
-            RequestStatus.Pending => "warning",
-            RequestStatus.Approved => "success",
-            RequestStatus.Rejected => "danger",
-            RequestStatus.Applied => "info",
-            RequestStatus.Failed => "danger",
-            _ => "secondary"
-        };
-    }
-
-    private string GetRequestTypeBadgeColor(RequestType requestType)
-    {
-        return requestType switch
-        {
-            RequestType.Insert => "success",
-            RequestType.Update => "primary",
-            RequestType.Delete => "danger",
-            _ => "secondary"
-        };
-    }
+    private string GetStepStatusBadgeColor(WorkflowStepInstanceStatus status) => UiHelper.GetStepStatusColor(status);
+    private string GetStatusBadgeColor(RequestStatus status) => UiHelper.GetStatusColor(status);
+    private string GetRequestTypeBadgeColor(RequestType requestType) => UiHelper.GetRequestTypeColor(requestType);
 
 
     

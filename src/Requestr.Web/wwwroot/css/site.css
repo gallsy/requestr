@@ -481,6 +481,17 @@ textarea::placeholder {
     padding: 0.5rem 0.75rem;
 }
 
+/* Theme-aware table header — replaces table-dark for dark mode compatibility */
+.thead-themed {
+    background-color: var(--bg-subtle);
+}
+
+.thead-themed th {
+    color: var(--text-color);
+    font-weight: 600;
+    border-bottom: 2px solid var(--border-color);
+}
+
 .table-scroll {
     max-height: 400px;
     overflow: auto;
@@ -1398,6 +1409,98 @@ button.nav-link.active {
 /* ============================================
    Status Explainer
    ============================================ */
+
+/* ============================================
+   Stat Cards — theme-aware colored cards
+   ============================================ */
+.stat-card {
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.stat-card .card-body {
+    padding: 1.25rem;
+}
+
+.stat-card.stat-warning {
+    background-color: rgba(245, 158, 11, 0.12);
+    border-color: var(--warning);
+}
+
+.stat-card.stat-warning .card-title,
+.stat-card.stat-warning h2,
+.stat-card.stat-warning i {
+    color: var(--warning);
+}
+
+.stat-card.stat-info {
+    background-color: rgba(6, 182, 212, 0.12);
+    border-color: var(--info);
+}
+
+.stat-card.stat-info .card-title,
+.stat-card.stat-info h2,
+.stat-card.stat-info i {
+    color: var(--info);
+}
+
+.stat-card.stat-success {
+    background-color: rgba(16, 185, 129, 0.12);
+    border-color: var(--success);
+}
+
+.stat-card.stat-success .card-title,
+.stat-card.stat-success h2,
+.stat-card.stat-success i {
+    color: var(--success);
+}
+
+.stat-card.stat-primary {
+    background-color: rgba(59, 130, 246, 0.12);
+    border-color: var(--primary);
+}
+
+.stat-card.stat-primary .card-title,
+.stat-card.stat-primary h2,
+.stat-card.stat-primary i {
+    color: var(--primary);
+}
+
+.stat-card.stat-danger {
+    background-color: rgba(239, 68, 68, 0.12);
+    border-color: var(--danger);
+}
+
+.stat-card.stat-danger .card-title,
+.stat-card.stat-danger h2,
+.stat-card.stat-danger i {
+    color: var(--danger);
+}
+
+/* Accent card headers — theme-aware alternative to bg-primary text-white */
+.card-header-accent {
+    background-color: var(--bg-subtle);
+    border-bottom: 3px solid var(--primary);
+    color: var(--text-color);
+}
+
+.card-header-accent.accent-info {
+    border-bottom-color: var(--info);
+}
+
+.card-header-accent.accent-success {
+    border-bottom-color: var(--success);
+}
+
+.card-header-accent.accent-warning {
+    border-bottom-color: var(--warning);
+}
+
+.card-header-accent.accent-danger {
+    border-bottom-color: var(--danger);
+}
+
 .status-explainer {
     border-left: 3px solid var(--info);
 }

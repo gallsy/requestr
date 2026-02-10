@@ -67,7 +67,7 @@ else
         </Actions>
     </PageHeader>
 
-    <div class="container">
+    <div>
         <!-- Unified Request Summary Card -->
         <RequestSummaryCard 
             FormName="@(_formDefinition?.Name ?? "Unknown Form")"
@@ -556,22 +556,8 @@ else
         }
     }
 
-    private string GetStatusBadgeColor(RequestStatus status) => status switch
-    {
-        RequestStatus.Pending => "bg-warning",
-        RequestStatus.Approved => "bg-success",
-        RequestStatus.Rejected => "bg-danger",
-        RequestStatus.Applied => "bg-info",
-        _ => "bg-secondary"
-    };
-
-    private string GetRequestTypeBadgeColor(RequestType requestType) => requestType switch
-    {
-        RequestType.Insert => "bg-primary",
-        RequestType.Update => "bg-info",
-        RequestType.Delete => "bg-danger",
-        _ => "bg-secondary"
-    };
+    private string GetStatusBadgeColor(RequestStatus status) => UiHelper.GetStatusBadgeClass(status);
+    private string GetRequestTypeBadgeColor(RequestType requestType) => UiHelper.GetRequestTypeBadgeClass(requestType);
 
     private string GetRequestTypeDisplayName(RequestType requestType) => requestType switch
     {
@@ -581,22 +567,7 @@ else
         _ => requestType.ToString()
     };
 
-    private string GetHistoryMarkerColor(FormRequestChangeType changeType) => changeType switch
-    {
-        FormRequestChangeType.Created => "bg-primary",
-        FormRequestChangeType.Updated => "bg-info",
-        FormRequestChangeType.StatusChanged => "bg-warning",
-        FormRequestChangeType.Approved => "bg-success",
-        FormRequestChangeType.Rejected => "bg-danger",
-        FormRequestChangeType.Applied => "bg-success",
-        FormRequestChangeType.Failed => "bg-danger",
-        FormRequestChangeType.WorkflowStarted => "bg-primary",
-        FormRequestChangeType.WorkflowStepCompleted => "bg-info",
-        FormRequestChangeType.WorkflowStepApproved => "bg-success",
-        FormRequestChangeType.WorkflowStepRejected => "bg-danger",
-        FormRequestChangeType.WorkflowCompleted => "bg-success",
-        _ => "bg-secondary"
-    };
+    private string GetHistoryMarkerColor(FormRequestChangeType changeType) => UiHelper.GetHistoryMarkerColor(changeType);
 
     private string GetHistoryIcon(FormRequestChangeType changeType) => changeType switch
     {

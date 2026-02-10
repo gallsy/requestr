@@ -99,31 +99,9 @@
     [Parameter] public string? ProcessedBy { get; set; }
     [Parameter] public DateTime? ProcessedAt { get; set; }
 
-    private string GetStatusBadgeClass() => Status switch
-    {
-        RequestStatus.Pending => "bg-warning text-dark",
-        RequestStatus.Approved => "bg-success",
-        RequestStatus.Rejected => "bg-danger",
-        RequestStatus.Applied => "bg-info",
-        RequestStatus.Failed => "bg-danger",
-        _ => "bg-secondary"
-    };
-
-    private string GetRequestTypeBadgeClass() => RequestType switch
-    {
-        RequestType.Insert => "bg-success",
-        RequestType.Update => "bg-primary",
-        RequestType.Delete => "bg-danger",
-        _ => "bg-secondary"
-    };
-
-    private string GetRequestTypeLabel() => RequestType switch
-    {
-        RequestType.Insert => "Bulk Insert",
-        RequestType.Update => "Bulk Update",
-        RequestType.Delete => "Bulk Delete",
-        _ => RequestType.ToString()
-    };
+    private string GetStatusBadgeClass() => UiHelper.GetStatusBadgeClass(Status);
+    private string GetRequestTypeBadgeClass() => UiHelper.GetRequestTypeBadgeClass(RequestType);
+    private string GetRequestTypeLabel() => UiHelper.GetBulkRequestTypeLabel(RequestType);
 
     private string GetProcessingSummaryBackgroundClass() => Status switch
     {

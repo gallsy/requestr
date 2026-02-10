@@ -40,7 +40,7 @@ else
                 Description="@($"Bulk {_bulkRequest.RequestType} Request")">
     </PageHeader>
 
-    <div class="container">
+    <div>
         <div class="row">
             <div class="col-12">
 
@@ -404,24 +404,6 @@ else
         _ => "bg-light"
     };
 
-    private string GetStatusBadgeClass(RequestStatus status)
-    {
-        return status switch
-        {
-            RequestStatus.Pending => "bg-warning text-dark",
-            RequestStatus.Approved => "bg-success",
-            RequestStatus.Rejected => "bg-danger",
-            RequestStatus.Applied => "bg-primary",
-            RequestStatus.Failed => "bg-danger",
-            _ => "bg-secondary"
-        };
-    }
-
-    private string GetRequestTypeBadgeColor(RequestType requestType) => requestType switch
-    {
-        RequestType.Insert => "bg-primary",
-        RequestType.Update => "bg-info",
-        RequestType.Delete => "bg-danger",
-        _ => "bg-secondary"
-    };
+    private string GetStatusBadgeClass(RequestStatus status) => UiHelper.GetStatusBadgeClass(status);
+    private string GetRequestTypeBadgeColor(RequestType requestType) => UiHelper.GetRequestTypeBadgeClass(requestType);
 }

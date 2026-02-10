@@ -18,7 +18,8 @@
 @inject ILogger<WorkflowApprovals> Logger
 @attribute [Authorize]
 
-<PageTitle>Workflow Approvals | Requestr</PageTitle>
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
+<PageTitle>Workflow Approvals | @Branding.ApplicationName</PageTitle>
 
 <PageHeader Title="Approvals" Description="Review and process form requests awaiting approval" />
 
@@ -122,7 +123,7 @@
                     {
                         <div class="table-responsive">
                             <table class="table table-hover">
-                                <thead class="table-dark">
+                                <thead class="thead-themed">
                                     <tr>
                                         <th>ID</th>
                                         <th>Form</th>
@@ -419,29 +420,8 @@
         await LoadData();
     }
 
-    private string GetRequestTypeBadgeColor(RequestType requestType)
-    {
-        return requestType switch
-        {
-            RequestType.Insert => "success",
-            RequestType.Update => "warning",
-            RequestType.Delete => "danger",
-            _ => "secondary"
-        };
-    }
-
-    private string GetStatusBadgeClass(RequestStatus status)
-    {
-        return status switch
-        {
-            RequestStatus.Pending => "bg-warning text-dark",
-            RequestStatus.Approved => "bg-success",
-            RequestStatus.Rejected => "bg-danger",
-            RequestStatus.Applied => "bg-success",
-            RequestStatus.Failed => "bg-danger",
-            _ => "bg-secondary"
-        };
-    }
+    private string GetRequestTypeBadgeColor(RequestType requestType) => UiHelper.GetRequestTypeColor(requestType);
+    private string GetStatusBadgeClass(RequestStatus status) => UiHelper.GetStatusBadgeClass(status);
 
     private void ClearMessages()
     {

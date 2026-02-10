@@ -44,57 +44,12 @@
     [Parameter] public RequestStatus Status { get; set; }
     [Parameter] public int RecordCount { get; set; } = 1;
 
-    private string GetRequestTypeIcon() => RequestType switch
-    {
-        RequestType.Insert => "bi-plus-circle-fill",
-        RequestType.Update => "bi-pencil-fill",
-        RequestType.Delete => "bi-trash-fill",
-        _ => "bi-file-earmark"
-    };
-
-    private string GetRequestTypeClass() => RequestType switch
-    {
-        RequestType.Insert => "request-type-insert",
-        RequestType.Update => "request-type-update",
-        RequestType.Delete => "request-type-delete",
-        _ => "request-type-default"
-    };
-
-    private string GetRequestTypeBadgeClass() => RequestType switch
-    {
-        RequestType.Insert => "bg-success",
-        RequestType.Update => "bg-primary",
-        RequestType.Delete => "bg-danger",
-        _ => "bg-secondary"
-    };
-
-    private string GetRequestTypeLabel() => RequestType switch
-    {
-        RequestType.Insert => "New Record",
-        RequestType.Update => "Update Record",
-        RequestType.Delete => "Delete Record",
-        _ => RequestType.ToString()
-    };
-
-    private string GetStatusBadgeClass() => Status switch
-    {
-        RequestStatus.Pending => "bg-warning text-dark",
-        RequestStatus.Approved => "bg-success",
-        RequestStatus.Rejected => "bg-danger",
-        RequestStatus.Applied => "bg-info",
-        RequestStatus.Failed => "bg-danger",
-        _ => "bg-secondary"
-    };
-
-    private string GetStatusIcon() => Status switch
-    {
-        RequestStatus.Pending => "bi-hourglass-split",
-        RequestStatus.Approved => "bi-check-circle",
-        RequestStatus.Rejected => "bi-x-circle",
-        RequestStatus.Applied => "bi-check2-all",
-        RequestStatus.Failed => "bi-exclamation-triangle",
-        _ => "bi-circle"
-    };
+    private string GetRequestTypeIcon() => UiHelper.GetRequestTypeIcon(RequestType);
+    private string GetRequestTypeClass() => UiHelper.GetRequestTypeClass(RequestType);
+    private string GetRequestTypeBadgeClass() => UiHelper.GetRequestTypeBadgeClass(RequestType);
+    private string GetRequestTypeLabel() => UiHelper.GetRequestTypeLabel(RequestType);
+    private string GetStatusBadgeClass() => UiHelper.GetStatusBadgeClass(Status);
+    private string GetStatusIcon() => UiHelper.GetStatusIcon(Status);
 }
 
 <style>
