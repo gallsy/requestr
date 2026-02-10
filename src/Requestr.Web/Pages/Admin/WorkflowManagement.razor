@@ -2,7 +2,8 @@
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Models
 @using Requestr.Core.Models.DTOs
-@inject IWorkflowService WorkflowService
+@using Requestr.Core.Services.Workflow
+@inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
 @inject IWorkflowDesignerService WorkflowDesignerService
 @inject IFormDefinitionService FormDefinitionService
 @inject ILogger<WorkflowManagement> Logger
@@ -125,7 +126,7 @@
             errorMessage = null;
             Logger.LogDebug("Starting to load workflow data");
             
-            workflows = await WorkflowService.GetWorkflowDefinitionsAsync();
+            workflows = await WorkflowDefinitionQueryService.GetWorkflowDefinitionsAsync();
             Logger.LogDebug("Loaded {WorkflowCount} workflows", workflows?.Count ?? 0);
         }
         catch (Exception ex)

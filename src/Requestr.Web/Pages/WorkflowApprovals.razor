@@ -3,18 +3,23 @@
 @using Microsoft.JSInterop
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
+@using Requestr.Core.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
 @using BlazorBootstrap
-@inject IFormRequestService FormRequestService
-@inject IWorkflowService WorkflowService
+@inject IFormRequestQueryService FormRequestQueryService
+@inject IFormRequestApprovalService FormRequestApprovalService
+@inject IWorkflowInstanceService WorkflowInstanceService
+@inject IWorkflowExecutionService WorkflowExecutionService
+@inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject ILogger<WorkflowApprovals> Logger
 @attribute [Authorize]
 
-<PageTitle>Workflow Approvals | Requestr</PageTitle>
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
+<PageTitle>Workflow Approvals | @Branding.ApplicationName</PageTitle>
 
 <PageHeader Title="Approvals" Description="Review and process form requests awaiting approval" />
 
@@ -118,7 +123,7 @@
                     {
                         <div class="table-responsive">
                             <table class="table table-hover">
-                                <thead class="table-dark">
+                                <thead class="thead-themed">
                                     <tr>
                                         <th>ID</th>
                                         <th>Form</th>
@@ -228,7 +233,7 @@
                     Logger.LogDebug("  {ClaimType}: {ClaimValue}", claim.Type, claim.Value);
                 }
 
-                AllRequests = await FormRequestService.GetFormRequestsForWorkflowApprovalAsync(userId, UserRoles);
+                AllRequests = await FormRequestQueryService.GetForWorkflowApprovalAsync(userId, UserRoles);
                 
                 Logger.LogInformation("WorkflowApprovals: Received {RequestCount} requests from service", AllRequests?.Count ?? 0);
 
@@ -241,7 +246,7 @@
                     {
                         try
                         {
-                            var currentStep = await FormRequestService.GetCurrentWorkflowStepAsync(request.Id);
+                            var currentStep = await FormRequestApprovalService.GetCurrentWorkflowStepAsync(request.Id);
                             WorkflowSteps[request.Id] = currentStep;
                             Logger.LogInformation("WorkflowApprovals: Request {RequestId} - WorkflowInstanceId: {WorkflowInstanceId}, CurrentStep: {StepId}", 
                                 request.Id, request.WorkflowInstanceId, currentStep?.StepId ?? "None");
@@ -333,15 +338,15 @@
             if (request?.WorkflowInstanceId != null)
             {
                 // Get all step instances for this workflow
-                var allStepInstances = await WorkflowService.GetStepInstancesAsync(request.WorkflowInstanceId.Value);
+                var allStepInstances = await WorkflowExecutionService.GetStepInstancesAsync(request.WorkflowInstanceId.Value);
                 Logger.LogInformation("Found {StepCount} step instances for workflow {WorkflowInstanceId}", allStepInstances?.Count ?? 0, request.WorkflowInstanceId.Value);
                 
                 // Get the workflow definition to understand step roles
-                var workflowInstance = await WorkflowService.GetWorkflowInstanceAsync(request.WorkflowInstanceId.Value);
+                var workflowInstance = await WorkflowInstanceService.GetWorkflowInstanceAsync(request.WorkflowInstanceId.Value);
                 WorkflowDefinition? workflowDefinition = null;
                 if (workflowInstance != null)
                 {
-                    workflowDefinition = await WorkflowService.GetWorkflowDefinitionAsync(workflowInstance.WorkflowDefinitionId);
+                    workflowDefinition = await WorkflowDefinitionQueryService.GetWorkflowDefinitionAsync(workflowInstance.WorkflowDefinitionId);
                 }
                 
                 // Find approval steps that this user has permission for
@@ -415,29 +420,8 @@
         await LoadData();
     }
 
-    private string GetRequestTypeBadgeColor(RequestType requestType)
-    {
-        return requestType switch
-        {
-            RequestType.Insert => "success",
-            RequestType.Update => "warning",
-            RequestType.Delete => "danger",
-            _ => "secondary"
-        };
-    }
-
-    private string GetStatusBadgeClass(RequestStatus status)
-    {
-        return status switch
-        {
-            RequestStatus.Pending => "bg-warning text-dark",
-            RequestStatus.Approved => "bg-success",
-            RequestStatus.Rejected => "bg-danger",
-            RequestStatus.Applied => "bg-success",
-            RequestStatus.Failed => "bg-danger",
-            _ => "bg-secondary"
-        };
-    }
+    private string GetRequestTypeBadgeColor(RequestType requestType) => UiHelper.GetRequestTypeColor(requestType);
+    private string GetStatusBadgeClass(RequestStatus status) => UiHelper.GetStatusBadgeClass(status);
 
     private void ClearMessages()
     {

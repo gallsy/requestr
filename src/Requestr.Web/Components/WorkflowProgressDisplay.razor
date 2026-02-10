@@ -1,7 +1,8 @@
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
+@using Requestr.Core.Services.Workflow
 @using Microsoft.Extensions.Logging
-@inject IWorkflowService WorkflowService
+@inject IWorkflowProgressService WorkflowProgressService
 @inject ILogger<WorkflowProgressDisplay> Logger
 @inject NavigationManager Navigation
 
@@ -39,7 +40,7 @@
                     }
                     @if (Progress?.IsStalled == true)
                     {
-                        <span class="badge badge-warning ms-1" title="Step has been pending for @Progress.DaysInCurrentStep days">
+                        <span class="badge bg-warning text-dark ms-1" title="Step has been pending for @Progress.DaysInCurrentStep days">
                             <i class="bi bi-exclamation-triangle"></i>
                         </span>
                     }
@@ -166,7 +167,7 @@ else
                                         {
                                             <div class="mt-1">
                                                 <small class="text-muted">
-                                                    @step.StartedAt.Value.ToString("MMM dd, yyyy HH:mm")
+                                                    @step.StartedAt.Value.ToString(UiHelper.DateTimeFormat)
                                                     @if (step.CompletedAt.HasValue && step.StepType == WorkflowStepType.End)
                                                     {
                                                         <span class="ms-2">(@((step.CompletedAt.Value - step.StartedAt.Value).TotalMinutes < 1 ? "<1 min" : $"{(int)(step.CompletedAt.Value - step.StartedAt.Value).TotalMinutes} min"))</span>
@@ -259,7 +260,7 @@ else
                                                 {
                                                     <div class="mb-1">
                                                         <small class="text-muted">
-                                                            Started: @step.StartedAt.Value.ToString("MMM dd, yyyy HH:mm")
+                                                            Started: @step.StartedAt.Value.ToString(UiHelper.DateTimeFormat)
                                                             @if (step.DaysInStep > 0)
                                                             {
                                                                 <span class="ms-2">(@step.DaysInStep days)</span>
@@ -272,7 +273,7 @@ else
                                                 {
                                                     <div class="mb-1">
                                                         <small class="text-muted">
-                                                            Completed: @step.CompletedAt.Value.ToString("MMM dd, yyyy HH:mm")
+                                                            Completed: @step.CompletedAt.Value.ToString(UiHelper.DateTimeFormat)
                                                             by @(step.CompletedByName ?? step.CompletedBy)
                                                         </small>
                                                     </div>
@@ -362,7 +363,7 @@ else
         try
         {
             Logger.LogInformation("Loading workflow progress for FormRequestId: {FormRequestId}", FormRequestId);
-            Progress = await WorkflowService.GetWorkflowProgressAsync(FormRequestId);
+            Progress = await WorkflowProgressService.GetWorkflowProgressAsync(FormRequestId);
             
             if (Progress == null)
             {
@@ -421,18 +422,7 @@ else
         };
     }
 
-    private string GetStepStatusBadgeColor(WorkflowStepInstanceStatus status)
-    {
-        return status switch
-        {
-            WorkflowStepInstanceStatus.Completed => "success",
-            WorkflowStepInstanceStatus.InProgress => "primary",
-            WorkflowStepInstanceStatus.Pending => "secondary",
-            WorkflowStepInstanceStatus.Skipped => "warning",
-            WorkflowStepInstanceStatus.Failed => "danger",
-            _ => "secondary"
-        };
-    }
+    private string GetStepStatusBadgeColor(WorkflowStepInstanceStatus status) => UiHelper.GetStepStatusColor(status);
 
     private string GetActionBadgeColor(WorkflowStepAction action)
     {
@@ -449,16 +439,6 @@ else
     private string GetTimeAgo(DateTime? dateTime)
     {
         if (!dateTime.HasValue) return "Unknown";
-        
-        var timeSpan = DateTime.UtcNow - dateTime.Value;
-        
-        if (timeSpan.TotalDays >= 1)
-            return $"{(int)timeSpan.TotalDays} day{(timeSpan.TotalDays >= 2 ? "s" : "")} ago";
-        else if (timeSpan.TotalHours >= 1)
-            return $"{(int)timeSpan.TotalHours} hour{(timeSpan.TotalHours >= 2 ? "s" : "")} ago";
-        else if (timeSpan.TotalMinutes >= 1)
-            return $"{(int)timeSpan.TotalMinutes} minute{(timeSpan.TotalMinutes >= 2 ? "s" : "")} ago";
-        else
-            return "Just now";
+        return UiHelper.FormatRelativeTime(dateTime.Value);
     }
 }

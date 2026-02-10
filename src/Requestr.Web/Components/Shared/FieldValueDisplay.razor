@@ -9,9 +9,28 @@
             {
                 <span class="badge bg-warning text-dark ms-2" style="font-size: 0.7rem;">Changed</span>
             }
+            @if (IsComputed)
+            {
+                <span class="badge bg-info text-dark ms-2" style="font-size: 0.7rem;"><i class="bi bi-gear-fill me-1"></i>Auto</span>
+            }
         </div>
         <div class="col-md-8">
-            @if (ShowOriginal && HasOriginal)
+            @if (IsComputedPending)
+            {
+                @if (ShowOriginal && HasOriginal)
+                {
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="text-muted">@FormatValue(OriginalValue)</span>
+                        <i class="bi bi-arrow-right text-muted small"></i>
+                        <span class="text-muted fst-italic"><i class="bi bi-gear me-1"></i>@ComputedDescription</span>
+                    </div>
+                }
+                else
+                {
+                    <span class="text-muted fst-italic"><i class="bi bi-gear me-1"></i>@ComputedDescription</span>
+                }
+            }
+            else if (ShowOriginal && HasOriginal)
             {
                 @if (HasChanged)
                 {
@@ -42,12 +61,18 @@
     [Parameter] public bool ShowOriginal { get; set; } = false;
     [Parameter] public bool ShowBorder { get; set; } = true;
     [Parameter] public RequestType RequestType { get; set; } = RequestType.Insert;
+    /// <summary>Whether this field has a computed value configured</summary>
+    [Parameter] public bool IsComputed { get; set; } = false;
+    /// <summary>Whether the computed value is pending (not yet applied)</summary>
+    [Parameter] public bool IsComputedPending { get; set; } = false;
+    /// <summary>Description of what the computed value will be</summary>
+    [Parameter] public string? ComputedDescription { get; set; }
 
     private string ResolvedDisplayName => !string.IsNullOrEmpty(DisplayName) ? DisplayName : FieldName;
     
     private bool HasOriginal => RequestType != RequestType.Insert && OriginalValue != null;
     
-    private bool HasChanged => HasOriginal && !AreValuesEqual(OriginalValue, NewValue);
+    private bool HasChanged => (HasOriginal && !AreValuesEqual(OriginalValue, NewValue)) || (HasOriginal && IsComputedPending);
 
     private string FormatValue(object? value)
     {
@@ -71,6 +96,19 @@
     {
         var origStr = original?.ToString()?.Trim() ?? "";
         var newStr = newVal?.ToString()?.Trim() ?? "";
-        return string.Equals(origStr, newStr, StringComparison.OrdinalIgnoreCase);
+        
+        if (string.Equals(origStr, newStr, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // DateTime values can differ in precision after JSON round-tripping — compare truncated to seconds
+        if (DateTime.TryParse(origStr, out var origDate) && DateTime.TryParse(newStr, out var newDate))
+        {
+            return origDate.Date == newDate.Date 
+                && origDate.Hour == newDate.Hour 
+                && origDate.Minute == newDate.Minute 
+                && origDate.Second == newDate.Second;
+        }
+
+        return false;
     }
 }

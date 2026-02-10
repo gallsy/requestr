@@ -2,17 +2,20 @@
 @page "/forms/{FormId:int}/edit/{RequestId:int}"
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
+@using Requestr.Core.Services.Workflow
 @using Requestr.Web.Authorization
 @using Requestr.Web.Utilities
 @inject IFormDefinitionService FormDefinitionService
-@inject IFormRequestService FormRequestService
+@inject IFormRequestQueryService FormRequestQueryService
+@inject IFormRequestCommandService FormRequestCommandService
 @inject IDataService DataService
 @inject IDatabaseService DatabaseService
 @inject IFormAuthorizationService FormAuthorizationService
-@inject IWorkflowService WorkflowService
+@inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<FormSubmission> Logger
 @attribute [Authorize]
 
 <PageTitle>@_formDefinition?.Name</PageTitle>
@@ -44,7 +47,7 @@ else
         </Actions>
     </PageHeader>
 
-    <div class="container">
+    <div>
         <div class="row justify-content-center">
             <div class="col-lg-8">
                 <div class="card">
@@ -498,7 +501,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error loading form: {ex.Message}";
+            Logger.LogError(ex, "Error loading form {FormId}", FormId);
+            _errorMessage = "An unexpected error occurred while loading the form. Please try again.";
         }
         finally
         {
@@ -585,7 +589,8 @@ else
             }
             catch (Exception ex)
             {
-                _errorMessage = $"Error loading record: {ex.Message}";
+                Logger.LogError(ex, "Error loading record for form {FormId}", FormId);
+                _errorMessage = "An unexpected error occurred while loading the record. Please try again.";
             }
         }
     }
@@ -596,7 +601,7 @@ else
 
         try
         {
-            var request = await FormRequestService.GetByIdAsync(RequestId.Value);
+            var request = await FormRequestQueryService.GetByIdAsync(RequestId.Value);
             if (request != null)
             {
                 _requestType = request.RequestType;
@@ -664,7 +669,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error loading request: {ex.Message}";
+            Logger.LogError(ex, "Error loading request {RequestId}", RequestId);
+            _errorMessage = "An unexpected error occurred while loading the request. Please try again.";
         }
     }
 
@@ -823,8 +829,8 @@ else
                 RequestType = _requestType,
                 FieldValues = allFieldValues,
                 Comments = _comments,
-                RequestedBy = user.Identity?.Name ?? "Unknown",
-                RequestedByName = user.Identity?.Name ?? "Unknown",
+                RequestedBy = UserIdentityHelper.GetUserId(user),
+                RequestedByName = UserIdentityHelper.GetDisplayName(user),
                 RequestedAt = DateTime.UtcNow
             };
 
@@ -843,15 +849,15 @@ else
             if (RequestId.HasValue)
             {
                 formRequest.Id = RequestId.Value;
-                await FormRequestService.UpdateAsync(formRequest);
+                await FormRequestCommandService.UpdateAsync(formRequest);
                 _successMessage = "Request updated successfully!";
             }
             else
             {
-                createdRequest = await FormRequestService.CreateAsync(formRequest);
+                createdRequest = await FormRequestCommandService.CreateAsync(formRequest);
                 
                 // Check if form has workflow to determine success message
-                var hasWorkflow = await WorkflowService.GetWorkflowDefinitionByFormAsync(FormId) != null;
+                var hasWorkflow = await WorkflowDefinitionQueryService.GetWorkflowDefinitionByFormAsync(FormId) != null;
                 _successMessage = hasWorkflow
                     ? "Request submitted successfully and is pending approval!"
                     : "Request submitted and processed successfully!";
@@ -871,7 +877,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error submitting request: {ex.Message}";
+            Logger.LogError(ex, "Error submitting request for form {FormId}", FormId);
+            _errorMessage = "An unexpected error occurred while submitting the request. Please try again.";
         }
         finally
         {
@@ -986,6 +993,18 @@ else
 
     private bool ShouldHideFieldOnCreate(FormField field)
     {
+        // Hide computed value fields based on their apply mode
+        if (field.ComputedValueType != null && field.ComputedValueType != ComputedValueType.None)
+        {
+            return _requestType switch
+            {
+                RequestType.Insert => field.ComputedValueApplyMode is ComputedValueApplyMode.InsertAndUpdate or ComputedValueApplyMode.InsertOnly,
+                RequestType.Update => field.ComputedValueApplyMode is ComputedValueApplyMode.InsertAndUpdate or ComputedValueApplyMode.UpdateOnly,
+                _ => false
+            };
+        }
+
+        // Hide identity/computed/rowversion columns on insert
         try
         {
             if (_requestType != RequestType.Insert)

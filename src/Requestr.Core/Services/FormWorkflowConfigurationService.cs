@@ -13,7 +13,6 @@ public class FormWorkflowConfigurationService : IFormWorkflowConfigurationServic
     private readonly IConfiguration _configuration;
     private readonly ILogger<FormWorkflowConfigurationService> _logger;
     private readonly IFormDefinitionService _formDefinitionService;
-    private readonly IWorkflowService _workflowService;
     private readonly string _connectionString;
     
     private readonly JsonSerializerOptions _jsonOptions = new()
@@ -25,13 +24,11 @@ public class FormWorkflowConfigurationService : IFormWorkflowConfigurationServic
     public FormWorkflowConfigurationService(
         IConfiguration configuration,
         ILogger<FormWorkflowConfigurationService> logger,
-        IFormDefinitionService formDefinitionService,
-        IWorkflowService workflowService)
+        IFormDefinitionService formDefinitionService)
     {
         _configuration = configuration;
         _logger = logger;
         _formDefinitionService = formDefinitionService;
-        _workflowService = workflowService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
     }

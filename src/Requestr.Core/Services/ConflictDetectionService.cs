@@ -1,25 +1,26 @@
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
+using Requestr.Core.Services.FormRequests;
+using Requestr.Core.Utilities;
 
 namespace Requestr.Core.Services;
 
 public class ConflictDetectionService : IConflictDetectionService
 {
     private readonly IDataService _dataService;
-    private readonly IFormRequestService _formRequestService;
+    private readonly IFormRequestQueryService _formRequestQueryService;
     private readonly IBulkFormRequestService _bulkFormRequestService;
     private readonly ILogger<ConflictDetectionService> _logger;
 
     public ConflictDetectionService(
         IDataService dataService, 
-        IFormRequestService formRequestService,
+        IFormRequestQueryService formRequestQueryService,
         IBulkFormRequestService bulkFormRequestService,
         ILogger<ConflictDetectionService> logger)
     {
         _dataService = dataService;
-        _formRequestService = formRequestService;
+        _formRequestQueryService = formRequestQueryService;
         _bulkFormRequestService = bulkFormRequestService;
         _logger = logger;
     }
@@ -67,9 +68,11 @@ public class ConflictDetectionService : IConflictDetectionService
                 if (formRequest.OriginalValues.ContainsKey(pkColumn))
                 {
                     var originalValue = formRequest.OriginalValues[pkColumn];
+                    var field = formDefinition.Fields.FirstOrDefault(f =>
+                        string.Equals(f.Name, pkColumn, StringComparison.OrdinalIgnoreCase));
                     
-                    // Convert JsonElement to proper type for Dapper
-                    var convertedValue = ConvertJsonElementToValue(originalValue);
+                    // Convert using schema-aware converter
+                    var convertedValue = SqlTypeConverter.ConvertToSqlType(originalValue, field?.SqlDataType);
                     whereConditions[pkColumn] = convertedValue;
                 }
                 else
@@ -108,6 +111,21 @@ public class ConflictDetectionService : IConflictDetectionService
             {
                 var fieldName = originalValue.Key;
                 var storedOriginalValue = originalValue.Value;
+
+                // Skip computed value fields — their values will be overwritten at apply-time
+                var fieldDef = formDefinition.Fields.FirstOrDefault(f =>
+                    string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase));
+                if (fieldDef?.ComputedValueType != null && fieldDef.ComputedValueType != ComputedValueType.None)
+                {
+                    var isComputedForThisRequestType = formRequest.RequestType switch
+                    {
+                        RequestType.Update => fieldDef.ComputedValueApplyMode is ComputedValueApplyMode.InsertAndUpdate or ComputedValueApplyMode.UpdateOnly,
+                        RequestType.Delete => false,
+                        _ => false
+                    };
+                    if (isComputedForThisRequestType)
+                        continue;
+                }
                 
                 if (currentRecord.ContainsKey(fieldName))
                 {
@@ -196,7 +214,7 @@ public class ConflictDetectionService : IConflictDetectionService
     {
         try
         {
-            var formRequest = await _formRequestService.GetByIdAsync(formRequestId);
+            var formRequest = await _formRequestQueryService.GetByIdAsync(formRequestId);
             if (formRequest == null)
             {
                 return new ConflictDetectionResult
@@ -257,45 +275,6 @@ public class ConflictDetectionService : IConflictDetectionService
         }
     }
 
-    private object? ConvertJsonElementToValue(object? value)
-    {
-        if (value == null) return null;
-        
-        // If it's already not a JsonElement, return as-is
-        if (value is not JsonElement jsonElement)
-            return value;
-            
-        // Convert JsonElement to appropriate type
-        return jsonElement.ValueKind switch
-        {
-            JsonValueKind.String => TryParseJsonString(jsonElement.GetString()),
-            JsonValueKind.Number => jsonElement.TryGetInt64(out var longVal) ? longVal : 
-                                   jsonElement.TryGetDouble(out var doubleVal) ? doubleVal : 
-                                   jsonElement.GetDecimal(),
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            JsonValueKind.Null => null,
-            _ => jsonElement.ToString()
-        };
-    }
-
-    /// <summary>
-    /// Attempts to parse a JSON string value into a more specific type (DateTime, etc.)
-    /// </summary>
-    private object? TryParseJsonString(string? value)
-    {
-        if (value == null) return null;
-        
-        // Try parsing as DateTime (ISO 8601 format from JSON serialization)
-        if (DateTime.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, 
-            System.Globalization.DateTimeStyles.RoundtripKind, out var dateTime))
-        {
-            return dateTime;
-        }
-        
-        return value;
-    }
-
     private bool AreValuesEqual(object? value1, object? value2)
     {
         // Handle nulls
@@ -309,8 +288,8 @@ public class ConflictDetectionService : IConflictDetectionService
         if (value1 == null || value2 == null) return false;
 
         // Convert JsonElements to proper types
-        value1 = ConvertJsonElementToValue(value1);
-        value2 = ConvertJsonElementToValue(value2);
+        value1 = SqlTypeConverter.UnwrapJsonElement(value1);
+        value2 = SqlTypeConverter.UnwrapJsonElement(value2);
         
         // Re-check nulls after conversion
         if (value1 == null && value2 == null) return true;

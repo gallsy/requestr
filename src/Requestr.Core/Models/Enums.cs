@@ -111,3 +111,27 @@ public enum FormDisplayMode
     ReadOnly,       // All fields visible but read-only
     Approval        // Fields configured per workflow step field configurations
 }
+
+/// <summary>
+/// Defines the type of value automatically computed at apply-time for a form field.
+/// </summary>
+public enum ComputedValueType
+{
+    None = 0,
+    CurrentDateTimeUtc = 1,
+    CurrentDateTimeLocal = 2,
+    CurrentUserId = 3,
+    CurrentUserDisplayName = 4,
+    CurrentUserEmail = 5,
+    NewGuid = 6
+}
+
+/// <summary>
+/// Controls when a computed value is applied during database operations.
+/// </summary>
+public enum ComputedValueApplyMode
+{
+    InsertAndUpdate = 0,
+    InsertOnly = 1,
+    UpdateOnly = 2
+}

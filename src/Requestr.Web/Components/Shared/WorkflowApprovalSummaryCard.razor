@@ -55,7 +55,7 @@
             </span>
             <span>
                 <i class="bi bi-clock me-1"></i>
-                @RequestedAt.ToString("MMM dd, yyyy HH:mm")
+                @RequestedAt.ToString(UiHelper.DateTimeFormat)
             </span>
         </div>
     </div>
@@ -82,21 +82,6 @@
         _ => "Request"
     };
 
-    private string GetRequestTypeBadgeClass() => RequestType switch
-    {
-        RequestType.Insert => "bg-success",
-        RequestType.Update => "bg-primary",
-        RequestType.Delete => "bg-danger",
-        _ => "bg-secondary"
-    };
-
-    private string GetStatusBadgeClass() => Status switch
-    {
-        RequestStatus.Pending => "bg-warning text-dark",
-        RequestStatus.Approved => "bg-success",
-        RequestStatus.Rejected => "bg-danger",
-        RequestStatus.Applied => "bg-success",
-        RequestStatus.Failed => "bg-danger",
-        _ => "bg-secondary"
-    };
+    private string GetRequestTypeBadgeClass() => UiHelper.GetRequestTypeBadgeClass(RequestType);
+    private string GetStatusBadgeClass() => UiHelper.GetStatusBadgeClass(Status);
 }

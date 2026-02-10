@@ -7,14 +7,15 @@
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Models
 @using Requestr.Core.Services
+@using Requestr.Core.Services.Workflow
 @using System.Text.Json
 @using BlazorBootstrap
 @inject IFormDefinitionService FormDefinitionService
 @inject IDatabaseService DatabaseService
 @inject IDataService DataService
 @inject IFormPermissionService FormPermissionService
-@inject IFormRequestService FormRequestService
-@inject IWorkflowService WorkflowService
+@inject IFormRequestQueryService FormRequestQueryService
+@inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
 @inject IWorkflowDesignerService WorkflowDesignerService
 @inject IFormWorkflowConfigurationService FormWorkflowConfigurationService
 @inject IToastNotificationService toastService
@@ -648,7 +649,9 @@
     private ColumnInfo? _draggedColumn;
     private FormField? _draggedField;
     private Dictionary<string, string> _fieldOriginalSqlTypes = new(); // Track original SQL types for each field
+#pragma warning disable CS0414 // Assigned but never read — reserved for future drag-and-drop UI
     private bool _isDragOver = false;
+#pragma warning restore CS0414
     private string ActiveTab = "details"; // Default to Form Details tab
     private string _fieldFilter = "";
     private bool _showGridGuides = false;
@@ -676,7 +679,9 @@
     private Dictionary<string, Dictionary<FormPermissionType, bool>> _currentPermissions = new();
     
     // Role management fields
+#pragma warning disable CS0414 // Assigned but never read — reserved for future role-add UI
     private bool _isAddingRole = false;
+#pragma warning restore CS0414
     private string _newRoleName = "";
 
     // Schema drift detection fields
@@ -693,7 +698,9 @@
     private List<WorkflowDefinition>? _availableWorkflows = new();
     private int? _selectedWorkflowId;
     private List<WorkflowStepConfigModel>? _workflowStepConfigs = new();
+#pragma warning disable CS0414 // Assigned but never read — reserved for future workflow loading indicator
     private bool _isLoadingWorkflow = false;
+#pragma warning restore CS0414
 
     // Model for step configuration UI
     public class WorkflowStepConfigModel
@@ -1608,7 +1615,7 @@
             // Only check if the user hasn't already confirmed to proceed
             if (!_proceedWithSaveOverride && _staleFields.Any() && FormId.HasValue)
             {
-                _affectedRequests = await FormRequestService.GetPendingRequestsByFormDefinitionAsync(FormId.Value);
+                _affectedRequests = await FormRequestQueryService.GetPendingByFormDefinitionAsync(FormId.Value);
                 if (_affectedRequests.Any())
                 {
                     // Show the warning modal instead of saving
@@ -1923,7 +1930,7 @@
     {
         try
         {
-            _availableWorkflows = await WorkflowService.GetWorkflowDefinitionsAsync();
+            _availableWorkflows = await WorkflowDefinitionQueryService.GetWorkflowDefinitionsAsync();
         }
         catch (Exception ex)
         {
@@ -1983,7 +1990,7 @@
                 await LoadFormPermissions();
             }
 
-            var workflow = await WorkflowService.GetWorkflowDefinitionAsync(_selectedWorkflowId.Value);
+            var workflow = await WorkflowDefinitionQueryService.GetWorkflowDefinitionAsync(_selectedWorkflowId.Value);
             if (workflow?.Steps?.Any() == true)
             {
                 Logger.LogInformation("Found {Count} workflow steps", workflow.Steps.Count());
@@ -2163,7 +2170,7 @@
         }
     }
 
-    private async Task UpdateParallelApprovalSetting(WorkflowStepConfigModel stepConfig, bool requireAll)
+    private void UpdateParallelApprovalSetting(WorkflowStepConfigModel stepConfig, bool requireAll)
     {
         try
         {
@@ -2345,29 +2352,8 @@
         await SaveForm();
     }
 
-    private string GetRequestTypeBadgeClass(RequestType requestType)
-    {
-        return requestType switch
-        {
-            RequestType.Insert => "bg-success",
-            RequestType.Update => "bg-primary",
-            RequestType.Delete => "bg-danger",
-            _ => "bg-secondary"
-        };
-    }
-
-    private string GetStatusBadgeClass(RequestStatus status)
-    {
-        return status switch
-        {
-            RequestStatus.Pending => "bg-warning text-dark",
-            RequestStatus.Approved => "bg-info",
-            RequestStatus.Rejected => "bg-danger",
-            RequestStatus.Applied => "bg-success",
-            RequestStatus.Failed => "bg-danger",
-            _ => "bg-secondary"
-        };
-    }
+    private string GetRequestTypeBadgeClass(RequestType requestType) => UiHelper.GetRequestTypeBadgeClass(requestType);
+    private string GetStatusBadgeClass(RequestStatus status) => UiHelper.GetStatusBadgeClass(status);
 
     private ColumnInfo? GetColumnInfoForField(FormField? field)
     {

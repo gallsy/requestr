@@ -2,13 +2,17 @@
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Utilities
+@using Requestr.Core.Services.Workflow
 @using Requestr.Web.Components.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.JSInterop
 @using System.Text.Json
-@inject IWorkflowService WorkflowService
-@inject IFormRequestService FormRequestService
+@inject IWorkflowInstanceService WorkflowInstanceService
+@inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
+@inject IWorkflowExecutionService WorkflowExecutionService
+@inject IFormRequestQueryService FormRequestQueryService
+@inject IFormRequestApprovalService FormRequestApprovalService
 @inject IFormDefinitionService FormDefinitionService
 @inject IWorkflowDesignerService WorkflowDesignerService
 @inject IBulkFormRequestService BulkFormRequestService
@@ -45,7 +49,7 @@ else
                 Description="Review and approve or reject this request">
     </PageHeader>
 
-    <div class="container">
+    <div>
         <div class="row justify-content-center">
             <div class="col-lg-10">
                 <!-- Unified Summary Card -->
@@ -83,7 +87,7 @@ else
                                 <strong>Read-Only View:</strong> This approval step has been completed and cannot be modified.
                                 @if (!string.IsNullOrEmpty(_currentStep.CompletedByName))
                                 {
-                                    <br><small>Completed by @_currentStep.CompletedByName on @_currentStep.CompletedAt?.ToString("MMM dd, yyyy HH:mm")</small>
+                                    <br><small>Completed by @_currentStep.CompletedByName on @_currentStep.CompletedAt?.ToString(UiHelper.DateTimeFormat)</small>
                                 }
                             </StandardAlert>
                             
@@ -171,7 +175,7 @@ else
                                                         <RequestFieldValuesCard 
                                                             FieldValues="@item.FieldValues"
                                                             OriginalValues="@item.OriginalValues"
-                                                            FormFields="@_formRequest.FormDefinition.Fields"
+                                                            FormFields="@_formDefinition?.Fields"
                                                             RequestType="@_formRequest.RequestType"
                                                             ProcessingResult="@item.ProcessingResult"
                                                             Status="@item.Status"
@@ -190,8 +194,9 @@ else
                                 <RequestFieldValuesCard 
                                     FieldValues="@_formRequest.FieldValues"
                                     OriginalValues="@_formRequest.OriginalValues"
-                                    FormFields="@_formRequest.FormDefinition.Fields"
-                                    RequestType="@_formRequest.RequestType" />
+                                    FormFields="@_formDefinition?.Fields"
+                                    RequestType="@_formRequest.RequestType"
+                                    Status="@_formRequest.Status" />
                             }
                         }
 
@@ -257,7 +262,7 @@ else
                                 @if (!string.IsNullOrEmpty(_currentStep.CompletedByName))
                                 {
                                     <small class="text-muted">
-                                        By @_currentStep.CompletedByName on @_currentStep.CompletedAt?.ToString("MMM dd, yyyy HH:mm")
+                                        By @_currentStep.CompletedByName on @_currentStep.CompletedAt?.ToString(UiHelper.DateTimeFormat)
                                     </small>
                                 }
                             </div>
@@ -278,6 +283,7 @@ else
     private WorkflowStepInstance? _currentStep;
     private WorkflowStep? _currentStepDefinition;
     private FormRequest? _formRequest;
+    private FormDefinition? _formDefinition;
     private BulkFormRequest? _bulkFormRequest; // Add bulk request support
     private List<WorkflowStepFieldConfiguration> _fieldConfigurations = new();
     
@@ -322,7 +328,7 @@ else
             // Get user info first for security check
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
-            _currentUserId = GetUserIdentifier(user);
+            _currentUserId = UserIdentityHelper.GetUserId(user);
             _userRoles = ClaimsHelper.GetUserRoles(user);
             _isAdmin = user.IsInRole("Admin") || _userRoles.Contains("Admin", StringComparer.OrdinalIgnoreCase);
             
@@ -344,7 +350,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error loading workflow step: {ex.Message}";
+            Logger.LogError(ex, "Error loading workflow step data");
+            _errorMessage = "An unexpected error occurred while loading the workflow step. Please try again.";
         }
         finally
         {
@@ -374,7 +381,7 @@ else
         // User can access if they have participated in this workflow (completed a step or assigned to one)
         try
         {
-            var hasParticipated = await WorkflowService.HasUserParticipatedInWorkflowAsync(
+            var hasParticipated = await WorkflowInstanceService.HasUserParticipatedInWorkflowAsync(
                 _currentUserId, _userRoles, _workflowInstance.Id);
             if (hasParticipated)
             {
@@ -394,19 +401,22 @@ else
         Logger.LogInformation("LoadWorkflowDataAsync: Starting for WorkflowInstanceId={WorkflowInstanceId}, StepId={StepId}", WorkflowInstanceId, StepId);
         
         // Load workflow instance
-        _workflowInstance = await WorkflowService.GetWorkflowInstanceAsync(WorkflowInstanceId);
+        _workflowInstance = await WorkflowInstanceService.GetWorkflowInstanceAsync(WorkflowInstanceId);
         Logger.LogInformation("LoadWorkflowDataAsync: WorkflowInstance loaded: {Found}", _workflowInstance != null);
         if (_workflowInstance == null) return;
 
         // Load workflow definition
-        _workflowDefinition = await WorkflowService.GetWorkflowDefinitionAsync(_workflowInstance.WorkflowDefinitionId);
+        _workflowDefinition = await WorkflowDefinitionQueryService.GetWorkflowDefinitionAsync(_workflowInstance.WorkflowDefinitionId);
         Logger.LogInformation("LoadWorkflowDataAsync: WorkflowDefinition loaded: {Found}", _workflowDefinition != null);
         if (_workflowDefinition == null) return;
 
         // Load form request
-        _formRequest = await FormRequestService.GetByIdAsync(_workflowInstance.FormRequestId);
+        _formRequest = await FormRequestQueryService.GetByIdAsync(_workflowInstance.FormRequestId);
         Logger.LogInformation("LoadWorkflowDataAsync: FormRequest loaded: {Found}", _formRequest != null);
         if (_formRequest == null) return;
+
+        // Load full form definition (with fields including computed value config)
+        _formDefinition = await FormDefinitionService.GetFormDefinitionAsync(_formRequest.FormDefinitionId);
 
         // Load column metadata for hiding identity/computed/rowversion columns on create/insert
         try
@@ -439,7 +449,7 @@ else
         }
 
         // Load current step instance
-        var allStepInstances = await WorkflowService.GetStepInstancesAsync(WorkflowInstanceId);
+        var allStepInstances = await WorkflowExecutionService.GetStepInstancesAsync(WorkflowInstanceId);
         Logger.LogInformation("LoadWorkflowDataAsync: Found {Count} step instances", allStepInstances?.Count ?? 0);
         _currentStep = allStepInstances?.FirstOrDefault(s => s.StepId == StepId);
         Logger.LogInformation("LoadWorkflowDataAsync: CurrentStep for StepId '{StepId}' found: {Found}", StepId, _currentStep != null);
@@ -454,7 +464,7 @@ else
         {
             try
             {
-                _fieldConfigurations = await WorkflowService.GetStepFieldConfigurationsAsync(_currentStepDefinition.Id);
+                _fieldConfigurations = await WorkflowDefinitionQueryService.GetStepFieldConfigurationsByStepIdAsync(_currentStepDefinition.Id);
                 Logger.LogInformation("LoadWorkflowDataAsync: Loaded {Count} field configurations", _fieldConfigurations?.Count ?? 0);
             }
             catch (Exception ex)
@@ -525,16 +535,15 @@ else
             _successMessage = "";
 
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var currentUser = GetUserIdentifier(authState.User);
-            var currentUserName = GetUserDisplayName(authState.User);
+            var currentUser = UserIdentityHelper.GetUserId(authState.User);
+            var currentUserName = UserIdentityHelper.GetDisplayName(authState.User);
 
-            var success = await WorkflowService.CompleteStepAsync(
-                WorkflowInstanceId, 
-                StepId, 
-                currentUser, 
-                currentUserName, 
-                action, 
-                _approvalComments);
+            var success = await FormRequestApprovalService.ProcessWorkflowActionAsync(
+                _formRequest!.Id,
+                actionType,
+                currentUser,
+                _approvalComments,
+                null);
 
             if (success)
             {
@@ -555,7 +564,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error processing step: {ex.Message}";
+            Logger.LogError(ex, "Error processing workflow step");
+            _errorMessage = "An unexpected error occurred while processing the step. Please try again.";
         }
         finally
         {
@@ -570,61 +580,11 @@ else
     }
 
     // Badge color helper methods
-    private string GetStepStatusBadgeColor(WorkflowStepInstanceStatus status)
-    {
-        return status switch
-        {
-            WorkflowStepInstanceStatus.Pending => "warning",
-            WorkflowStepInstanceStatus.InProgress => "info",
-            WorkflowStepInstanceStatus.Completed => "success",
-            WorkflowStepInstanceStatus.Failed => "danger",
-            WorkflowStepInstanceStatus.Skipped => "secondary",
-            _ => "secondary"
-        };
-    }
+    private string GetStepStatusBadgeColor(WorkflowStepInstanceStatus status) => UiHelper.GetStepStatusColor(status);
+    private string GetStatusBadgeColor(RequestStatus status) => UiHelper.GetStatusColor(status);
+    private string GetRequestTypeBadgeColor(RequestType requestType) => UiHelper.GetRequestTypeColor(requestType);
 
-    private string GetStatusBadgeColor(RequestStatus status)
-    {
-        return status switch
-        {
-            RequestStatus.Pending => "warning",
-            RequestStatus.Approved => "success",
-            RequestStatus.Rejected => "danger",
-            RequestStatus.Applied => "info",
-            RequestStatus.Failed => "danger",
-            _ => "secondary"
-        };
-    }
 
-    private string GetRequestTypeBadgeColor(RequestType requestType)
-    {
-        return requestType switch
-        {
-            RequestType.Insert => "success",
-            RequestType.Update => "primary",
-            RequestType.Delete => "danger",
-            _ => "secondary"
-        };
-    }
-
-    private string GetUserIdentifier(System.Security.Claims.ClaimsPrincipal user)
-    {
-        return user.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value ??
-               user.FindFirst("oid")?.Value ??
-               user.FindFirst("sub")?.Value ??
-               user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ??
-               user.Identity?.Name ?? "Unknown";
-    }
-
-    private string GetUserDisplayName(System.Security.Claims.ClaimsPrincipal user)
-    {
-        return user.FindFirst("name")?.Value ??
-               user.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name")?.Value ??
-               user.FindFirst("preferred_username")?.Value ??
-               user.FindFirst("upn")?.Value ??
-               user.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")?.Value ??
-               user.Identity?.Name ?? "Unknown User";
-    }
     
     private async Task OnWorkflowFieldChanged((string FieldName, object? Value) change)
     {

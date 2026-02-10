@@ -3,11 +3,13 @@
 @using Requestr.Core.Models.DTOs
 @using Requestr.Core.Interfaces
 @using Dapper
+@using Requestr.Web.Authorization
 @inject IFormDefinitionService FormDefinitionService
 @inject IBulkFormRequestService BulkFormRequestService
 @inject IDataService DataService
 @inject IConfiguration _configuration
 @inject IToastNotificationService ToastService
+@inject IFormAuthorizationService FormAuthorizationService
 @inject ILogger<BulkUpload> Logger
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
@@ -20,10 +22,25 @@
 {
     <LoadingSpinner Message="Loading form..." />
 }
+else if (!_hasPermission)
+{
+    <EmptyState Title="Access Denied" 
+                Description="You do not have permission to perform bulk uploads for this form.">
+        <Action>
+            <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">
+                Go Home
+            </button>
+        </Action>
+    </EmptyState>
+}
+else if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <StandardAlert AlertType="danger" Message="@_errorMessage" Dismissable="true" />
+}
 else if (_formDefinition == null)
 {
     <EmptyState Title="Form Not Found" 
-                Description="The requested form could not be found or you don't have permission to access it.">
+                Description="The requested form could not be found.">
         <Action>
             <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">
                 Go Home
@@ -46,7 +63,7 @@ else
         </Actions>
     </PageHeader>
 
-    <div class="container">
+    <div>
 
                 <!-- Step 1: Upload & Request Type Selection -->
                 <div class="card mb-4">
@@ -178,7 +195,7 @@ else
                             <div class="card-body">
                                 <div class="table-responsive">
                                     <table class="table table-sm table-hover">
-                                        <thead class="table-dark">
+                                        <thead class="thead-themed">
                                             <tr>
                                                 <th width="50">
                                                     <input type="checkbox" @onchange="OnSelectAllChanged" checked="@_allSelected" />
@@ -309,6 +326,8 @@ else
     private bool _isLoading = true;
     private bool _isProcessing = false;
     private bool _isSubmitting = false;
+    private bool _hasPermission = false;
+    private string _errorMessage = string.Empty;
     private RequestType _selectedRequestType = RequestType.Insert;
     private string _selectedFileName = "";
     private string _comments = "";
@@ -321,11 +340,22 @@ else
     {
         try
         {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            _hasPermission = await FormAuthorizationService.UserHasPermissionAsync(
+                authState.User, FormId, FormPermissionType.BulkUploadCsv);
+
+            if (!_hasPermission)
+            {
+                Logger.LogWarning("User does not have BulkUploadCsv permission for FormId {FormId}", FormId);
+                return;
+            }
+
             _formDefinition = await FormDefinitionService.GetFormDefinitionAsync(FormId);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error loading form definition for FormId {FormId}", FormId);
+            _errorMessage = "An unexpected error occurred while loading the form. Please try again.";
         }
         finally
         {
@@ -1190,14 +1220,4 @@ else
     }
 }
 
-<script>
-    window.downloadFile = function (filename, contentType, content) {
-        const blob = new Blob([content], { type: contentType });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        window.URL.revokeObjectURL(url);
-    };
-</script>
+

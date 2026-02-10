@@ -1,6 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Requestr.Core.Interfaces;
+using Requestr.Core.Repositories;
 using Requestr.Core.Services;
+using Requestr.Core.Services.FormRequests;
+using Requestr.Core.Services.Workflow;
 
 namespace Requestr.Core.Extensions;
 
@@ -8,21 +11,49 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddRequestrCore(this IServiceCollection services)
     {
+        // Database Infrastructure
+        services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
+        
+        // Repositories
+        services.AddScoped<IFormRequestRepository, FormRequestRepository>();
+        services.AddScoped<IFormRequestHistoryRepository, FormRequestHistoryRepository>();
+        
+        // Workflow Repositories (Phase 3)
+        services.AddScoped<IWorkflowDefinitionRepository, WorkflowDefinitionRepository>();
+        services.AddScoped<IWorkflowStepRepository, WorkflowStepRepository>();
+        services.AddScoped<IWorkflowTransitionRepository, WorkflowTransitionRepository>();
+        services.AddScoped<IWorkflowInstanceRepository, WorkflowInstanceRepository>();
+        services.AddScoped<IWorkflowStepInstanceRepository, WorkflowStepInstanceRepository>();
+        
         // Data Services
         services.AddScoped<IDatabaseService, DatabaseService>();
         services.AddScoped<IDataService, DataService>();
         
         // Business Services
         services.AddScoped<IFormDefinitionService, FormDefinitionService>();
-        services.AddScoped<IFormRequestService, FormRequestService>();
         services.AddScoped<IBulkFormRequestService, BulkFormRequestService>();
         services.AddScoped<IDataViewService, DataViewService>();
         
-        // Workflow Services
-        services.AddScoped<IWorkflowService, WorkflowService>();
+        // FormRequest Services
+        services.AddScoped<IFormRequestQueryService, FormRequestQueryService>();
+        services.AddScoped<IFormRequestCommandService, FormRequestCommandService>();
+        services.AddScoped<IFormRequestApprovalService, FormRequestApprovalService>();
+        services.AddScoped<IFormRequestApplicationService, FormRequestApplicationService>();
+        services.AddScoped<IFormRequestHistoryService, FormRequestHistoryService>();
+        
+        // Workflow Designer and Configuration Services
         services.AddScoped<IWorkflowDesignerService, WorkflowDesignerService>();
         services.AddScoped<IFormWorkflowConfigurationService, FormWorkflowConfigurationService>();
         services.AddScoped<IFormPermissionService, FormPermissionService>();
+        
+        // Decomposed Workflow Services (Phase 3)
+        // CQRS-based workflow definition services
+        services.AddScoped<IWorkflowDefinitionCommandService, WorkflowDefinitionCommandService>();
+        services.AddScoped<IWorkflowDefinitionQueryService, WorkflowDefinitionQueryService>();
+        // Workflow lifecycle and execution services
+        services.AddScoped<IWorkflowInstanceService, WorkflowInstanceService>();
+        services.AddScoped<IWorkflowExecutionService, WorkflowExecutionService>();
+        services.AddScoped<IWorkflowProgressService, WorkflowProgressService>();
         
         // Notification Services
         services.AddScoped<IEmailConfigurationService, EmailConfigurationService>();

@@ -2,16 +2,18 @@
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Utilities
+@using Requestr.Core.Services.Workflow
 @using System.Text.Json
 @using Requestr.Web.Components
 @using Requestr.Web.Components.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using BlazorBootstrap
-@inject IFormRequestService FormRequestService
+@inject IFormRequestQueryService FormRequestQueryService
+@inject IFormRequestApprovalService FormRequestApprovalService
 @inject IFormDefinitionService FormDefinitionService
 @inject IConflictDetectionService ConflictDetectionService
-@inject IWorkflowService WorkflowService
+@inject IWorkflowInstanceService WorkflowInstanceService
 @inject ILogger<RequestDetails> Logger
 @inject NavigationManager Navigation
 @inject IDatabaseService DatabaseService
@@ -38,6 +40,22 @@ else
     <PageHeader Title="@(_formDefinition?.Name ?? "Request Details")" 
                 Description="@($"Request #{RequestId}")">
         <Actions>
+            @if (_request.Status == RequestStatus.Failed && _isAdmin)
+            {
+                <Button Color="ButtonColor.Warning" Disabled="_isRetrying"
+                        @onclick="RetryFailedRequestAsync">
+                    @if (_isRetrying)
+                    {
+                        <Spinner Size="SpinnerSize.Small" Class="me-1" />
+                        <span>Retrying...</span>
+                    }
+                    else
+                    {
+                        <Icon Name="IconName.ArrowRepeat" class="me-1" />
+                        <span>Retry</span>
+                    }
+                </Button>
+            }
             @if (_request.Status == RequestStatus.Pending && CanEditRequest())
             {
                 <Button Color="ButtonColor.Primary" Outline="true" 
@@ -49,7 +67,7 @@ else
         </Actions>
     </PageHeader>
 
-    <div class="container">
+    <div>
         <!-- Unified Request Summary Card -->
         <RequestSummaryCard 
             FormName="@(_formDefinition?.Name ?? "Unknown Form")"
@@ -73,6 +91,15 @@ else
             </StandardAlert>
         }
 
+        @if (!string.IsNullOrEmpty(_retryMessage))
+        {
+            <StandardAlert AlertType="@(_retrySuccess ? "success" : "danger")"
+                         Title="@(_retrySuccess ? "Retry Successful" : "Retry Failed")"
+                         Dismissable="true">
+                @_retryMessage
+            </StandardAlert>
+        }
+
         <!-- Workflow Progress -->
         <WorkflowProgressDisplay FormRequestId="@RequestId" ShowCompact="false" AutoLoad="true" />
 
@@ -81,7 +108,8 @@ else
             FieldValues="@_request.FieldValues"
             OriginalValues="@_request.OriginalValues"
             FormFields="@_formDefinition?.Fields"
-            RequestType="@_request.RequestType" />
+            RequestType="@_request.RequestType"
+            Status="@_request.Status" />
 
         <!-- Request History Card -->
         <div class="card">
@@ -235,6 +263,9 @@ else
     private string _currentUserId = "";
     private List<string> _userRoles = new();
     private bool _isAdmin = false;
+    private bool _isRetrying = false;
+    private string? _retryMessage;
+    private bool _retrySuccess;
     
     // Workflow-related fields
     private WorkflowStepInstance? _currentWorkflowStep;
@@ -259,13 +290,11 @@ else
                 return;
             }
             
-            _currentUserId = authState.User.FindFirst("sub")?.Value ?? 
-                            authState.User.FindFirst("oid")?.Value ?? 
-                            authState.User.Identity?.Name ?? "";
+            _currentUserId = UserIdentityHelper.GetUserId(authState.User);
             _userRoles = ClaimsHelper.GetUserRoles(authState.User);
             _isAdmin = _userRoles.Contains("Admin");
             
-            _request = await FormRequestService.GetFormRequestWithHistoryAsync(RequestId);
+            _request = await FormRequestQueryService.GetWithHistoryAsync(RequestId);
             
             if (_request == null)
             {
@@ -369,7 +398,7 @@ else
             try
             {
                 // Check if user has participated in this workflow (completed a step or is assigned)
-                var hasParticipated = await WorkflowService.HasUserParticipatedInWorkflowAsync(
+                var hasParticipated = await WorkflowInstanceService.HasUserParticipatedInWorkflowAsync(
                     _currentUserId, _userRoles, _request.WorkflowInstanceId.Value);
                 if (hasParticipated)
                 {
@@ -419,9 +448,9 @@ else
         }
 
         // Only use datetime comparison if BOTH values look like datetimes (contain date separators and time components)
-        var looksLikeDateTime1 = (value1.Contains("-") || value1.Contains("/")) && 
+        var looksLikeDateTime1 = (value1!.Contains("-") || value1.Contains("/")) && 
                                   (value1.Contains(":") || value1.Contains("T"));
-        var looksLikeDateTime2 = (value2.Contains("-") || value2.Contains("/")) && 
+        var looksLikeDateTime2 = (value2!.Contains("-") || value2.Contains("/")) && 
                                   (value2.Contains(":") || value2.Contains("T"));
         
         if (looksLikeDateTime1 && looksLikeDateTime2 &&
@@ -444,8 +473,8 @@ else
         {
             if (_request != null)
             {
-                _currentWorkflowStep = await FormRequestService.GetCurrentWorkflowStepAsync(_request.Id);
-                _completedWorkflowSteps = await FormRequestService.GetCompletedWorkflowStepsAsync(_request.Id);
+                _currentWorkflowStep = await FormRequestApprovalService.GetCurrentWorkflowStepAsync(_request.Id);
+                _completedWorkflowSteps = await FormRequestApprovalService.GetCompletedWorkflowStepsAsync(_request.Id);
             }
         }
         catch (Exception)
@@ -485,22 +514,50 @@ else
         return _request?.Status == RequestStatus.Pending;
     }
 
-    private string GetStatusBadgeColor(RequestStatus status) => status switch
+    private async Task RetryFailedRequestAsync()
     {
-        RequestStatus.Pending => "bg-warning",
-        RequestStatus.Approved => "bg-success",
-        RequestStatus.Rejected => "bg-danger",
-        RequestStatus.Applied => "bg-info",
-        _ => "bg-secondary"
-    };
+        if (_request == null || _isRetrying) return;
 
-    private string GetRequestTypeBadgeColor(RequestType requestType) => requestType switch
-    {
-        RequestType.Insert => "bg-primary",
-        RequestType.Update => "bg-info",
-        RequestType.Delete => "bg-danger",
-        _ => "bg-secondary"
-    };
+        _isRetrying = true;
+        _retryMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var userName = authState.User.Identity?.Name ?? _currentUserId;
+
+            var success = await FormRequestApprovalService.RetryFailedAsync(
+                _request.Id, _currentUserId, userName);
+
+            if (success)
+            {
+                _retrySuccess = true;
+                _retryMessage = "Request was successfully retried and applied to the database.";
+            }
+            else
+            {
+                _retrySuccess = false;
+                _retryMessage = "Retry attempt failed. Check the request history below for details.";
+            }
+
+            // Reload the request to reflect the new status and history
+            await LoadRequest();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error retrying request {RequestId}", RequestId);
+            _retrySuccess = false;
+            _retryMessage = $"An error occurred while retrying: {ex.Message}";
+        }
+        finally
+        {
+            _isRetrying = false;
+        }
+    }
+
+    private string GetStatusBadgeColor(RequestStatus status) => UiHelper.GetStatusBadgeClass(status);
+    private string GetRequestTypeBadgeColor(RequestType requestType) => UiHelper.GetRequestTypeBadgeClass(requestType);
 
     private string GetRequestTypeDisplayName(RequestType requestType) => requestType switch
     {
@@ -510,22 +567,7 @@ else
         _ => requestType.ToString()
     };
 
-    private string GetHistoryMarkerColor(FormRequestChangeType changeType) => changeType switch
-    {
-        FormRequestChangeType.Created => "bg-primary",
-        FormRequestChangeType.Updated => "bg-info",
-        FormRequestChangeType.StatusChanged => "bg-warning",
-        FormRequestChangeType.Approved => "bg-success",
-        FormRequestChangeType.Rejected => "bg-danger",
-        FormRequestChangeType.Applied => "bg-success",
-        FormRequestChangeType.Failed => "bg-danger",
-        FormRequestChangeType.WorkflowStarted => "bg-primary",
-        FormRequestChangeType.WorkflowStepCompleted => "bg-info",
-        FormRequestChangeType.WorkflowStepApproved => "bg-success",
-        FormRequestChangeType.WorkflowStepRejected => "bg-danger",
-        FormRequestChangeType.WorkflowCompleted => "bg-success",
-        _ => "bg-secondary"
-    };
+    private string GetHistoryMarkerColor(FormRequestChangeType changeType) => UiHelper.GetHistoryMarkerColor(changeType);
 
     private string GetHistoryIcon(FormRequestChangeType changeType) => changeType switch
     {

@@ -9,9 +9,8 @@
 @using System.Text.Json
 @using Requestr.Web.Components
 @attribute [Authorize]
-@inject IFormRequestService FormRequestService
+@inject IFormRequestQueryService FormRequestQueryService
 @inject IBulkFormRequestService BulkFormRequestService
-@inject IWorkflowService WorkflowService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 @inject ILogger<AllRequests> Logger
@@ -151,7 +150,7 @@
                     <div class="card-body">
                         <div class="table-responsive">
                             <table class="table table-hover">
-                                <thead class="table-dark">
+                                <thead class="thead-themed">
                                     <tr>
                                         <th>ID</th>
                                         <th>Form</th>
@@ -288,9 +287,7 @@
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             if (authState.User.Identity?.IsAuthenticated == true)
             {
-                CurrentUserId = authState.User.FindFirst("sub")?.Value ?? 
-                               authState.User.FindFirst("oid")?.Value ?? 
-                               authState.User.Identity.Name;
+                CurrentUserId = UserIdentityHelper.GetUserId(authState.User);
 
                 // Get user roles from claims
                 UserRoles = ClaimsHelper.GetUserRoles(authState.User);
@@ -319,7 +316,7 @@
         try
         {
             // Load individual requests using the new access-controlled method
-            AllFormRequests = await FormRequestService.GetAccessibleFormRequestsAsync(CurrentUserId, UserRoles);
+            AllFormRequests = await FormRequestQueryService.GetAccessibleFormRequestsAsync(CurrentUserId, UserRoles);
             AllFormRequests = AllFormRequests.Where(r => r.BulkFormRequestId == null).OrderByDescending(r => r.RequestedAt).ToList();
             
             // Load bulk requests based on user access (own requests + requests they can approve)
@@ -533,23 +530,8 @@
         }
     }
 
-    private string GetStatusBadgeClass(RequestStatus status) => status switch
-    {
-        RequestStatus.Pending => "bg-warning text-dark",
-        RequestStatus.Approved => "bg-success",
-        RequestStatus.Rejected => "bg-danger",
-        RequestStatus.Applied => "bg-info text-dark",
-        RequestStatus.Failed => "bg-danger",
-        _ => "bg-secondary"
-    };
-
-    private string GetRequestTypeBadgeColor(RequestType requestType) => requestType switch
-    {
-        RequestType.Insert => "bg-success",
-        RequestType.Update => "bg-warning text-dark",
-        RequestType.Delete => "bg-danger",
-        _ => "bg-secondary"
-    };
+    private string GetStatusBadgeClass(RequestStatus status) => UiHelper.GetStatusBadgeClass(status);
+    private string GetRequestTypeBadgeColor(RequestType requestType) => UiHelper.GetRequestTypeBadgeClass(requestType);
 
     private string GetRequestTypeDisplayName(RequestType requestType) => requestType switch
     {

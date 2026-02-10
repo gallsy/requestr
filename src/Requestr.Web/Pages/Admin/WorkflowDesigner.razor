@@ -2,8 +2,10 @@
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Models
 @using Requestr.Core.Models.DTOs
+@using Requestr.Core.Services.Workflow
 @using Microsoft.JSInterop
-@inject IWorkflowService WorkflowService
+@inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
+@inject IWorkflowDefinitionCommandService WorkflowDefinitionCommandService
 @inject IWorkflowDesignerService WorkflowDesignerService
 @inject IFormDefinitionService FormDefinitionService
 @inject IToastNotificationService ToastService
@@ -558,7 +560,7 @@
     {
         try
         {
-            workflow = await WorkflowService.GetWorkflowDefinitionAsync(WorkflowId);
+            workflow = await WorkflowDefinitionQueryService.GetWorkflowDefinitionAsync(WorkflowId);
         }
         catch (Exception ex)
         {
@@ -570,7 +572,7 @@
     {
         if (isLinkingMode)
         {
-            await HandleLinkingClick(step);
+            HandleLinkingClick(step);
         }
         else if (isDeletingSteps)
         {
@@ -582,7 +584,7 @@
         }
     }
 
-    private async Task HandleLinkingClick(WorkflowStep step)
+    private void HandleLinkingClick(WorkflowStep step)
     {
         if (linkingSourceStep == null)
         {
@@ -599,13 +601,13 @@
         else
         {
             // Second click - create connection
-            await CreateConnection(linkingSourceStep, step);
+            CreateConnection(linkingSourceStep, step);
             linkingSourceStep = null;
             StateHasChanged();
         }
     }
 
-    private async Task CreateConnection(WorkflowStep fromStep, WorkflowStep toStep)
+    private void CreateConnection(WorkflowStep fromStep, WorkflowStep toStep)
     {
         try
         {
@@ -725,7 +727,7 @@
         StateHasChanged();
     }
 
-    private async Task DeleteConnection(WorkflowTransition transition)
+    private void DeleteConnection(WorkflowTransition transition)
     {
         if (!isDeletingConnections) return;
 
@@ -898,7 +900,7 @@
 
         try
         {
-            await WorkflowService.UpdateWorkflowDefinitionAsync(workflow);
+            await WorkflowDefinitionCommandService.UpdateWorkflowDefinitionAsync(workflow);
             ToastService.ShowSuccess("Workflow saved successfully!");
         }
         catch (Exception ex)

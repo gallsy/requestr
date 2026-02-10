@@ -2,6 +2,7 @@
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Utilities
+@using Requestr.Core.Services.Workflow
 @using Requestr.Web.Components.Shared
 @using System.Linq
 @using Microsoft.AspNetCore.Authorization
@@ -9,7 +10,7 @@
 @using BlazorBootstrap
 @inject IBulkFormRequestService BulkFormRequestService
 @inject IConflictDetectionService ConflictDetectionService
-@inject IWorkflowService WorkflowService
+@inject IWorkflowInstanceService WorkflowInstanceService
 @inject ILogger<BulkRequestDetails> Logger
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -39,7 +40,7 @@ else
                 Description="@($"Bulk {_bulkRequest.RequestType} Request")">
     </PageHeader>
 
-    <div class="container">
+    <div>
         <div class="row">
             <div class="col-12">
 
@@ -207,7 +208,9 @@ else
     private bool _isLoading = true;
     private bool _isFromApprovals;
     private string _errorMessage = "";
+#pragma warning disable CS0414 // Assigned but never read — reserved for future success notification UI
     private string _successMessage = "";
+#pragma warning restore CS0414
     private string _conflictWarning = "";
     private HashSet<int> _expandedRows = new();
     private string _currentUserId = "";
@@ -229,9 +232,7 @@ else
                 return;
             }
             
-            _currentUserId = authState.User.FindFirst("sub")?.Value ?? 
-                            authState.User.FindFirst("oid")?.Value ?? 
-                            authState.User.Identity?.Name ?? "";
+            _currentUserId = UserIdentityHelper.GetUserId(authState.User);
             _userRoles = ClaimsHelper.GetUserRoles(authState.User);
             _isAdmin = _userRoles.Contains("Admin");
             
@@ -266,7 +267,8 @@ else
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error loading bulk request: {ex.Message}";
+            Logger.LogError(ex, "Error loading bulk request {BulkRequestId}", BulkRequestId);
+            _errorMessage = "An unexpected error occurred while loading the bulk request. Please try again.";
         }
         finally
         {
@@ -310,7 +312,7 @@ else
             try
             {
                 // Check if user has participated in this workflow (completed a step or is assigned)
-                var hasParticipated = await WorkflowService.HasUserParticipatedInWorkflowAsync(
+                var hasParticipated = await WorkflowInstanceService.HasUserParticipatedInWorkflowAsync(
                     _currentUserId, _userRoles, _bulkRequest.WorkflowInstanceId.Value);
                 if (hasParticipated)
                 {
@@ -402,24 +404,6 @@ else
         _ => "bg-light"
     };
 
-    private string GetStatusBadgeClass(RequestStatus status)
-    {
-        return status switch
-        {
-            RequestStatus.Pending => "bg-warning text-dark",
-            RequestStatus.Approved => "bg-success",
-            RequestStatus.Rejected => "bg-danger",
-            RequestStatus.Applied => "bg-primary",
-            RequestStatus.Failed => "bg-danger",
-            _ => "bg-secondary"
-        };
-    }
-
-    private string GetRequestTypeBadgeColor(RequestType requestType) => requestType switch
-    {
-        RequestType.Insert => "bg-primary",
-        RequestType.Update => "bg-info",
-        RequestType.Delete => "bg-danger",
-        _ => "bg-secondary"
-    };
+    private string GetStatusBadgeClass(RequestStatus status) => UiHelper.GetStatusBadgeClass(status);
+    private string GetRequestTypeBadgeColor(RequestType requestType) => UiHelper.GetRequestTypeBadgeClass(requestType);
 }

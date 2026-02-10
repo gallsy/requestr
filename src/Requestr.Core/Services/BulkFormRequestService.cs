@@ -1,4 +1,3 @@
-using System.Globalization;
 using Dapper;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
@@ -8,6 +7,8 @@ using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using Requestr.Core.Models.DTOs;
+using Requestr.Core.Services.Workflow;
+using Requestr.Core.Utilities;
 using System.Text.Json;
 
 namespace Requestr.Core.Services;
@@ -17,8 +18,7 @@ public class BulkFormRequestService : IBulkFormRequestService
     private readonly IConfiguration _configuration;
     private readonly ILogger<BulkFormRequestService> _logger;
     private readonly IFormDefinitionService _formDefinitionService;
-    private readonly IFormRequestService _formRequestService;
-    private readonly IWorkflowService _workflowService;
+    private readonly IWorkflowInstanceService _workflowInstanceService;
     private readonly IInputValidationService _inputValidationService;
     private readonly string _connectionString;
 
@@ -26,15 +26,13 @@ public class BulkFormRequestService : IBulkFormRequestService
         IConfiguration configuration,
         ILogger<BulkFormRequestService> logger,
         IFormDefinitionService formDefinitionService,
-        IFormRequestService formRequestService,
-        IWorkflowService workflowService,
+        IWorkflowInstanceService workflowInstanceService,
         IInputValidationService inputValidationService)
     {
         _configuration = configuration;
         _logger = logger;
         _formDefinitionService = formDefinitionService;
-        _formRequestService = formRequestService;
-        _workflowService = workflowService;
+        _workflowInstanceService = workflowInstanceService;
         _inputValidationService = inputValidationService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
@@ -337,18 +335,8 @@ public class BulkFormRequestService : IBulkFormRequestService
                 return null;
             }
 
-            // Convert the sanitized value to appropriate type based on control type
-            // DataType contains HTML control types like "checkbox", "datetime-local", "date", "number", "text"
-            var controlType = (field.DataType ?? field.ControlType ?? "text").ToLowerInvariant();
-            
-            object? convertedValue = controlType switch
-            {
-                "checkbox" => ParseBoolean(sanitizedValue),
-                "number" => decimal.TryParse(sanitizedValue, out var num) ? num : (object?)sanitizedValue,
-                "datetime-local" or "datetime" => ParseExcelDateTime(sanitizedValue),
-                "date" => ParseExcelDateTime(sanitizedValue).Date,
-                _ => (object?)sanitizedValue
-            };
+            // Convert the sanitized value to appropriate type based on SQL data type
+            object? convertedValue = SqlTypeConverter.ConvertToSqlType(sanitizedValue, field.SqlDataType);
             
             return convertedValue;
         }
@@ -358,34 +346,6 @@ public class BulkFormRequestService : IBulkFormRequestService
             result.IsValid = false;
             return null;
         }
-    }
-
-    /// <summary>
-    /// Parses a date value from Excel, handling both OLE Automation numbers and string formats.
-    /// Excel stores dates as OLE Automation dates (days since Dec 30, 1899).
-    /// </summary>
-    private static DateTime ParseExcelDateTime(string value)
-    {
-        // First try to parse as an OLE Automation date (numeric value from Excel)
-        if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var oaDate))
-        {
-            // Excel uses OLE Automation date format
-            return DateTime.FromOADate(oaDate);
-        }
-
-        // Fall back to standard DateTime parsing for string formats
-        return DateTime.Parse(value);
-    }
-
-    private static bool ParseBoolean(string value)
-    {
-        var normalized = value.Trim().ToUpperInvariant();
-        return normalized switch
-        {
-            "TRUE" or "YES" or "1" => true,
-            "FALSE" or "NO" or "0" => false,
-            _ => bool.Parse(value)
-        };
     }
 
     public async Task<BulkFormRequest> CreateBulkFormRequestAsync(CreateBulkFormRequestDto createDto, string userId, string userName)
@@ -522,11 +482,12 @@ public class BulkFormRequestService : IBulkFormRequestService
                         BulkFormRequestId = tempFormRequest.BulkFormRequestId
                     }, transaction);
 
-                    var workflowInstance = await _workflowService.StartWorkflowAsync(
+                    var workflowInstanceId = await _workflowInstanceService.StartWorkflowAsync(
+                        connection,
+                        transaction,
                         tempFormRequestId, 
-                        formDefinition.WorkflowDefinitionId.Value, 
-                        connection, 
-                        (SqlTransaction)transaction);
+                        formDefinition.WorkflowDefinitionId.Value,
+                        userId);
 
                     // Update bulk request with workflow instance ID
                     var updateBulkSql = @"
@@ -536,7 +497,7 @@ public class BulkFormRequestService : IBulkFormRequestService
 
                     await connection.ExecuteAsync(updateBulkSql, new
                     {
-                        WorkflowInstanceId = workflowInstance.Id,
+                        WorkflowInstanceId = workflowInstanceId,
                         BulkRequestId = bulkRequestId
                     }, transaction);
 
@@ -548,14 +509,14 @@ public class BulkFormRequestService : IBulkFormRequestService
 
                     await connection.ExecuteAsync(updateTempFormRequestSql, new
                     {
-                        WorkflowInstanceId = workflowInstance.Id,
+                        WorkflowInstanceId = workflowInstanceId,
                         FormRequestId = tempFormRequestId
                     }, transaction);
 
-                    bulkRequest.WorkflowInstanceId = workflowInstance.Id;
+                    bulkRequest.WorkflowInstanceId = workflowInstanceId;
 
                     _logger.LogInformation("Started workflow instance {WorkflowInstanceId} for bulk request {BulkRequestId} with temp FormRequest {TempFormRequestId}", 
-                        workflowInstance.Id, bulkRequestId, tempFormRequestId);
+                        workflowInstanceId, bulkRequestId, tempFormRequestId);
                 }
                 catch (Exception ex)
                 {

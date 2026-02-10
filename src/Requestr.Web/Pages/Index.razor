@@ -2,11 +2,14 @@
 @using Microsoft.AspNetCore.Authorization
 @using System.Linq
 @using Requestr.Core.Models
+@using Requestr.Core.Services.Workflow
 @using Requestr.Web.Authorization
 @attribute [Authorize]
 @inject IFormDefinitionService FormDefinitionService
-@inject IFormRequestService FormRequestService
-@inject IWorkflowService WorkflowService
+@inject IFormRequestQueryService FormRequestQueryService
+@inject IWorkflowExecutionService WorkflowExecutionService
+@inject IWorkflowInstanceService WorkflowInstanceService
+@inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
 @inject IFormAuthorizationService FormAuthorizationService
 @inject ILogger<Index> Logger
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -225,20 +228,7 @@
     private string? CurrentUserId;
     private List<string> UserRoles = new();
     
-    private static string FormatRelativeTime(DateTime dateTime)
-    {
-        var now = DateTime.Now;
-        var dt = dateTime.Kind == DateTimeKind.Utc ? dateTime.ToLocalTime() : dateTime;
-        var ts = now - dt;
-
-        if (ts.TotalSeconds < 60) return "just now";
-        if (ts.TotalMinutes < 60) return $"{(int)ts.TotalMinutes}m ago";
-        if (ts.TotalHours < 24) return $"{(int)ts.TotalHours}h ago";
-        if (ts.TotalDays < 7) return $"{(int)ts.TotalDays}d ago";
-        if (ts.TotalDays < 30) return $"{(int)(ts.TotalDays / 7)}w ago";
-        if (ts.TotalDays < 365) return $"{(int)(ts.TotalDays / 30)}mo ago";
-        return $"{(int)(ts.TotalDays / 365)}y ago";
-    }
+    private static string FormatRelativeTime(DateTime dateTime) => UiHelper.FormatRelativeTime(dateTime);
 
     protected override async Task OnInitializedAsync()
     {
@@ -300,11 +290,11 @@
             }
 
             // Load user's pending requests
-            var allUserRequests = await FormRequestService.GetFormRequestsByUserAsync(CurrentUserId);
+            var allUserRequests = await FormRequestQueryService.GetByUserAsync(CurrentUserId);
             PendingRequests = allUserRequests.Where(r => r.Status == RequestStatus.Pending).ToList();
 
             // Always load pending workflow steps for the current user
-            PendingWorkflowSteps = await WorkflowService.GetPendingStepsForUserAsync(CurrentUserId, UserRoles);
+            PendingWorkflowSteps = await WorkflowExecutionService.GetPendingStepsForUserAsync(CurrentUserId, UserRoles);
             
             // Pre-cache workflow and form data for display if there are pending steps
             if (PendingWorkflowSteps?.Any() == true)
@@ -333,18 +323,18 @@
         {
             try
             {
-                var instance = await WorkflowService.GetWorkflowInstanceAsync(instanceId);
+                var instance = await WorkflowInstanceService.GetWorkflowInstanceAsync(instanceId);
                 if (instance != null)
                 {
                     _workflowInstanceCache[instanceId] = instance;
                     
-                    var definition = await WorkflowService.GetWorkflowDefinitionAsync(instance.WorkflowDefinitionId);
+                    var definition = await WorkflowDefinitionQueryService.GetWorkflowDefinitionAsync(instance.WorkflowDefinitionId);
                     if (definition != null)
                     {
                         _workflowDefinitionCache[instanceId] = definition;
                     }
                     
-                    var formRequest = await FormRequestService.GetByIdAsync(instance.FormRequestId);
+                    var formRequest = await FormRequestQueryService.GetByIdAsync(instance.FormRequestId);
                     if (formRequest != null)
                     {
                         _formRequestCache[instanceId] = formRequest;

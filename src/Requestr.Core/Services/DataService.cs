@@ -82,6 +82,7 @@ public class DataService : IDataService
 
             string sql;
             object? insertedId = null;
+            bool success = false;
 
             if (allowedData.Count == 0)
             {
@@ -97,8 +98,8 @@ public class DataService : IDataService
                     var rows = await connection.ExecuteAsync(sql);
                     if (rows > 0)
                     {
-                        // Fallback: attempt to select using no criteria is not possible; mark success without ID
-                        insertedId = null;
+                        // No identity column and no data to select back — mark success based on rows affected
+                        success = true;
                     }
                 }
             }
@@ -119,6 +120,8 @@ public class DataService : IDataService
                 var rowsAffected = await connection.ExecuteAsync(sql, allowedData);
                 if (rowsAffected > 0)
                 {
+                    // Mark as success based on rows affected — identity lookup is best-effort
+                    success = true;
                     // Try to get the inserted record using provided data as a key
                     var whereClause = string.Join(" AND ", allowedData.Keys.Select(k => $"[{k}] = @{k}"));
                     var selectSql = $"SELECT TOP 1 * FROM [{schema}].[{tableName}] WHERE {whereClause}";
@@ -131,7 +134,10 @@ public class DataService : IDataService
                 }
             }
             
-            var success = insertedId != null;
+            if (!success)
+            {
+                success = insertedId != null;
+            }
             
             _logger.LogInformation("Inserted data into {Schema}.{TableName} in database {DatabaseName}. Success: {Success}, InsertedId: {InsertedId}", 
                 schema, tableName, databaseName, success, insertedId);
@@ -316,7 +322,7 @@ public class DataService : IDataService
             using var connection = new SqlConnection(connectionString);
             await connection.OpenAsync();
 
-            var sql = $"SELECT * FROM [{schema}].[{tableName}]";
+            var sql = $"SELECT TOP 10000 * FROM [{schema}].[{tableName}]";
             object? parameters = null;
 
             if (whereConditions != null && whereConditions.Any())
@@ -384,10 +390,10 @@ public class DataService : IDataService
         
         var dataSql = $@"
             SELECT TOP 50 
-                {primaryKeyColumn} as Id,
-                CONCAT({string.Join(", ' - ', ", columnList.Take(2))}) as DisplayText
+                [{primaryKeyColumn}] as Id,
+                CONCAT({string.Join(", ' - ', ", columnList.Take(2).Select(c => $"[{c}]"))}) as DisplayText
             FROM [{schema}].[{tableName}]
-            ORDER BY {primaryKeyColumn}";
+            ORDER BY [{primaryKeyColumn}]";
         
         try
         {
