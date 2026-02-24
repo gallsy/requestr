@@ -801,8 +801,11 @@
                 // Populate ControlType for existing fields if empty (for backward compatibility)
                 foreach (var field in _formDefinition.Fields)
                 {
-                    // Store the original SQL type (DataType field contains the SQL type)
-                    _fieldOriginalSqlTypes[field.Name] = field.DataType;
+                    // Store the original SQL type. Prefer SqlDataType (actual SQL type like "nvarchar")
+                    // over DataType which may contain the UI control type (like "text") after the refactor.
+                    _fieldOriginalSqlTypes[field.Name] = !string.IsNullOrEmpty(field.SqlDataType) 
+                        ? field.SqlDataType 
+                        : field.DataType;
                     
                     if (string.IsNullOrEmpty(field.ControlType))
                     {
@@ -1347,11 +1350,14 @@
             {
                 // Already has SqlDataType - no action needed
                 alreadyPopulatedFields.Add($"{field.Name} ({field.SqlDataType})");
+                // Ensure the local dictionary also has the correct SQL type
+                _fieldOriginalSqlTypes[field.Name] = field.SqlDataType;
             }
             else if (dbColumnLookup.TryGetValue(field.Name, out var dbColumn))
             {
                 // Backfill from current schema
                 field.SqlDataType = dbColumn.DataType;
+                _fieldOriginalSqlTypes[field.Name] = dbColumn.DataType;
                 backfilledFields.Add($"{field.Name} → {dbColumn.DataType}");
             }
             else
