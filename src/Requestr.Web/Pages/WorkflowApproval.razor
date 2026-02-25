@@ -26,6 +26,7 @@
 @attribute [Authorize]
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
+@inject IUserTimezoneService Tz
 <PageTitle>Workflow Review | @Branding.ApplicationName</PageTitle>
 
 @if (_isLoading)
@@ -87,7 +88,7 @@ else
                                 <strong>Read-Only View:</strong> This approval step has been completed and cannot be modified.
                                 @if (!string.IsNullOrEmpty(_currentStep.CompletedByName))
                                 {
-                                    <br><small>Completed by @_currentStep.CompletedByName on @_currentStep.CompletedAt?.ToString(UiHelper.DateTimeFormat)</small>
+                                    <br><small>Completed by @_currentStep.CompletedByName on @Tz.FormatDateTime(_currentStep.CompletedAt)</small>
                                 }
                             </StandardAlert>
                             
@@ -262,7 +263,7 @@ else
                                 @if (!string.IsNullOrEmpty(_currentStep.CompletedByName))
                                 {
                                     <small class="text-muted">
-                                        By @_currentStep.CompletedByName on @_currentStep.CompletedAt?.ToString(UiHelper.DateTimeFormat)
+                                        By @_currentStep.CompletedByName on @Tz.FormatDateTime(_currentStep.CompletedAt)
                                     </small>
                                 }
                             </div>

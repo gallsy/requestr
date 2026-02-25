@@ -18,6 +18,7 @@
 @inject NavigationManager Navigation
 @inject IDatabaseService DatabaseService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IUserTimezoneService Tz
 @attribute [Authorize]
 
 @if (_isLoading)
@@ -131,7 +132,7 @@ else
                                 <div class="timeline-content">
                                     <div class="timeline-header">
                                         <strong>@GetHistoryTitle(historyItem.ChangeType)</strong>
-                                        <small class="text-muted">@historyItem.ChangedAt.ToString("MMM dd, yyyy 'at' h:mm tt")</small>
+                                        <small class="text-muted">@Tz.FormatDateTime(historyItem.ChangedAt)</small>
                                     </div>
                                     <div class="timeline-body">
                                         <p class="mb-1"><strong>By:</strong> @historyItem.ChangedByName</p>

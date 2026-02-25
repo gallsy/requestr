@@ -85,7 +85,7 @@
         if (value is bool boolVal)
             return boolVal ? "Yes" : "No";
             
-        // Format dates nicely
+        // Format dates nicely (these are reference data values, not UTC timestamps — display as-is)
         if (value is DateTime dateVal)
             return dateVal.ToString("MMM dd, yyyy");
             

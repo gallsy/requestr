@@ -1,5 +1,6 @@
 @* Summary card for bulk requests with key metrics *@
 @using Requestr.Core.Models
+@inject IUserTimezoneService Tz
 
 <div class="bulk-summary-card card mb-4">
     <div class="card-body">
@@ -66,7 +67,7 @@
                 @if (SubmittedAt.HasValue)
                 {
                     <span class="text-muted">
-                        <i class="bi bi-calendar me-1"></i>@SubmittedAt.Value.ToString("MMM dd, yyyy 'at' h:mm tt")
+                        <i class="bi bi-calendar me-1"></i>@Tz.FormatDateTime(SubmittedAt.Value)
                     </span>
                 }
             </div>
@@ -77,7 +78,7 @@
                         <i class="bi bi-check-circle me-1"></i>Processed by @ProcessedBy
                         @if (ProcessedAt.HasValue)
                         {
-                            <span> on @ProcessedAt.Value.ToString("MMM dd, yyyy 'at' h:mm tt")</span>
+                            <span> on @Tz.FormatDateTime(ProcessedAt.Value)</span>
                         }
                     </span>
                 </div>

@@ -1,5 +1,6 @@
 @* Unified summary card for workflow approval - combines context, progress, and step info *@
 @using Requestr.Core.Models
+@inject IUserTimezoneService Tz
 
 <div class="card mb-4">
     <div class="card-body">
@@ -55,7 +56,7 @@
             </span>
             <span>
                 <i class="bi bi-clock me-1"></i>
-                @RequestedAt.ToString(UiHelper.DateTimeFormat)
+                @Tz.FormatDateTime(RequestedAt)
             </span>
         </div>
     </div>

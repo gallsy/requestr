@@ -16,6 +16,7 @@
 @inject ILogger<AllRequests> Logger
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
+@inject IUserTimezoneService Tz
 <PageTitle>Requests Management | @Branding.ApplicationName</PageTitle>
 
 <PageHeader Title="All Requests" Description="@($"View and manage {(_isAdmin ? "all" : "your accessible")} data requests")" />
@@ -185,7 +186,7 @@
                                                     </td>
                                                     <td>@bulkRequest.RequestedByName</td>
                                                     <td>
-                                                        <small>@bulkRequest.RequestedAt.ToString("MMM dd, yyyy")</small>
+                                                        <small>@Tz.FormatDate(bulkRequest.RequestedAt)</small>
                                                     </td>
                                                     <td>
                                                         <a href="/bulk-requests/@bulkRequest.Id" class="btn btn-sm btn-outline-primary">
@@ -212,7 +213,7 @@
                                                     </td>
                                                     <td>@request.RequestedByName</td>
                                                     <td>
-                                                        <small>@request.RequestedAt.ToString("MMM dd, yyyy")</small>
+                                                        <small>@Tz.FormatDate(request.RequestedAt)</small>
                                                     </td>
                                                     <td>
                                                         <a href="/requests/@request.Id" class="btn btn-sm btn-outline-primary">

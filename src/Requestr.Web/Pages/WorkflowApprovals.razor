@@ -19,6 +19,7 @@
 @attribute [Authorize]
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
+@inject IUserTimezoneService Tz
 <PageTitle>Workflow Approvals | @Branding.ApplicationName</PageTitle>
 
 <PageHeader Title="Approvals" Description="Review and process form requests awaiting approval" />
@@ -152,7 +153,7 @@
                                             </td>
                                             <td>@request.RequestedByName</td>
                                             <td>
-                                                <small>@request.RequestedAt.ToString("MMM dd, yyyy")</small>
+                                                <small>@Tz.FormatDate(request.RequestedAt)</small>
                                             </td>
                                             <td>
                                                 <button class="btn btn-sm btn-outline-primary" 

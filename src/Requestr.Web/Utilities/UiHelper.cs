@@ -1,4 +1,5 @@
 using Requestr.Core.Models;
+using Requestr.Web.Services;
 
 namespace Requestr.Web.Utilities;
 
@@ -218,4 +219,24 @@ public static class UiHelper
         if (ts.TotalDays < 365)    return $"{(int)(ts.TotalDays / 30)}mo ago";
         return $"{(int)(ts.TotalDays / 365)}y ago";
     }
+
+    // ==========================================
+    // Timezone-Aware Display Formatting
+    // ==========================================
+
+    /// <summary>Converts a UTC DateTime to the user's local time and formats with date + time.</summary>
+    public static string FormatUserDateTime(DateTime utcDateTime, IUserTimezoneService tz)
+        => tz.FormatDateTime(utcDateTime);
+
+    /// <summary>Converts a UTC DateTime to the user's local time and formats with date only.</summary>
+    public static string FormatUserDate(DateTime utcDateTime, IUserTimezoneService tz)
+        => tz.FormatDate(utcDateTime);
+
+    /// <summary>Converts a nullable UTC DateTime to the user's local time and formats with date + time.</summary>
+    public static string FormatUserDateTime(DateTime? utcDateTime, IUserTimezoneService tz, string fallback = "")
+        => tz.FormatDateTime(utcDateTime, fallback);
+
+    /// <summary>Converts a nullable UTC DateTime to the user's local time and formats with date only.</summary>
+    public static string FormatUserDate(DateTime? utcDateTime, IUserTimezoneService tz, string fallback = "")
+        => tz.FormatDate(utcDateTime, fallback);
 }

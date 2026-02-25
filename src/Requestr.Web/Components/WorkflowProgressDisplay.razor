@@ -5,6 +5,7 @@
 @inject IWorkflowProgressService WorkflowProgressService
 @inject ILogger<WorkflowProgressDisplay> Logger
 @inject NavigationManager Navigation
+@inject IUserTimezoneService Tz
 
 @if (ShowCompact)
 {
@@ -167,7 +168,7 @@ else
                                         {
                                             <div class="mt-1">
                                                 <small class="text-muted">
-                                                    @step.StartedAt.Value.ToString(UiHelper.DateTimeFormat)
+                                                    @Tz.FormatDateTime(step.StartedAt.Value)
                                                     @if (step.CompletedAt.HasValue && step.StepType == WorkflowStepType.End)
                                                     {
                                                         <span class="ms-2">(@((step.CompletedAt.Value - step.StartedAt.Value).TotalMinutes < 1 ? "<1 min" : $"{(int)(step.CompletedAt.Value - step.StartedAt.Value).TotalMinutes} min"))</span>
@@ -260,7 +261,7 @@ else
                                                 {
                                                     <div class="mb-1">
                                                         <small class="text-muted">
-                                                            Started: @step.StartedAt.Value.ToString(UiHelper.DateTimeFormat)
+                                                            Started: @Tz.FormatDateTime(step.StartedAt.Value)
                                                             @if (step.DaysInStep > 0)
                                                             {
                                                                 <span class="ms-2">(@step.DaysInStep days)</span>
@@ -273,7 +274,7 @@ else
                                                 {
                                                     <div class="mb-1">
                                                         <small class="text-muted">
-                                                            Completed: @step.CompletedAt.Value.ToString(UiHelper.DateTimeFormat)
+                                                            Completed: @Tz.FormatDateTime(step.CompletedAt.Value)
                                                             by @(step.CompletedByName ?? step.CompletedBy)
                                                         </small>
                                                     </div>

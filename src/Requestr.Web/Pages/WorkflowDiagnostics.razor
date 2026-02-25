@@ -12,6 +12,7 @@
 @attribute [Authorize(Roles = "Admin")]
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
+@inject IUserTimezoneService Tz
 <PageTitle>Workflow Diagnostics | @Branding.ApplicationName</PageTitle>
 
 <PageHeader Title="Workflow Diagnostics" Description="Identify and fix workflow completion issues">
@@ -143,9 +144,9 @@
                                             </td>
                                             <td>
                                                 <div>
-                                                    @request.RequestedAt.ToString("MMM dd, yyyy")
+                                                    @Tz.FormatDate(request.RequestedAt)
                                                     <br />
-                                                    <small class="text-muted">@request.RequestedAt.ToString("HH:mm")</small>
+                                                    <small class="text-muted">@Tz.FormatTime(request.RequestedAt)</small>
                                                 </div>
                                             </td>
                                             <td>
