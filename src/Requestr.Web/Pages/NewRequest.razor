@@ -7,6 +7,7 @@
 @inject ILogger<NewRequest> Logger
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JSRuntime
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
 <PageTitle>Create New Request | @Branding.ApplicationName</PageTitle>
@@ -14,7 +15,7 @@
 <PageHeader Title="New Request" 
             Description="Choose a form below to submit a new request." />
 
-@if (_isLoading)
+@if (_isLoading || !_viewPreferenceLoaded)
 {
     <LoadingSpinner />
 }
@@ -32,157 +33,216 @@ else if (_forms == null || !_forms.Any())
 }
 else
 {
-    <div class="mb-4">
-        <ul class="nav nav-pills">
-            <li class="nav-item">
-                <button class="nav-link @(_selectedCategory == null ? "active" : "")" @onclick="() => SelectCategory(null)">
-                    All Forms
-                </button>
-            </li>
-            @foreach (var category in _categories)
+    @* --- Filter bar --- *@
+    <div class="filter-bar mb-4">
+        <div class="row g-3 align-items-center">
+            <div class="col-12 col-md">
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" placeholder="Search forms..." 
+                           @bind="_searchText" @bind:event="oninput" @onkeyup="ApplyFilters" />
+                    @if (!string.IsNullOrEmpty(_searchText))
+                    {
+                        <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    }
+                </div>
+            </div>
+            @if (_categories.Count > 0)
             {
-                <li class="nav-item">
-                    <button class="nav-link @(_selectedCategory == category ? "active" : "")" @onclick="() => SelectCategory(category)">
-                        @(string.IsNullOrEmpty(category) ? "Uncategorized" : category)
+                <div class="col-12 col-md-auto">
+                    <select class="form-select" @onchange="OnCategoryChanged">
+                        <option value="">All Categories</option>
+                        @foreach (var category in _categories.OrderBy(c => c))
+                        {
+                            <option value="@category" selected="@(_selectedCategory == category)">@category</option>
+                        }
+                    </select>
+                </div>
+            }
+            <div class="col-auto d-flex align-items-center gap-2">
+                <span class="text-muted small">@_filteredForms.Count form@(_filteredForms.Count != 1 ? "s" : "")</span>
+                <div class="btn-group btn-group-sm" role="group" aria-label="View toggle">
+                    <button type="button" class="btn @(_viewMode == ViewMode.Card ? "btn-primary" : "btn-outline-secondary")" 
+                            @onclick="() => SetViewMode(ViewMode.Card)" title="Card view">
+                        <i class="bi bi-grid-3x3-gap-fill"></i>
                     </button>
-                </li>
-            }
-        </ul>
+                    <button type="button" class="btn @(_viewMode == ViewMode.List ? "btn-primary" : "btn-outline-secondary")" 
+                            @onclick="() => SetViewMode(ViewMode.List)" title="List view">
+                        <i class="bi bi-list-ul"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
-    
-    @foreach (var categoryGroup in _groupedForms)
-    {
-        var category = categoryGroup.Key;
-        var forms = categoryGroup.Value;
-        
-        <div class="category-section mb-5">
-            @if (!string.IsNullOrEmpty(category))
-            {
-                <div class="category-header">
-                    <h3 class="category-title">@category</h3>
-                    <div class="category-line"></div>
-                </div>
-            }
-            else if (_groupedForms.Count > 1) // Only show "Uncategorized" if there are other categories
-            {
-                <div class="category-header">
-                    <h3 class="category-title">Uncategorized</h3>
-                    <div class="category-line"></div>
-                </div>
-            }
 
-            <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-                @foreach (var form in forms)
+    @if (!_filteredForms.Any())
+    {
+        <EmptyState Title="No Matching Forms" 
+                    Description="No forms match your current filters. Try adjusting your search or category.">
+            <Action>
+                <Button Color="ButtonColor.Secondary" @onclick="ClearAllFilters">
+                    <Icon Name="IconName.XCircle" class="me-2" />
+                    Clear Filters
+                </Button>
+            </Action>
+        </EmptyState>
+    }
+    else if (_viewMode == ViewMode.Card)
+    {
+        @* --- Card view --- *@
+        @foreach (var categoryGroup in _displayGroupedForms)
+        {
+            var category = categoryGroup.Key;
+            var forms = categoryGroup.Value;
+
+            <div class="category-section mb-5">
+                @if (_displayGroupedForms.Count > 1 || !string.IsNullOrEmpty(category))
                 {
-                    <div class="col">
-                        <div class="card h-100 form-card">
-                            <div class="card-header">
-                                <h5 class="card-title mb-0">@form.Name</h5>
-                            </div>
-                            <div class="card-body">
-                                @if (!string.IsNullOrEmpty(form.Description))
-                                {
-                                    <p class="card-text">@form.Description</p>
-                                }
-                                
-                                <div class="form-details">
-                                    <div class="form-detail-item">
-                                        <i class="bi bi-server me-2"></i>
-                                        <span>@form.DatabaseConnectionName</span>
-                                    </div>
-                                    <div class="form-detail-item">
-                                        <i class="bi bi-table me-2"></i>
-                                        <span>@form.TableName</span>
-                                    </div>
-                                    <div class="form-detail-item">
-                                        <i class="bi bi-card-checklist me-2"></i>
-                                        <span>@form.Fields.Count fields</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="card-footer">
-                                <div class="btn-group-vertical w-100" role="group">
-                                    <!-- Fill Out Form - Requires CreateRequest permission -->
-                                    <DynamicAuthorizeView FormDefinitionId="@form.Id" Permission="FormPermissionType.CreateRequest">
-                                        <a href="/forms/@form.Id" class="btn btn-primary mb-2">
-                                            <i class="bi bi-pencil-square me-2"></i>
-                                            Fill Out Form
-                                        </a>
-                                    </DynamicAuthorizeView>
-                                    
-                                    <div class="btn-group w-100" role="group">
-                                        <!-- Bulk Upload - Requires BulkUpload permission -->
-                                        <DynamicAuthorizeView FormDefinitionId="@form.Id" Permission="FormPermissionType.BulkUploadCsv">
-                                            <a href="/forms/@form.Id/bulk-upload" class="btn btn-outline-primary">
-                                                <i class="bi bi-upload me-2"></i>
-                                                Bulk Upload
-                                            </a>
-                                        </DynamicAuthorizeView>
-                                        
-                                        <!-- View Data - Requires ViewData permission -->
-                                        <DynamicAuthorizeView FormDefinitionId="@form.Id" Permission="FormPermissionType.ViewData">
-                                            <a href="/data-view/@form.Id" class="btn btn-outline-secondary">
-                                                <i class="bi bi-table me-2"></i>
-                                                View Data
-                                            </a>
-                                        </DynamicAuthorizeView>
-                                    </div>
-                                </div>
-                                
-                                <!-- Show message if user has no permissions -->
-                                <DynamicAuthorizeView FormDefinitionId="@form.Id" 
-                                                      AnyPermissions="new[] { FormPermissionType.CreateRequest, FormPermissionType.BulkUploadCsv, FormPermissionType.ViewData }">
-                                    <NotAuthorized>
-                                        <StandardAlert AlertType="warning" 
-                                                     Dismissable="false">
-                                            <small class="text-muted">
-                                                You don't have permissions to access this form. Contact your administrator.
-                                            </small>
-                                        </StandardAlert>
-                                    </NotAuthorized>
-                                </DynamicAuthorizeView>
-                            </div>
-                        </div>
+                    <div class="category-header">
+                        <h3 class="category-title">@(string.IsNullOrEmpty(category) ? "Uncategorized" : category)</h3>
+                        <div class="category-line"></div>
                     </div>
                 }
+
+                <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+                    @foreach (var form in forms)
+                    {
+                        <div class="col">
+                            <div class="card h-100 form-card">
+                                <div class="card-header">
+                                    <h5 class="card-title mb-0">@form.Name</h5>
+                                </div>
+                                <div class="card-body">
+                                    @if (!string.IsNullOrEmpty(form.Description))
+                                    {
+                                        <p class="card-text">@form.Description</p>
+                                    }
+
+                                    <div class="form-details">
+                                        <div class="form-detail-item">
+                                            <i class="bi bi-table me-2"></i>
+                                            <span>@form.TableName</span>
+                                        </div>
+                                        <div class="form-detail-item">
+                                            <i class="bi bi-card-checklist me-2"></i>
+                                            <span>@form.Fields.Count fields</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-footer">
+                                    <FormActionButtons Form="form" />
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
             </div>
+        }
+    }
+    else
+    {
+        @* --- List / table view --- *@
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th class="d-none d-md-table-cell">Category</th>
+                        <th class="d-none d-md-table-cell">Table</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var form in _filteredForms)
+                    {
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">@form.Name</div>
+                                @if (!string.IsNullOrEmpty(form.Description))
+                                {
+                                    <small class="text-muted d-block text-truncate" style="max-width: 350px;">@form.Description</small>
+                                }
+                            </td>
+                            <td class="d-none d-md-table-cell">
+                                @if (!string.IsNullOrEmpty(form.Category))
+                                {
+                                    <span class="badge bg-light text-dark border">@form.Category</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td class="d-none d-md-table-cell text-muted small">@form.TableName</td>
+                            <td class="text-end">
+                                <FormActionButtons Form="form" Compact="true" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
         </div>
     }
 }
 
 @code {
     private List<FormDefinition>? _forms;
+    private List<FormDefinition> _filteredForms = new();
+    private Dictionary<string, List<FormDefinition>> _displayGroupedForms = new();
     private bool _isLoading = true;
+    private bool _viewPreferenceLoaded = false;
     private string? _selectedCategory;
+    private string _searchText = string.Empty;
     private HashSet<string> _categories = new();
-    private Dictionary<string, List<FormDefinition>> _groupedForms = new();
+    private ViewMode _viewMode = ViewMode.Card;
+
+    private enum ViewMode { Card, List }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var stored = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "requestr-forms-view");
+                if (Enum.TryParse<ViewMode>(stored, out var mode))
+                {
+                    _viewMode = mode;
+                }
+            }
+            catch { }
+            finally
+            {
+                _viewPreferenceLoaded = true;
+                StateHasChanged();
+            }
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            // Get current user
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
 
-            // Get all active forms
             var allForms = await FormDefinitionService.GetActiveAsync();
 
-            // Filter forms based on user permissions - user must have at least one permission to see the form
             _forms = new List<FormDefinition>();
-            
+
             if (allForms != null)
             {
                 foreach (var form in allForms)
                 {
-                    // Check if user has any permission for this form
                     var hasAnyPermission = await FormAuthorizationService.UserHasAnyPermissionAsync(user, form.Id,
                         FormPermissionType.CreateRequest,
                         FormPermissionType.UpdateRequest,
                         FormPermissionType.ViewData,
                         FormPermissionType.BulkUploadCsv,
                         FormPermissionType.BulkActions);
-                    
+
                     if (hasAnyPermission)
                     {
                         _forms.Add(form);
@@ -190,7 +250,7 @@ else
                 }
             }
 
-            // Extract categories and group forms
+            // Extract categories
             if (_forms != null)
             {
                 foreach (var form in _forms)
@@ -200,19 +260,13 @@ else
                     {
                         _categories.Add(category);
                     }
-                    
-                    if (!_groupedForms.ContainsKey(category))
-                    {
-                        _groupedForms[category] = new List<FormDefinition>();
-                    }
-                    
-                    _groupedForms[category].Add(form);
                 }
             }
+
+            ApplyFilters();
         }
         catch (Exception ex)
         {
-            // Log error
             Logger.LogError(ex, "Error loading forms");
         }
         finally
@@ -220,51 +274,85 @@ else
             _isLoading = false;
         }
     }
-    
-    private void SelectCategory(string? category)
+
+    private void ApplyFilters()
     {
-        _selectedCategory = category;
-        
-        if (category == null) // "All Forms" selected
+        if (_forms == null) return;
+
+        var filtered = _forms.AsEnumerable();
+
+        // Category filter
+        if (!string.IsNullOrEmpty(_selectedCategory))
         {
-            // Show all categories
-            _groupedForms.Clear();
-            
-            if (_forms != null)
-            {
-                foreach (var form in _forms)
-                {
-                    var formCategory = string.IsNullOrWhiteSpace(form.Category) ? "" : form.Category.Trim();
-                    
-                    if (!_groupedForms.ContainsKey(formCategory))
-                    {
-                        _groupedForms[formCategory] = new List<FormDefinition>();
-                    }
-                    
-                    _groupedForms[formCategory].Add(form);
-                }
-            }
+            filtered = filtered.Where(f =>
+                !string.IsNullOrWhiteSpace(f.Category) && f.Category.Trim() == _selectedCategory);
         }
-        else // Specific category selected
+
+        // Text search
+        if (!string.IsNullOrWhiteSpace(_searchText))
         {
-            // Only show the selected category
-            _groupedForms.Clear();
-            
-            if (_forms != null)
-            {
-                var formsInCategory = _forms.Where(f => 
-                    (string.IsNullOrWhiteSpace(category) && string.IsNullOrWhiteSpace(f.Category)) || 
-                    (!string.IsNullOrWhiteSpace(f.Category) && f.Category.Trim() == category)).ToList();
-                
-                _groupedForms[category] = formsInCategory;
-            }
+            var search = _searchText.Trim();
+            filtered = filtered.Where(f =>
+                f.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                (!string.IsNullOrEmpty(f.Category) && f.Category.Contains(search, StringComparison.OrdinalIgnoreCase)));
         }
-        
+
+        _filteredForms = filtered.ToList();
+
+        // Rebuild grouped forms for card view
+        _displayGroupedForms.Clear();
+        foreach (var form in _filteredForms)
+        {
+            var category = string.IsNullOrWhiteSpace(form.Category) ? "" : form.Category.Trim();
+            if (!_displayGroupedForms.ContainsKey(category))
+            {
+                _displayGroupedForms[category] = new List<FormDefinition>();
+            }
+            _displayGroupedForms[category].Add(form);
+        }
+
         StateHasChanged();
+    }
+
+    private void OnCategoryChanged(ChangeEventArgs e)
+    {
+        _selectedCategory = e.Value?.ToString();
+        if (string.IsNullOrEmpty(_selectedCategory)) _selectedCategory = null;
+        ApplyFilters();
+    }
+
+    private void ClearSearch()
+    {
+        _searchText = string.Empty;
+        ApplyFilters();
+    }
+
+    private void ClearAllFilters()
+    {
+        _searchText = string.Empty;
+        _selectedCategory = null;
+        ApplyFilters();
+    }
+
+    private async Task SetViewMode(ViewMode mode)
+    {
+        _viewMode = mode;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "requestr-forms-view", mode.ToString());
+        }
+        catch { }
     }
 }
 
 <style>
+    .filter-bar {
+        padding: 1rem;
+        background-color: var(--card-bg, var(--bs-body-bg));
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+    }
+
     .form-card {
         border-radius: var(--border-radius);
         overflow: hidden;
@@ -285,14 +373,12 @@ else
         font-size: 0.875rem;
     }
 
-
-    
     .category-header {
         display: flex;
         align-items: center;
         margin-bottom: 1.5rem;
     }
-    
+
     .category-title {
         margin-bottom: 0;
         margin-right: 1rem;
@@ -300,33 +386,10 @@ else
         font-weight: 600;
         color: var(--primary);
     }
-    
+
     .category-line {
         flex-grow: 1;
         height: 1px;
         background-color: var(--border-color);
-    }
-    
-    .nav-pills {
-        margin-bottom: 2rem;
-        gap: 0.5rem;
-    }
-    
-    .nav-pills .nav-link {
-        border-radius: var(--border-radius);
-        padding: 0.5rem 1rem;
-        color: var(--text-color);
-        background-color: var(--light);
-        border: 1px solid var(--border-color);
-        transition: all 0.2s ease;
-    }
-    
-    .nav-pills .nav-link:hover:not(.active) {
-        background-color: rgba(0, 0, 0, 0.05);
-    }
-    
-    .nav-pills .nav-link.active {
-        background-color: var(--primary);
-        color: white;
     }
 </style>

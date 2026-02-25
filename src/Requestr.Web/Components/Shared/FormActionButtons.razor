@@ -1,0 +1,70 @@
+@using Requestr.Core.Models
+@using Requestr.Web.Authorization
+
+@if (Compact)
+{
+    <div class="d-flex gap-1 justify-content-end flex-wrap">
+        <DynamicAuthorizeView FormDefinitionId="@Form.Id" Permission="FormPermissionType.CreateRequest">
+            <a href="/forms/@Form.Id" class="btn btn-sm btn-primary" title="New Request">
+                <i class="bi bi-pencil-square"></i>
+                <span class="d-none d-xl-inline ms-1">New</span>
+            </a>
+        </DynamicAuthorizeView>
+        <DynamicAuthorizeView FormDefinitionId="@Form.Id" Permission="FormPermissionType.BulkUploadCsv">
+            <a href="/forms/@Form.Id/bulk-upload" class="btn btn-sm btn-outline-primary" title="Bulk Upload">
+                <i class="bi bi-upload"></i>
+            </a>
+        </DynamicAuthorizeView>
+        <DynamicAuthorizeView FormDefinitionId="@Form.Id" Permission="FormPermissionType.ViewData">
+            <a href="/data-view/@Form.Id" class="btn btn-sm btn-outline-secondary" title="View Data">
+                <i class="bi bi-table"></i>
+            </a>
+        </DynamicAuthorizeView>
+    </div>
+}
+else
+{
+    <div class="btn-group-vertical w-100" role="group">
+        <DynamicAuthorizeView FormDefinitionId="@Form.Id" Permission="FormPermissionType.CreateRequest">
+            <a href="/forms/@Form.Id" class="btn btn-primary mb-2">
+                <i class="bi bi-pencil-square me-2"></i>
+                New Request
+            </a>
+        </DynamicAuthorizeView>
+
+        <div class="btn-group w-100" role="group">
+            <DynamicAuthorizeView FormDefinitionId="@Form.Id" Permission="FormPermissionType.BulkUploadCsv">
+                <a href="/forms/@Form.Id/bulk-upload" class="btn btn-outline-primary">
+                    <i class="bi bi-upload me-2"></i>
+                    Bulk Upload
+                </a>
+            </DynamicAuthorizeView>
+
+            <DynamicAuthorizeView FormDefinitionId="@Form.Id" Permission="FormPermissionType.ViewData">
+                <a href="/data-view/@Form.Id" class="btn btn-outline-secondary">
+                    <i class="bi bi-table me-2"></i>
+                    View Data
+                </a>
+            </DynamicAuthorizeView>
+        </div>
+    </div>
+
+    <DynamicAuthorizeView FormDefinitionId="@Form.Id"
+                          AnyPermissions="new[] { FormPermissionType.CreateRequest, FormPermissionType.BulkUploadCsv, FormPermissionType.ViewData }">
+        <NotAuthorized>
+            <StandardAlert AlertType="warning" Dismissable="false">
+                <small class="text-muted">
+                    You don't have permissions to access this form. Contact your administrator.
+                </small>
+            </StandardAlert>
+        </NotAuthorized>
+    </DynamicAuthorizeView>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public FormDefinition Form { get; set; } = default!;
+
+    [Parameter]
+    public bool Compact { get; set; } = false;
+}
