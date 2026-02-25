@@ -208,9 +208,17 @@ else
                             {
                                 <div class="row">
                                     <div class="col-md-12 mb-3">
-                                        <label class="form-label">Comments</label>
-                                        <textarea class="form-control" rows="3" @bind="_approvalComments" 
+                                        <label class="form-label">Comments @(_formDefinition?.RequiresApprovalComments == true ? "*" : "")</label>
+                                        <textarea class="form-control @(_commentsValidationError != null ? "is-invalid" : "")" rows="3" @bind="_approvalComments" 
                                                   placeholder="Add any comments about this approval/rejection..."></textarea>
+                                        @if (_commentsValidationError != null)
+                                        {
+                                            <div class="invalid-feedback">@_commentsValidationError</div>
+                                        }
+                                        @if (_formDefinition?.RequiresApprovalComments == true)
+                                        {
+                                            <small class="form-text text-muted">Minimum 10 characters required</small>
+                                        }
                                     </div>
                                 </div>
                                 
@@ -289,6 +297,7 @@ else
     private List<WorkflowStepFieldConfiguration> _fieldConfigurations = new();
     
     private string _approvalComments = "";
+    private string? _commentsValidationError;
     private string _errorMessage = "";
     private string _successMessage = "";
     private bool _isLoading = true;
@@ -534,6 +543,16 @@ else
             _actionType = actionType;
             _errorMessage = "";
             _successMessage = "";
+            _commentsValidationError = null;
+
+            // Validate comments if required
+            if (_formDefinition?.RequiresApprovalComments == true && (_approvalComments?.Trim().Length ?? 0) < 10)
+            {
+                _commentsValidationError = "Comments are required and must be at least 10 characters.";
+                _errorMessage = "Please provide comments (minimum 10 characters).";
+                _isProcessing = false;
+                return;
+            }
 
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             var currentUser = UserIdentityHelper.GetUserId(authState.User);

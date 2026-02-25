@@ -187,7 +187,6 @@
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("console.error", $"Error loading forms: {ex.Message}");
             toastService.ShowError($"Error loading forms: {ex.Message}");
         }
         finally

@@ -14,9 +14,8 @@
     private bool _isDarkMode;
     private DotNetObjectReference<ThemeToggle>? _dotNetRef;
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        await LoadThemeFromStorage();
         _isDarkMode = ThemeService.IsDarkMode;
         ThemeService.OnThemeChanged += OnThemeChanged;
     }
@@ -25,9 +24,12 @@
     {
         if (firstRender)
         {
+            await LoadThemeFromStorage();
+            _isDarkMode = ThemeService.IsDarkMode;
+            StateHasChanged();
+
             _dotNetRef = DotNetObjectReference.Create(this);
             await RegisterStorageListener();
-            // Call init with current .NET instance to receive storage events
             try { await JSRuntime.InvokeVoidAsync("RequestrThemeSyncInit", _dotNetRef); } catch {}
         }
     }
