@@ -985,7 +985,7 @@ button.nav-link.active {
 .timeline::before {
     content: '';
     position: absolute;
-    left: 20px;
+    left: 15px;
     top: 0;
     bottom: 0;
     width: 2px;
@@ -994,8 +994,29 @@ button.nav-link.active {
 
 .timeline-item {
     position: relative;
-    padding-left: 50px;
+    padding-left: 44px;
     margin-bottom: 1.5rem;
+}
+
+.timeline-item.compact {
+    margin-bottom: 0.75rem;
+}
+
+.timeline-item.compact .timeline-content {
+    background: transparent;
+    border: none;
+    padding: 0.125rem 0;
+}
+
+.timeline-item.compact .timeline-content .timeline-body {
+    display: none;
+}
+
+.timeline-item.compact .timeline-marker {
+    width: 30px;
+    height: 30px;
+    font-size: 0.85rem;
+    left: 0;
 }
 
 .timeline-item:last-child {
@@ -1004,15 +1025,15 @@ button.nav-link.active {
 
 .timeline-marker {
     position: absolute;
-    left: 0;
+    left: -1px;
     top: 0;
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1rem;
+    font-size: 0.9rem;
     color: #ffffff;
     border: 3px solid var(--bg-color);
     z-index: 1;
@@ -1023,7 +1044,6 @@ button.nav-link.active {
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     padding: 1rem;
-    margin-left: 10px;
     color: var(--text-color);
 }
 
@@ -1047,20 +1067,20 @@ button.nav-link.active {
     color: var(--text-color);
 }
 
-/* Compact timeline */
+/* Compact timeline (used in table/list views) */
 .timeline-sm::before {
-    left: 15px;
+    left: 12px;
 }
 
 .timeline-sm .timeline-item {
-    padding-left: 40px;
+    padding-left: 36px;
     margin-bottom: 1rem;
 }
 
 .timeline-sm .timeline-marker {
-    width: 30px;
-    height: 30px;
-    font-size: 0.8rem;
+    width: 26px;
+    height: 26px;
+    font-size: 0.75rem;
 }
 
 .timeline-sm .timeline-content {

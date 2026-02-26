@@ -79,7 +79,7 @@ public class WorkflowProgressService : IWorkflowProgressService
             Comments = step.Comments,
             IsCurrent = step.StepId == (string)result.CurrentStepId,
             DaysInStep = step.StartedAt != null
-                ? (int)(DateTime.UtcNow - ((DateTime)step.StartedAt)).TotalDays
+                ? (int)((step.CompletedAt != null ? (DateTime)step.CompletedAt : DateTime.UtcNow) - ((DateTime)step.StartedAt)).TotalDays
                 : 0,
             AssignedRoles = ParseAssignedRoles(step.AssignedRoles)
         }).ToList();
@@ -88,7 +88,8 @@ public class WorkflowProgressService : IWorkflowProgressService
         steps = await ReorderStepsByDefinitionAsync(steps, workflowDefinitionId);
 
         var currentStepStartedAt = (DateTime?)result.CurrentStepStartedAt;
-        var daysInCurrentStep = currentStepStartedAt.HasValue
+        var workflowStatus = ParseWorkflowInstanceStatus(result.Status);
+        var daysInCurrentStep = (currentStepStartedAt.HasValue && workflowStatus == WorkflowInstanceStatus.InProgress)
             ? (int)(DateTime.UtcNow - currentStepStartedAt.Value).TotalDays
             : 0;
 
@@ -96,7 +97,7 @@ public class WorkflowProgressService : IWorkflowProgressService
         {
             FormRequestId = formRequestId,
             WorkflowInstanceId = workflowInstanceId,
-            Status = ParseWorkflowInstanceStatus(result.Status),
+            Status = workflowStatus,
             WorkflowName = (string)result.WorkflowName,
             CurrentStepId = (string)result.CurrentStepId,
             CurrentStepName = (string?)result.CurrentStepName ?? result.CurrentStepId,

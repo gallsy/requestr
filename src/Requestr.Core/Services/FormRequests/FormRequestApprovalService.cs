@@ -391,7 +391,7 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                 },
                 userId,
                 result.ActorName ?? userId,
-                $"Workflow action: {actionType}" + (string.IsNullOrEmpty(sanitizedComments) ? "" : $" - {sanitizedComments}")
+                sanitizedComments
             );
 
             return true;

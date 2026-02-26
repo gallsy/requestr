@@ -5,13 +5,9 @@
     <div class="row align-items-start">
         <div class="col-md-4">
             <label class="form-label text-muted mb-0">@DisplayName</label>
-            @if (HasChanged)
-            {
-                <span class="badge bg-warning text-dark ms-2" style="font-size: 0.7rem;">Changed</span>
-            }
             @if (IsComputed)
             {
-                <span class="badge bg-info text-dark ms-2" style="font-size: 0.7rem;"><i class="bi bi-gear-fill me-1"></i>Auto</span>
+                <i class="bi bi-gear-fill text-info ms-1" style="font-size: 0.75rem;" title="@(ComputedDescription ?? "Auto-computed value")"></i>
             }
         </div>
         <div class="col-md-8">
@@ -74,6 +70,13 @@
     
     private bool HasChanged => (HasOriginal && !AreValuesEqual(OriginalValue, NewValue)) || (HasOriginal && IsComputedPending);
 
+    private string FormatDateTimeUtc(DateTime dt)
+    {
+        // Normalize to UTC and display with UTC indicator
+        var utc = dt.Kind == DateTimeKind.Local ? dt.ToUniversalTime() : dt;
+        return utc.ToString("yyyy-MM-dd HH:mm:ss") + " UTC";
+    }
+
     private string FormatValue(object? value)
     {
         if (value == null) return "(empty)";
@@ -85,9 +88,18 @@
         if (value is bool boolVal)
             return boolVal ? "Yes" : "No";
             
-        // Format dates nicely (these are reference data values, not UTC timestamps — display as-is)
+        // Format dates nicely — display in UTC with a consistent format
         if (value is DateTime dateVal)
-            return dateVal.ToString("MMM dd, yyyy");
+            return FormatDateTimeUtc(dateVal);
+
+        // Handle ISO-8601 date strings from JSON deserialization
+        if (strValue.Length >= 10 && DateTime.TryParse(strValue, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var parsedDate))
+        {
+            // Only treat as datetime if the string looks like an ISO date (contains T or date separators with time)
+            if (strValue.Contains('T') || (strValue.Contains('-') && strValue.Contains(':')))
+                return FormatDateTimeUtc(parsedDate);
+        }
             
         return strValue;
     }
