@@ -66,7 +66,9 @@ public class WorkflowTransitionRepository : IWorkflowTransitionRepository
                 transition.FromStepId,
                 transition.ToStepId,
                 transition.Name,
-                transition.Condition
+                Condition = transition.Condition != null 
+                    ? System.Text.Json.JsonSerializer.Serialize(transition.Condition) 
+                    : null
             },
             transaction);
 

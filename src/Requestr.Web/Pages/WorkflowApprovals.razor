@@ -140,7 +140,14 @@
                                     {
                                         <tr>
                                             <td>
-                                                <strong>#@request.Id</strong>
+                                                @if (request.BulkFormRequestId.HasValue)
+                                                {
+                                                    <strong>Bulk #@request.BulkFormRequestId</strong>
+                                                }
+                                                else
+                                                {
+                                                    <strong>#@request.Id</strong>
+                                                }
                                             </td>
                                             <td>@request.FormDefinition?.Name</td>
                                             <td>
@@ -395,15 +402,19 @@
                 }
                 else
                 {
-                    Logger.LogWarning("No appropriate approval step found for user with roles: {UserRoles}", string.Join(", ", UserRoles));
-                    var fallbackUrl = $"/requests/{requestId}";
-                    Logger.LogInformation("Using fallback URL: {FallbackUrl}", fallbackUrl);
+                    // Fallback: navigate to the appropriate detail page
+                    var fallbackUrl = request.BulkFormRequestId.HasValue
+                        ? $"/bulk-requests/{request.BulkFormRequestId}"
+                        : $"/requests/{requestId}";
+                    Logger.LogInformation("No appropriate approval step found, using fallback URL: {FallbackUrl}", fallbackUrl);
                     Navigation.NavigateTo(fallbackUrl);
                 }
             }
             else
             {
-                var fallbackUrl = $"/requests/{requestId}";
+                var fallbackUrl = request?.BulkFormRequestId.HasValue == true
+                    ? $"/bulk-requests/{request.BulkFormRequestId}"
+                    : $"/requests/{requestId}";
                 Logger.LogInformation("No workflow instance, using fallback URL: {FallbackUrl}", fallbackUrl);
                 Navigation.NavigateTo(fallbackUrl);
             }
@@ -411,8 +422,12 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Exception in ViewRequest for requestId: {RequestId}", requestId);
-            // Fallback to the general request view
-            Navigation.NavigateTo($"/requests/{requestId}");
+            // Fallback to the appropriate detail view
+            var request = AllRequests?.FirstOrDefault(r => r.Id == requestId);
+            var fallbackUrl = request?.BulkFormRequestId.HasValue == true
+                ? $"/bulk-requests/{request.BulkFormRequestId}"
+                : $"/requests/{requestId}";
+            Navigation.NavigateTo(fallbackUrl);
         }
     }
 

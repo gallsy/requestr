@@ -102,7 +102,7 @@ public class WorkflowDefinitionRepository : IWorkflowDefinitionRepository
             WorkflowQueries.CreateDefinition,
             new
             {
-                definition.FormDefinitionId,
+                FormDefinitionId = definition.FormDefinitionId > 0 ? (int?)definition.FormDefinitionId : null,
                 definition.Name,
                 definition.Description,
                 definition.Version,
