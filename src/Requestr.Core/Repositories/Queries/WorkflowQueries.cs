@@ -172,8 +172,9 @@ public static class WorkflowQueries
         SELECT wsi.*, COALESCE(u.DisplayName, wsi.CompletedBy) AS CompletedByName
         FROM WorkflowStepInstances wsi
         INNER JOIN WorkflowInstances wi ON wsi.WorkflowInstanceId = wi.Id
+        INNER JOIN STRING_SPLIT(wi.CurrentStepId, ',') AS cs ON LTRIM(RTRIM(cs.value)) = wsi.StepId
         LEFT JOIN Users u ON TRY_CONVERT(uniqueidentifier, wsi.CompletedBy) = u.UserObjectId
-        WHERE wi.Id = @WorkflowInstanceId AND wsi.StepId = wi.CurrentStepId";
+        WHERE wi.Id = @WorkflowInstanceId";
     
     /// <summary>
     /// Gets in-progress step instance.
@@ -288,11 +289,23 @@ public static class WorkflowQueries
             csi.Status as CurrentStepStatus,
             csi.StartedAt as CurrentStepStartedAt,
             csi.AssignedTo as CurrentStepAssignedTo,
-            cs.Name as CurrentStepName
+            cs.Name as CurrentStepName,
+            wi.CurrentStepId as CurrentStepIds
         FROM WorkflowInstances wi
         INNER JOIN WorkflowDefinitions wd ON wi.WorkflowDefinitionId = wd.Id
-        LEFT JOIN WorkflowStepInstances csi ON wi.Id = csi.WorkflowInstanceId AND wi.CurrentStepId = csi.StepId
-        LEFT JOIN WorkflowSteps cs ON wd.Id = cs.WorkflowDefinitionId AND wi.CurrentStepId = cs.StepId
+        OUTER APPLY (
+            SELECT TOP 1 wsi2.Status, wsi2.StartedAt, wsi2.AssignedTo
+            FROM WorkflowStepInstances wsi2
+            INNER JOIN STRING_SPLIT(wi.CurrentStepId, ',') AS cs2 ON LTRIM(RTRIM(cs2.value)) = wsi2.StepId
+            WHERE wsi2.WorkflowInstanceId = wi.Id
+            ORDER BY wsi2.StartedAt ASC
+        ) csi
+        OUTER APPLY (
+            SELECT TOP 1 ws2.Name
+            FROM WorkflowSteps ws2
+            INNER JOIN STRING_SPLIT(wi.CurrentStepId, ',') AS cs3 ON LTRIM(RTRIM(cs3.value)) = ws2.StepId
+            WHERE ws2.WorkflowDefinitionId = wd.Id
+        ) cs
         WHERE wi.FormRequestId = @FormRequestId";
 
     /// <summary>

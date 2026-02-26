@@ -33,6 +33,12 @@ public interface IFormRequestApprovalService
     /// Gets the current workflow step for a form request.
     /// </summary>
     Task<WorkflowStepInstance?> GetCurrentWorkflowStepAsync(int formRequestId);
+
+    /// <summary>
+    /// Gets all current (in-progress) workflow steps for a form request.
+    /// Supports parallel execution where multiple steps are active simultaneously.
+    /// </summary>
+    Task<List<WorkflowStepInstance>> GetCurrentWorkflowStepsAsync(int formRequestId);
     
     /// <summary>
     /// Gets completed workflow steps for a form request.

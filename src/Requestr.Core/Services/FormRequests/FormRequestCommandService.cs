@@ -19,6 +19,7 @@ public class FormRequestCommandService : IFormRequestCommandService
     private readonly IFormDefinitionService _formDefinitionService;
     private readonly IWorkflowDefinitionQueryService _workflowDefinitionQueryService;
     private readonly IWorkflowInstanceService _workflowInstanceService;
+    private readonly IWorkflowExecutionService _workflowExecutionService;
     private readonly IInputValidationService _inputValidationService;
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<FormRequestCommandService> _logger;
@@ -29,6 +30,7 @@ public class FormRequestCommandService : IFormRequestCommandService
         IFormDefinitionService formDefinitionService,
         IWorkflowDefinitionQueryService workflowDefinitionQueryService,
         IWorkflowInstanceService workflowInstanceService,
+        IWorkflowExecutionService workflowExecutionService,
         IInputValidationService inputValidationService,
         IDbConnectionFactory connectionFactory,
         ILogger<FormRequestCommandService> logger)
@@ -38,6 +40,7 @@ public class FormRequestCommandService : IFormRequestCommandService
         _formDefinitionService = formDefinitionService;
         _workflowDefinitionQueryService = workflowDefinitionQueryService;
         _workflowInstanceService = workflowInstanceService;
+        _workflowExecutionService = workflowExecutionService;
         _inputValidationService = inputValidationService;
         _connectionFactory = connectionFactory;
         _logger = logger;
@@ -121,6 +124,19 @@ public class FormRequestCommandService : IFormRequestCommandService
             );
 
             await transaction.CommitAsync();
+
+            // Process pending webhook step if the workflow starts with one (post-commit)
+            if (createdRequest.WorkflowInstanceId.HasValue)
+            {
+                try
+                {
+                    await _workflowExecutionService.ProcessPendingWebhookStepAsync(createdRequest.WorkflowInstanceId.Value);
+                }
+                catch (Exception webhookEx)
+                {
+                    _logger.LogError(webhookEx, "Error processing webhook step for workflow {WorkflowId}", createdRequest.WorkflowInstanceId.Value);
+                }
+            }
             
             return createdRequest;
         }
@@ -261,6 +277,68 @@ public class FormRequestCommandService : IFormRequestCommandService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating status for form request {Id}", id);
+            throw;
+        }
+    }
+
+    public async Task<bool> CancelAsync(int id, string userId, string userName)
+    {
+        try
+        {
+            var request = await _formRequestRepository.GetByIdAsync(id);
+            if (request == null)
+            {
+                _logger.LogWarning("Form request {Id} not found for cancellation", id);
+                return false;
+            }
+
+            if (request.RequestedBy != userId)
+            {
+                _logger.LogWarning("User {UserId} is not the owner of form request {Id}", userId, id);
+                return false;
+            }
+
+            if (request.Status != RequestStatus.Pending)
+            {
+                _logger.LogWarning("Form request {Id} is not in Pending status (Status: {Status})", id, request.Status);
+                return false;
+            }
+
+            // Cancel the workflow if one exists
+            if (request.WorkflowInstanceId.HasValue)
+            {
+                try
+                {
+                    await _workflowInstanceService.CancelWorkflowAsync(
+                        request.WorkflowInstanceId.Value,
+                        userId,
+                        $"Cancelled by requester: {userName}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error cancelling workflow {WorkflowInstanceId} for request {Id}",
+                        request.WorkflowInstanceId.Value, id);
+                }
+            }
+
+            // Update request status to Cancelled
+            await _formRequestRepository.UpdateStatusAsync(id, RequestStatus.Cancelled);
+
+            // Record history
+            await _historyService.RecordChangeAsync(
+                id,
+                FormRequestChangeType.Cancelled,
+                null, null,
+                userId,
+                userName,
+                "Request cancelled by requester");
+
+            _logger.LogInformation("Form request {Id} cancelled by {UserId}", id, userId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cancelling form request {Id}", id);
             throw;
         }
     }

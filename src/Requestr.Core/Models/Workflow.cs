@@ -42,6 +42,9 @@ public class WorkflowStepConfiguration
     // Configuration for parallel steps
     public List<string> ParallelStepIds { get; set; } = new();
     public bool RequireAllParallelSteps { get; set; } = true;
+    
+    // Configuration for webhook steps
+    public WebhookStepConfiguration? Webhook { get; set; }
 }
 
 public class BranchCondition
@@ -95,6 +98,10 @@ public class WorkflowInstance : BaseEntity
     public FormRequest? FormRequest { get; set; }
     public int WorkflowDefinitionId { get; set; }
     public WorkflowDefinition? WorkflowDefinition { get; set; }
+    /// <summary>
+    /// Comma-separated list of currently active step IDs.
+    /// Use <see cref="GetCurrentStepIds"/> and <see cref="SetCurrentStepIds"/> for multi-step access.
+    /// </summary>
     public string CurrentStepId { get; set; } = string.Empty;
     public WorkflowInstanceStatus Status { get; set; } = WorkflowInstanceStatus.InProgress;
     public DateTime StartedAt { get; set; }
@@ -102,6 +109,32 @@ public class WorkflowInstance : BaseEntity
     public string? CompletedBy { get; set; }
     public string? FailureReason { get; set; }
     public List<WorkflowStepInstance> StepInstances { get; set; } = new();
+
+    /// <summary>
+    /// Gets the list of currently active step IDs (supports parallel execution).
+    /// </summary>
+    public List<string> GetCurrentStepIds()
+    {
+        if (string.IsNullOrWhiteSpace(CurrentStepId))
+            return new List<string>();
+        return CurrentStepId.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+    }
+
+    /// <summary>
+    /// Sets the currently active step IDs from a list (supports parallel execution).
+    /// </summary>
+    public void SetCurrentStepIds(List<string> stepIds)
+    {
+        CurrentStepId = string.Join(",", stepIds.Where(s => !string.IsNullOrWhiteSpace(s)));
+    }
+
+    /// <summary>
+    /// Returns true if the given stepId is one of the currently active steps.
+    /// </summary>
+    public bool IsCurrentStep(string stepId)
+    {
+        return GetCurrentStepIds().Any(id => id.Equals(stepId, StringComparison.OrdinalIgnoreCase));
+    }
 }
 
 public class WorkflowStepInstance : BaseEntity

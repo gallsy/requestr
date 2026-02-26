@@ -1,25 +1,31 @@
-@* Summary card for bulk requests with key metrics *@
+@* Summary card for bulk requests — matches RequestSummaryCard style *@
 @using Requestr.Core.Models
+@inject IUserTimezoneService Tz
 
-<div class="bulk-summary-card card mb-4">
+<div class="bulk-summary-card card mb-4 flex-shrink-0">
     <div class="card-body">
-        <!-- Header with form name and request type -->
-        <div class="d-flex justify-content-between align-items-start">
-            <div>
-                <h5 class="card-title mb-1">@FormName</h5>
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                    @if (!string.IsNullOrEmpty(TableName))
-                    {
+        <!-- Header with form name and badges -->
+        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+            <div class="d-flex align-items-center gap-3 min-width-0">
+                <div class="request-type-icon @GetRequestTypeClass()">
+                    <i class="bi @GetRequestTypeIcon()"></i>
+                </div>
+                <div class="min-width-0">
+                    <h5 class="card-title mb-1 text-truncate">@FormName</h5>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        @if (!string.IsNullOrEmpty(TableName))
+                        {
+                            <small class="text-muted">
+                                <i class="bi bi-table me-1"></i>@TableName
+                            </small>
+                        }
                         <small class="text-muted">
-                            <i class="bi bi-table me-1"></i>@TableName
+                            <i class="bi bi-list-ol me-1"></i>@TotalRows rows
                         </small>
-                    }
-                    <small class="text-muted">
-                        <i class="bi bi-list-ol me-1"></i>@TotalRows rows
-                    </small>
+                    </div>
                 </div>
             </div>
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-2 flex-shrink-0 flex-wrap">
                 <span class="badge @GetRequestTypeBadgeClass() fs-6">
                     @GetRequestTypeLabel()
                 </span>
@@ -36,6 +42,34 @@
                 <div class="d-flex align-items-start gap-2">
                     <i class="bi bi-chat-left-text text-muted"></i>
                     <div>@Comments</div>
+                </div>
+            </div>
+        }
+
+        <!-- Rejection reason (if applicable) -->
+        @if (!string.IsNullOrEmpty(RejectionReason))
+        {
+            <div class="mt-3 p-3 bg-danger bg-opacity-10 border border-danger rounded">
+                <div class="d-flex align-items-start gap-2">
+                    <i class="bi bi-x-circle text-danger"></i>
+                    <div>
+                        <strong class="d-block text-danger">Rejection Reason</strong>
+                        @RejectionReason
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Failure message (if application to database failed) -->
+        @if (!string.IsNullOrEmpty(FailureMessage))
+        {
+            <div class="mt-3 p-3 bg-danger bg-opacity-10 border border-danger rounded">
+                <div class="d-flex align-items-start gap-2">
+                    <i class="bi bi-exclamation-triangle text-danger"></i>
+                    <div>
+                        <strong class="d-block text-danger">Error Details</strong>
+                        <span class="text-break">@FailureMessage</span>
+                    </div>
                 </div>
             </div>
         }
@@ -66,7 +100,7 @@
                 @if (SubmittedAt.HasValue)
                 {
                     <span class="text-muted">
-                        <i class="bi bi-calendar me-1"></i>@SubmittedAt.Value.ToString("MMM dd, yyyy 'at' h:mm tt")
+                        <i class="bi bi-calendar me-1"></i>@Tz.FormatDateTime(SubmittedAt.Value)
                     </span>
                 }
             </div>
@@ -77,7 +111,7 @@
                         <i class="bi bi-check-circle me-1"></i>Processed by @ProcessedBy
                         @if (ProcessedAt.HasValue)
                         {
-                            <span> on @ProcessedAt.Value.ToString("MMM dd, yyyy 'at' h:mm tt")</span>
+                            <span> on @Tz.FormatDateTime(ProcessedAt.Value)</span>
                         }
                     </span>
                 </div>
@@ -93,6 +127,8 @@
     [Parameter] public int TotalRows { get; set; }
     [Parameter] public RequestStatus Status { get; set; }
     [Parameter] public string? Comments { get; set; }
+    [Parameter] public string? RejectionReason { get; set; }
+    [Parameter] public string? FailureMessage { get; set; }
     [Parameter] public string? ProcessingSummary { get; set; }
     [Parameter] public string? SubmittedBy { get; set; }
     [Parameter] public DateTime? SubmittedAt { get; set; }
@@ -102,6 +138,8 @@
     private string GetStatusBadgeClass() => UiHelper.GetStatusBadgeClass(Status);
     private string GetRequestTypeBadgeClass() => UiHelper.GetRequestTypeBadgeClass(RequestType);
     private string GetRequestTypeLabel() => UiHelper.GetBulkRequestTypeLabel(RequestType);
+    private string GetRequestTypeIcon() => UiHelper.GetRequestTypeIcon(RequestType);
+    private string GetRequestTypeClass() => UiHelper.GetRequestTypeClass(RequestType);
 
     private string GetProcessingSummaryBackgroundClass() => Status switch
     {
@@ -124,3 +162,21 @@
         _ => "text-info"
     };
 }
+
+<style>
+    .bulk-summary-card .d-flex.min-width-0,
+    .bulk-summary-card .min-width-0 {
+        min-width: 0;
+    }
+
+    .bulk-summary-card .request-type-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        flex-shrink: 0;
+    }
+</style>

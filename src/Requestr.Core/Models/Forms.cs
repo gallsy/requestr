@@ -12,6 +12,8 @@ public class FormDefinition : AuditableEntity, ISoftDeletable
     public List<FormSection> Sections { get; set; } = new(); // New: Form sections for layout
     public List<string> ApproverRoles { get; set; } = new(); // Legacy - will be replaced by workflow system
     public bool RequiresApproval { get; set; } = true;
+    public bool RequiresRequestComments { get; set; } = false;
+    public bool RequiresApprovalComments { get; set; } = false;
     public bool IsActive { get; set; } = true;
     
     // Soft delete support

@@ -51,6 +51,7 @@ builder.Services.AddBlazorBootstrap();
 
 // Add application services
 builder.Services.AddRequestrCore();
+builder.Services.AddHttpClient("Webhook");
 
 // Branding options
 builder.Services.Configure<AppBrandingOptions>(builder.Configuration.GetSection("AppBranding"));
@@ -61,6 +62,9 @@ builder.Services.AddScoped<IFormAuthorizationService, FormAuthorizationService>(
 
 // Add toast notification service
 builder.Services.AddScoped<Requestr.Web.Services.IToastNotificationService, Requestr.Web.Services.ToastNotificationService>();
+
+// Add user timezone service (scoped = per Blazor circuit)
+builder.Services.AddScoped<Requestr.Web.Services.IUserTimezoneService, Requestr.Web.Services.UserTimezoneService>();
 
 // Configure authorization
 builder.Services.AddAuthorization(options =>

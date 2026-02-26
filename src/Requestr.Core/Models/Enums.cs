@@ -6,7 +6,8 @@ public enum RequestStatus
     Approved,
     Rejected,
     Applied,
-    Failed  // Added for when application to target database fails
+    Failed,     // When application to target database fails
+    Cancelled   // When requester cancels their own request
 }
 
 public enum FormRequestChangeType
@@ -22,7 +23,8 @@ public enum FormRequestChangeType
     WorkflowStepCompleted = 8,
     WorkflowStepApproved = 9,
     WorkflowStepRejected = 10,
-    WorkflowCompleted = 11
+    WorkflowCompleted = 11,
+    Cancelled = 12
 }
 
 public enum RequestType
@@ -61,7 +63,14 @@ public enum WorkflowStepType
     End = 1,
     Approval = 2,
     Parallel = 3,
-    Branch = 4
+    Branch = 4,
+    Webhook = 5
+}
+
+public enum WebhookAuthType
+{
+    None = 0,
+    ManagedIdentity = 1
 }
 
 public enum WorkflowInstanceStatus

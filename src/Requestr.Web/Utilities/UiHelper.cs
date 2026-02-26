@@ -1,4 +1,5 @@
 using Requestr.Core.Models;
+using Requestr.Web.Services;
 
 namespace Requestr.Web.Utilities;
 
@@ -30,6 +31,7 @@ public static class UiHelper
         RequestStatus.Rejected => "bg-danger",
         RequestStatus.Applied  => "bg-info",
         RequestStatus.Failed   => "bg-danger",
+        RequestStatus.Cancelled => "bg-secondary",
         _ => "bg-secondary"
     };
 
@@ -41,6 +43,7 @@ public static class UiHelper
         RequestStatus.Rejected => "danger",
         RequestStatus.Applied  => "info",
         RequestStatus.Failed   => "danger",
+        RequestStatus.Cancelled => "secondary",
         _ => "secondary"
     };
 
@@ -52,6 +55,7 @@ public static class UiHelper
         RequestStatus.Rejected => "bi-x-circle-fill",
         RequestStatus.Applied  => "bi-check2-all",
         RequestStatus.Failed   => "bi-exclamation-triangle-fill",
+        RequestStatus.Cancelled => "bi-dash-circle",
         _ => "bi-info-circle"
     };
 
@@ -63,6 +67,7 @@ public static class UiHelper
         RequestStatus.Rejected => "text-danger",
         RequestStatus.Applied  => "text-info",
         RequestStatus.Failed   => "text-danger",
+        RequestStatus.Cancelled => "text-secondary",
         _ => "text-muted"
     };
 
@@ -74,6 +79,7 @@ public static class UiHelper
         RequestStatus.Rejected => "bg-danger bg-opacity-10",
         RequestStatus.Applied  => "bg-info bg-opacity-10",
         RequestStatus.Failed   => "bg-danger bg-opacity-10",
+        RequestStatus.Cancelled => "bg-secondary bg-opacity-10",
         _ => "bg-light"
     };
 
@@ -86,6 +92,7 @@ public static class UiHelper
         RequestStatus.Rejected => "Rejected",
         RequestStatus.Applied  => "Complete",
         RequestStatus.Failed   => "Failed",
+        RequestStatus.Cancelled => "Cancelled",
         _ => "Status"
     };
 
@@ -104,6 +111,8 @@ public static class UiHelper
             "This request has been completed and the changes are now in the database.",
         RequestStatus.Failed =>
             "This request failed to apply. An administrator can retry the operation.",
+        RequestStatus.Cancelled =>
+            "This request was cancelled by the requester.",
         _ => ""
     };
 
@@ -199,6 +208,7 @@ public static class UiHelper
         FormRequestChangeType.WorkflowStepApproved   => "bg-success",
         FormRequestChangeType.WorkflowStepRejected   => "bg-danger",
         FormRequestChangeType.WorkflowCompleted      => "bg-success",
+        FormRequestChangeType.Cancelled              => "bg-secondary",
         _ => "bg-secondary"
     };
 
@@ -218,4 +228,24 @@ public static class UiHelper
         if (ts.TotalDays < 365)    return $"{(int)(ts.TotalDays / 30)}mo ago";
         return $"{(int)(ts.TotalDays / 365)}y ago";
     }
+
+    // ==========================================
+    // Timezone-Aware Display Formatting
+    // ==========================================
+
+    /// <summary>Converts a UTC DateTime to the user's local time and formats with date + time.</summary>
+    public static string FormatUserDateTime(DateTime utcDateTime, IUserTimezoneService tz)
+        => tz.FormatDateTime(utcDateTime);
+
+    /// <summary>Converts a UTC DateTime to the user's local time and formats with date only.</summary>
+    public static string FormatUserDate(DateTime utcDateTime, IUserTimezoneService tz)
+        => tz.FormatDate(utcDateTime);
+
+    /// <summary>Converts a nullable UTC DateTime to the user's local time and formats with date + time.</summary>
+    public static string FormatUserDateTime(DateTime? utcDateTime, IUserTimezoneService tz, string fallback = "")
+        => tz.FormatDateTime(utcDateTime, fallback);
+
+    /// <summary>Converts a nullable UTC DateTime to the user's local time and formats with date only.</summary>
+    public static string FormatUserDate(DateTime? utcDateTime, IUserTimezoneService tz, string fallback = "")
+        => tz.FormatDate(utcDateTime, fallback);
 }

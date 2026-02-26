@@ -22,6 +22,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     private readonly IDataService _dataService;
     private readonly IFormDefinitionService _formDefinitionService;
     private readonly INotificationService _notificationService;
+    private readonly IWebhookExecutionService _webhookExecutionService;
+    private readonly IFormRequestRepository _formRequestRepository;
     private readonly IConfiguration _configuration;
     private readonly ILogger<WorkflowExecutionService> _logger;
 
@@ -38,7 +40,17 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         string? CompletedBy = null,
         bool WasApproved = false,
         string? Comments = null,
-        int? WorkflowInstanceIdForDataApplication = null);
+        int? WorkflowInstanceIdForDataApplication = null,
+        WebhookPostCommitInfo? WebhookInfo = null);
+
+    /// <summary>
+    /// Information needed to execute a webhook step after transaction commit.
+    /// </summary>
+    private record WebhookPostCommitInfo(
+        int WorkflowInstanceId,
+        string StepId,
+        WebhookStepConfiguration Config,
+        int FormRequestId);
 
     public WorkflowExecutionService(
         IWorkflowInstanceRepository instanceRepository,
@@ -48,6 +60,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         IDataService dataService,
         IFormDefinitionService formDefinitionService,
         INotificationService notificationService,
+        IWebhookExecutionService webhookExecutionService,
+        IFormRequestRepository formRequestRepository,
         IConfiguration configuration,
         ILogger<WorkflowExecutionService> logger)
     {
@@ -58,6 +72,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         _dataService = dataService;
         _formDefinitionService = formDefinitionService;
         _notificationService = notificationService;
+        _webhookExecutionService = webhookExecutionService;
+        _formRequestRepository = formRequestRepository;
         _configuration = configuration;
         _logger = logger;
     }
@@ -88,10 +104,10 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                     return false;
                 }
 
-                // Verify this is the current step
-                if (!instance.CurrentStepId.Equals(stepId, StringComparison.OrdinalIgnoreCase))
+                // Verify this is one of the current steps
+                if (!instance.IsCurrentStep(stepId))
                 {
-                    _logger.LogWarning("Step {StepId} is not the current step ({CurrentStepId}) for workflow {InstanceId}",
+                    _logger.LogWarning("Step {StepId} is not a current step ({CurrentStepId}) for workflow {InstanceId}",
                         stepId, instance.CurrentStepId, workflowInstanceId);
                     return false;
                 }
@@ -126,11 +142,25 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             }
             else
             {
-                // Move to next step
-                var nextStepId = await GetNextStepIdAsync(definition, stepId);
-                if (!string.IsNullOrEmpty(nextStepId))
+                // Get all next step IDs (fan-out: multiple outgoing transitions)
+                var nextStepIds = GetNextStepIds(definition, stepId);
+
+                // Remove the completed step from current steps
+                var currentStepIds = instance.GetCurrentStepIds();
+                currentStepIds.RemoveAll(id => id.Equals(stepId, StringComparison.OrdinalIgnoreCase));
+
+                if (nextStepIds.Count > 0)
                 {
-                    postCommitActions = await MoveToNextStepAsync((SqlConnection)connection, (SqlTransaction)transaction, workflowInstanceId, nextStepId, definition, completedBy);
+                    postCommitActions = await MoveToNextStepsAsync(
+                        (SqlConnection)connection, (SqlTransaction)transaction,
+                        workflowInstanceId, nextStepIds, currentStepIds, definition, completedBy);
+                }
+                else if (currentStepIds.Count > 0)
+                {
+                    // No outgoing transitions from this step, but other parallel steps still active
+                    instance.SetCurrentStepIds(currentStepIds);
+                    await _instanceRepository.UpdateCurrentStepAsync(
+                        workflowInstanceId, instance.CurrentStepId, connection, transaction);
                 }
             }
 
@@ -264,6 +294,12 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     }
 
     /// <inheritdoc />
+    public async Task<List<WorkflowStepInstance>> GetCurrentWorkflowStepsAsync(int workflowInstanceId)
+    {
+        return await _stepInstanceRepository.GetCurrentStepsAsync(workflowInstanceId);
+    }
+
+    /// <inheritdoc />
     public async Task<List<WorkflowStepInstance>> GetCompletedWorkflowStepsAsync(int workflowInstanceId)
     {
         return await _stepInstanceRepository.GetCompletedAsync(workflowInstanceId);
@@ -310,7 +346,54 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         return availableSteps;
     }
 
-    private async Task<string?> GetNextStepIdAsync(WorkflowDefinition definition, string currentStepId)
+    /// <inheritdoc />
+    public async Task ProcessPendingWebhookStepAsync(int workflowInstanceId)
+    {
+        try
+        {
+            var instance = await _instanceRepository.GetByIdAsync(workflowInstanceId);
+            if (instance == null || instance.Status != WorkflowInstanceStatus.InProgress)
+                return;
+
+            var definition = await _definitionRepository.GetByIdAsync(instance.WorkflowDefinitionId);
+            if (definition == null)
+                return;
+
+            // Check all current steps for webhook steps (supports parallel execution)
+            foreach (var currentStepId in instance.GetCurrentStepIds())
+            {
+                var currentStep = definition.Steps.FirstOrDefault(s => s.StepId == currentStepId);
+                if (currentStep?.StepType != WorkflowStepType.Webhook)
+                    continue;
+
+                var webhookConfig = currentStep.Configuration?.Webhook;
+                if (webhookConfig == null)
+                {
+                    _logger.LogWarning("Webhook step {StepId} has no configuration — auto-completing", currentStep.StepId);
+                    await CompleteStepAsync(workflowInstanceId, currentStep.StepId, "System", "System",
+                        WorkflowStepAction.Completed, "Webhook skipped: no configuration", null);
+                    return;
+                }
+
+                var webhookInfo = new WebhookPostCommitInfo(
+                    WorkflowInstanceId: workflowInstanceId,
+                    StepId: currentStep.StepId,
+                    Config: webhookConfig,
+                    FormRequestId: instance.FormRequestId);
+
+                await ExecuteWebhookPostCommitAsync(webhookInfo);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing pending webhook step for workflow {WorkflowInstanceId}", workflowInstanceId);
+        }
+    }
+
+    /// <summary>
+    /// Gets all target step IDs from outgoing transitions (supports fan-out for parallel execution).
+    /// </summary>
+    private List<string> GetNextStepIds(WorkflowDefinition definition, string currentStepId)
     {
         var transitions = definition.Transitions
             .Where(t => t.FromStepId.Equals(currentStepId, StringComparison.OrdinalIgnoreCase))
@@ -319,50 +402,167 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         if (!transitions.Any())
         {
             _logger.LogDebug("No transitions found from step {StepId}", currentStepId);
-            return null;
+            return new List<string>();
         }
 
-        // Return the first transition's target (conditions can be added later)
-        return transitions.First().ToStepId;
+        return transitions.Select(t => t.ToStepId).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    private async Task<PostCommitActions?> MoveToNextStepAsync(
+    /// <summary>
+    /// Checks whether all incoming transitions to a step have been completed (for Parallel join steps).
+    /// </summary>
+    private bool AreAllIncomingStepsCompleted(
+        WorkflowDefinition definition,
+        string targetStepId,
+        int workflowInstanceId,
+        List<WorkflowStepInstance> stepInstances)
+    {
+        // Find all steps that have a transition leading into the target
+        var incomingStepIds = definition.Transitions
+            .Where(t => t.ToStepId.Equals(targetStepId, StringComparison.OrdinalIgnoreCase))
+            .Select(t => t.FromStepId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // Check that all incoming steps have been completed
+        foreach (var incomingStepId in incomingStepIds)
+        {
+            var stepInstance = stepInstances.FirstOrDefault(
+                si => si.StepId.Equals(incomingStepId, StringComparison.OrdinalIgnoreCase));
+            if (stepInstance == null || stepInstance.Status != WorkflowStepInstanceStatus.Completed)
+            {
+                _logger.LogDebug("Parallel join step {TargetStepId} waiting for step {IncomingStepId} to complete",
+                    targetStepId, incomingStepId);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Moves the workflow to one or more next steps, handling parallel fan-out and join semantics.
+    /// For Parallel steps (join), waits until all incoming transitions are complete before advancing.
+    /// </summary>
+    private async Task<PostCommitActions?> MoveToNextStepsAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         int workflowInstanceId,
-        string nextStepId,
+        List<string> nextStepIds,
+        List<string> remainingCurrentStepIds,
         WorkflowDefinition definition,
         string completedBy)
     {
-        // Update workflow instance current step
-        await _instanceRepository.UpdateCurrentStepAsync(workflowInstanceId, nextStepId, connection, transaction);
+        // Load all step instances for join checks
+        var allStepInstances = await _stepInstanceRepository.GetByWorkflowInstanceIdAsync(workflowInstanceId, connection, transaction);
+        var activatedStepIds = new List<string>(remainingCurrentStepIds);
+        PostCommitActions? postCommitActions = null;
 
-        // Update step instance to in-progress
-        await _stepInstanceRepository.UpdateToInProgressAsync(workflowInstanceId, nextStepId, connection, transaction);
-
-        // Check if the next step is an End step
-        var nextStep = definition.Steps.FirstOrDefault(s => s.StepId == nextStepId);
-        if (nextStep?.StepType == WorkflowStepType.End)
+        foreach (var nextStepId in nextStepIds)
         {
-            return await AutoCompleteEndStepAsync(connection, transaction, workflowInstanceId, nextStepId, completedBy);
-        }
-        else
-        {
-            // Send notification for the new active step (within current connection/transaction)
-            try
+            var nextStep = definition.Steps.FirstOrDefault(s => s.StepId.Equals(nextStepId, StringComparison.OrdinalIgnoreCase));
+            if (nextStep == null) continue;
+
+            // For Parallel (join) steps: check all incoming transitions are complete
+            if (nextStep.StepType == WorkflowStepType.Parallel)
             {
-                await SendStepBecomesActiveNotificationAsync(connection, transaction, workflowInstanceId, nextStepId);
+                if (!AreAllIncomingStepsCompleted(definition, nextStepId, workflowInstanceId, allStepInstances))
+                {
+                    _logger.LogInformation("Parallel join step {StepId} not yet ready — waiting for other branches", nextStepId);
+                    continue;
+                }
             }
-            catch (Exception ex)
+
+            // Activate this step
+            await _stepInstanceRepository.UpdateToInProgressAsync(workflowInstanceId, nextStepId, connection, transaction);
+            activatedStepIds.Add(nextStepId);
+
+            // Handle auto-completing step types
+            if (nextStep.StepType == WorkflowStepType.End)
             {
-                // Don't fail the workflow progression if notification fails
-                _logger.LogError(ex, "Error sending step active notification for workflow {InstanceId}, step {StepId}",
-                    workflowInstanceId, nextStepId);
+                // Remove from active — it will be completed
+                activatedStepIds.RemoveAll(id => id.Equals(nextStepId, StringComparison.OrdinalIgnoreCase));
+                postCommitActions = await AutoCompleteEndStepAsync(connection, transaction, workflowInstanceId, nextStepId, completedBy);
+            }
+            else if (nextStep.StepType == WorkflowStepType.Parallel)
+            {
+                // Parallel (join) step auto-completes and fans out to its successors
+                await _stepInstanceRepository.UpdateToCompletedAsync(
+                    workflowInstanceId, nextStepId, "System", WorkflowStepAction.Completed,
+                    "Auto-completed Parallel join step", null, connection, transaction);
+
+                activatedStepIds.RemoveAll(id => id.Equals(nextStepId, StringComparison.OrdinalIgnoreCase));
+
+                // Recursively advance to the Parallel step's successors
+                var parallelNextStepIds = GetNextStepIds(definition, nextStepId);
+                if (parallelNextStepIds.Count > 0)
+                {
+                    // Refresh step instances after completing the parallel step
+                    allStepInstances = await _stepInstanceRepository.GetByWorkflowInstanceIdAsync(workflowInstanceId, connection, transaction);
+                    postCommitActions = await MoveToNextStepsAsync(
+                        connection, transaction, workflowInstanceId,
+                        parallelNextStepIds, activatedStepIds, definition, completedBy);
+                    return postCommitActions; // activatedStepIds is updated by the recursive call
+                }
+            }
+            else if (nextStep.StepType == WorkflowStepType.Webhook)
+            {
+                var webhookConfig = nextStep.Configuration?.Webhook;
+                if (webhookConfig == null)
+                {
+                    _logger.LogWarning("Webhook step {StepId} has no webhook configuration — auto-completing", nextStepId);
+                    await _stepInstanceRepository.UpdateToCompletedAsync(
+                        workflowInstanceId, nextStepId, "System", WorkflowStepAction.Completed,
+                        "Auto-completed webhook step (no configuration)", null, connection, transaction);
+
+                    activatedStepIds.RemoveAll(id => id.Equals(nextStepId, StringComparison.OrdinalIgnoreCase));
+
+                    var afterWebhookStepIds = GetNextStepIds(definition, nextStepId);
+                    if (afterWebhookStepIds.Count > 0)
+                    {
+                        allStepInstances = await _stepInstanceRepository.GetByWorkflowInstanceIdAsync(workflowInstanceId, connection, transaction);
+                        postCommitActions = await MoveToNextStepsAsync(
+                            connection, transaction, workflowInstanceId,
+                            afterWebhookStepIds, activatedStepIds, definition, completedBy);
+                        return postCommitActions;
+                    }
+                }
+                else
+                {
+                    // Webhook stays InProgress — will execute post-commit
+                    var instance = await _instanceRepository.GetByIdAsync(workflowInstanceId, connection, transaction);
+                    postCommitActions = new PostCommitActions(
+                        WebhookInfo: new WebhookPostCommitInfo(
+                            WorkflowInstanceId: workflowInstanceId,
+                            StepId: nextStepId,
+                            Config: webhookConfig,
+                            FormRequestId: instance?.FormRequestId ?? 0));
+                }
+            }
+            else
+            {
+                // Approval or other interactive step — send notification
+                try
+                {
+                    await SendStepBecomesActiveNotificationAsync(connection, transaction, workflowInstanceId, nextStepId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error sending step active notification for workflow {InstanceId}, step {StepId}",
+                        workflowInstanceId, nextStepId);
+                }
             }
         }
 
-        _logger.LogDebug("Moved workflow {InstanceId} to step {StepId}", workflowInstanceId, nextStepId);
-        return null;
+        // Update the current step IDs on the workflow instance
+        var newCurrentStepIds = activatedStepIds.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var currentStepIdValue = string.Join(",", newCurrentStepIds);
+        await _instanceRepository.UpdateCurrentStepAsync(workflowInstanceId, currentStepIdValue, connection, transaction);
+
+        _logger.LogDebug("Moved workflow {InstanceId} to steps [{StepIds}]",
+            workflowInstanceId, currentStepIdValue);
+
+        return postCommitActions;
     }
 
     private async Task<PostCommitActions?> AutoCompleteEndStepAsync(
@@ -383,6 +583,9 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             transaction);
 
         await _instanceRepository.UpdateToCompletedAsync(workflowInstanceId, completedBy, connection, transaction);
+
+        // Cancel any remaining active step instances (parallel branches that didn't finish first)
+        await CancelRemainingStepsAsync(connection, transaction, workflowInstanceId);
 
         // Get the form request ID and approve/apply the form request
         var instance = await _instanceRepository.GetByIdAsync(workflowInstanceId, connection, transaction);
@@ -441,6 +644,9 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             FormRequestId = formRequestId
         }, transaction);
 
+        // Cancel any remaining active step instances (parallel branches)
+        await CancelRemainingStepsAsync(connection, transaction, workflowInstanceId);
+
         _logger.LogInformation("Rejected workflow instance {WorkflowInstanceId} by user {UserId}", workflowInstanceId, rejectedBy);
 
         // Return deferred action — notification must run AFTER commit to avoid deadlock
@@ -488,6 +694,118 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                     actions.WorkflowInstanceIdForDataApplication.Value);
             }
         }
+
+        if (actions.WebhookInfo != null)
+        {
+            await ExecuteWebhookPostCommitAsync(actions.WebhookInfo);
+        }
+    }
+
+    /// <summary>
+    /// Executes a webhook step after transaction commit, then auto-completes the step
+    /// and advances the workflow. This avoids holding DB transactions open during HTTP calls.
+    /// </summary>
+    private async Task ExecuteWebhookPostCommitAsync(WebhookPostCommitInfo info)
+    {
+        try
+        {
+            _logger.LogInformation("Executing webhook for workflow {WorkflowInstanceId}, step {StepId}",
+                info.WorkflowInstanceId, info.StepId);
+
+            // Load the form request for variable substitution
+            var formRequest = await _formRequestRepository.GetByIdAsync(info.FormRequestId);
+            if (formRequest == null)
+            {
+                _logger.LogError("Form request {FormRequestId} not found for webhook step", info.FormRequestId);
+                await CompleteStepAsync(info.WorkflowInstanceId, info.StepId, "System", "System",
+                    WorkflowStepAction.Completed, "Webhook skipped: form request not found", null);
+                return;
+            }
+
+            // Load form definition for system variables
+            FormDefinition? formDefinition = null;
+            try
+            {
+                formDefinition = await _formDefinitionService.GetByIdAsync(formRequest.FormDefinitionId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not load form definition {FormDefId} for webhook variables",
+                    formRequest.FormDefinitionId);
+            }
+
+            // Execute the webhook
+            var result = await _webhookExecutionService.ExecuteAsync(info.Config, formRequest, formDefinition);
+
+            // Build completion comment with webhook result summary
+            var comment = result.Success
+                ? $"Webhook completed: HTTP {result.StatusCode}"
+                : $"Webhook failed: {result.ErrorMessage}";
+
+            if (result.Success)
+            {
+                // Complete the step and advance the workflow
+                await CompleteStepAsync(info.WorkflowInstanceId, info.StepId, "System", "System",
+                    WorkflowStepAction.Completed, comment, null);
+            }
+            else
+            {
+                // Fail the step — this will reject/fail the workflow
+                await CompleteStepAsync(info.WorkflowInstanceId, info.StepId, "System", "System",
+                    WorkflowStepAction.Rejected, comment, null);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error executing webhook for workflow {WorkflowInstanceId}, step {StepId}",
+                info.WorkflowInstanceId, info.StepId);
+
+            // Attempt to fail the step gracefully
+            try
+            {
+                await CompleteStepAsync(info.WorkflowInstanceId, info.StepId, "System", "System",
+                    WorkflowStepAction.Rejected, $"Webhook execution error: {ex.Message}", null);
+            }
+            catch (Exception innerEx)
+            {
+                _logger.LogError(innerEx, "Failed to mark webhook step as failed for workflow {WorkflowInstanceId}",
+                    info.WorkflowInstanceId);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Cancels all remaining Pending or InProgress step instances for a workflow.
+    /// Called when the workflow completes or is rejected so parallel branches don't dangle.
+    /// </summary>
+    private async Task CancelRemainingStepsAsync(
+        SqlConnection connection, SqlTransaction transaction, int workflowInstanceId)
+    {
+        const string sql = @"
+            UPDATE WorkflowStepInstances
+            SET Status = @SkippedStatus,
+                CompletedAt = @Now,
+                CompletedBy = 'System',
+                Action = @SkippedAction,
+                Comments = 'Auto-skipped: workflow completed via another branch'
+            WHERE WorkflowInstanceId = @WorkflowInstanceId
+              AND Status IN (@PendingStatus, @InProgressStatus)";
+
+        var affected = await connection.ExecuteAsync(sql, new
+        {
+            WorkflowInstanceId = workflowInstanceId,
+            SkippedStatus = (int)WorkflowStepInstanceStatus.Skipped,
+            SkippedAction = (int)WorkflowStepAction.None,
+            PendingStatus = (int)WorkflowStepInstanceStatus.Pending,
+            InProgressStatus = (int)WorkflowStepInstanceStatus.InProgress,
+            Now = DateTime.UtcNow
+        }, transaction);
+
+        if (affected > 0)
+        {
+            _logger.LogInformation("Cancelled {Count} remaining step instances for completed workflow {WorkflowInstanceId}",
+                affected, workflowInstanceId);
+        }
     }
 
     private async Task ApproveFormRequestAsync(SqlConnection connection, SqlTransaction transaction, int formRequestId, string approvedBy)
@@ -525,14 +843,16 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                        fr.FieldValues, fr.OriginalValues, fr.RequestType,
                        fr.FormDefinitionId, fr.RequestedBy,
                        COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName,
+                       COALESCE(uComp.DisplayName, @CompletedBy) as CompletedByName,
                        fd.DatabaseConnectionName, fd.TableName, fd.[Schema]
                 FROM WorkflowInstances wi
                 INNER JOIN FormRequests fr ON wi.FormRequestId = fr.Id
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
                 LEFT JOIN Users uReq ON uReq.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
+                LEFT JOIN Users uComp ON uComp.UserObjectId = TRY_CONVERT(uniqueidentifier, @CompletedBy)
                 WHERE wi.Id = @WorkflowInstanceId";
 
-            var workflowData = await connection.QueryFirstOrDefaultAsync(getFormRequestSql, new { WorkflowInstanceId = workflowInstanceId });
+            var workflowData = await connection.QueryFirstOrDefaultAsync(getFormRequestSql, new { WorkflowInstanceId = workflowInstanceId, CompletedBy = completedBy });
 
             if (workflowData == null)
             {
@@ -567,6 +887,22 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                     BulkRequestId = bulkFormRequestId.Value,
                     ApprovedStatus = (int)RequestStatus.Approved,
                     PendingStatus = (int)RequestStatus.Pending
+                });
+
+                // Record workflow-approved history for the bulk request
+                string completedByName = workflowData.CompletedByName;
+                const string insertBulkHistorySql = @"
+                    INSERT INTO BulkFormRequestHistory (BulkFormRequestId, ChangeType, ChangedBy, ChangedByName, ChangedAt, Comments, Details)
+                    VALUES (@BulkFormRequestId, @ChangeType, @ChangedBy, @ChangedByName, @ChangedAt, @Comments, @Details)";
+                await connection.ExecuteAsync(insertBulkHistorySql, new
+                {
+                    BulkFormRequestId = bulkFormRequestId.Value,
+                    ChangeType = (int)FormRequestChangeType.Approved,
+                    ChangedBy = completedBy,
+                    ChangedByName = completedByName,
+                    ChangedAt = DateTime.UtcNow,
+                    Comments = "Approved via workflow",
+                    Details = (string?)null
                 });
 
                 applicationSuccess = await ApplyBulkRequestItemsAsync(connection, bulkFormRequestId.Value);
@@ -913,6 +1249,20 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                 BulkRequestId = bulkFormRequestId,
                 Status = (int)overallStatus,
                 ProcessingSummary = processingSummary
+            });
+
+            // Record history entry for bulk request
+            var historyChangeType = failureCount == 0 ? FormRequestChangeType.Applied : FormRequestChangeType.Failed;
+            const string insertHistorySql = @"
+                INSERT INTO BulkFormRequestHistory (BulkFormRequestId, ChangeType, ChangedBy, ChangedByName, ChangedAt, Comments, Details)
+                VALUES (@BulkFormRequestId, @ChangeType, 'system', 'System', @ChangedAt, @Comments, @Details)";
+            await connection.ExecuteAsync(insertHistorySql, new
+            {
+                BulkFormRequestId = bulkFormRequestId,
+                ChangeType = (int)historyChangeType,
+                ChangedAt = DateTime.UtcNow,
+                Comments = processingSummary,
+                Details = (string?)null
             });
 
             _logger.LogInformation("Completed bulk request processing for {BulkRequestId}. Summary: {ProcessingSummary}",

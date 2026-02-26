@@ -31,7 +31,7 @@ public class FormDefinitionService : IFormDefinitionService
 
             var sql = @"
                 SELECT fd.Id, fd.Name, fd.Description, fd.Category, fd.DatabaseConnectionName, fd.TableName, fd.[Schema], 
-                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, 
+                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.RequiresRequestComments, fd.RequiresApprovalComments, fd.IsActive, 
                        COALESCE(fd.NotificationEmail, '') as NotificationEmail, 
                        COALESCE(fd.NotifyOnCreation, 0) as NotifyOnCreation, 
                        COALESCE(fd.NotifyOnCompletion, 0) as NotifyOnCompletion,
@@ -62,6 +62,8 @@ public class FormDefinitionService : IFormDefinitionService
                         TableName = (string)row.TableName,
                         Schema = (string)row.Schema,
                         RequiresApproval = (bool)row.RequiresApproval,
+                        RequiresRequestComments = (bool)row.RequiresRequestComments,
+                        RequiresApprovalComments = (bool)row.RequiresApprovalComments,
                         IsActive = (bool)row.IsActive,
                         CreatedAt = (DateTime)row.CreatedAt,
                         CreatedBy = (string)row.CreatedBy,
@@ -148,7 +150,7 @@ public class FormDefinitionService : IFormDefinitionService
 
             var sql = @"
                 SELECT fd.Id, fd.Name, fd.Description, fd.DatabaseConnectionName, fd.TableName, fd.[Schema], 
-                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, 
+                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.RequiresRequestComments, fd.RequiresApprovalComments, fd.IsActive, 
                        COALESCE(fd.NotificationEmail, '') as NotificationEmail, 
                        COALESCE(fd.NotifyOnCreation, 0) as NotifyOnCreation, 
                        COALESCE(fd.NotifyOnCompletion, 0) as NotifyOnCompletion,
@@ -179,6 +181,8 @@ public class FormDefinitionService : IFormDefinitionService
                         Schema = (string)(row.Schema ?? "dbo"),
                         ApproverRoles = JsonSerializer.Deserialize<List<string>>((string)(row.ApproverRolesJson ?? "[]")) ?? new List<string>(),
                         RequiresApproval = (bool)row.RequiresApproval,
+                        RequiresRequestComments = (bool)row.RequiresRequestComments,
+                        RequiresApprovalComments = (bool)row.RequiresApprovalComments,
                         IsActive = (bool)row.IsActive,
                         CreatedAt = (DateTime)row.CreatedAt,
                         CreatedBy = (string)(row.CreatedBy ?? ""),
@@ -238,7 +242,7 @@ public class FormDefinitionService : IFormDefinitionService
 
          var sql = @"
                 SELECT fd.Id, fd.Name, fd.Description, fd.Category, fd.DatabaseConnectionName, fd.TableName, fd.[Schema], 
-                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, fd.WorkflowDefinitionId, 
+                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.RequiresRequestComments, fd.RequiresApprovalComments, fd.IsActive, fd.WorkflowDefinitionId, 
                        COALESCE(fd.NotificationEmail, '') as NotificationEmail, 
                        COALESCE(fd.NotifyOnCreation, 0) as NotifyOnCreation, 
                        COALESCE(fd.NotifyOnCompletion, 0) as NotifyOnCompletion,
@@ -278,6 +282,8 @@ public class FormDefinitionService : IFormDefinitionService
                         TableName = (string)row.TableName,
                         Schema = (string)row.Schema,
                         RequiresApproval = (bool)row.RequiresApproval,
+                        RequiresRequestComments = (bool)row.RequiresRequestComments,
+                        RequiresApprovalComments = (bool)row.RequiresApprovalComments,
                         IsActive = (bool)row.IsActive,
                         WorkflowDefinitionId = (int?)row.WorkflowDefinitionId,
                         NotificationEmail = (string?)row.NotificationEmail,
@@ -375,9 +381,9 @@ public class FormDefinitionService : IFormDefinitionService
             try
             {
                 var formSql = @"
-                    INSERT INTO FormDefinitions (Name, Description, Category, DatabaseConnectionName, TableName, [Schema], ApproverRoles, RequiresApproval, IsActive, NotificationEmail, NotifyOnCreation, NotifyOnCompletion, CreatedAt, CreatedBy)
+                    INSERT INTO FormDefinitions (Name, Description, Category, DatabaseConnectionName, TableName, [Schema], ApproverRoles, RequiresApproval, RequiresRequestComments, RequiresApprovalComments, IsActive, NotificationEmail, NotifyOnCreation, NotifyOnCompletion, CreatedAt, CreatedBy)
                     OUTPUT INSERTED.Id
-                    VALUES (@Name, @Description, @Category, @DatabaseConnectionName, @TableName, @Schema, @ApproverRoles, @RequiresApproval, @IsActive, @NotificationEmail, @NotifyOnCreation, @NotifyOnCompletion, @CreatedAt, @CreatedBy)";
+                    VALUES (@Name, @Description, @Category, @DatabaseConnectionName, @TableName, @Schema, @ApproverRoles, @RequiresApproval, @RequiresRequestComments, @RequiresApprovalComments, @IsActive, @NotificationEmail, @NotifyOnCreation, @NotifyOnCompletion, @CreatedAt, @CreatedBy)";
 
                 var formId = await connection.QuerySingleAsync<int>(formSql, new
                 {
@@ -389,6 +395,8 @@ public class FormDefinitionService : IFormDefinitionService
                     formDefinition.Schema,
                     ApproverRoles = JsonSerializer.Serialize(formDefinition.ApproverRoles),
                     formDefinition.RequiresApproval,
+                    formDefinition.RequiresRequestComments,
+                    formDefinition.RequiresApprovalComments,
                     formDefinition.IsActive,
                     formDefinition.NotificationEmail,
                     formDefinition.NotifyOnCreation,
@@ -473,7 +481,7 @@ public class FormDefinitionService : IFormDefinitionService
                     UPDATE FormDefinitions 
                     SET Name = @Name, Description = @Description, Category = @Category, DatabaseConnectionName = @DatabaseConnectionName, 
                         TableName = @TableName, [Schema] = @Schema, ApproverRoles = @ApproverRoles, 
-                        RequiresApproval = @RequiresApproval, IsActive = @IsActive, 
+                        RequiresApproval = @RequiresApproval, RequiresRequestComments = @RequiresRequestComments, RequiresApprovalComments = @RequiresApprovalComments, IsActive = @IsActive, 
                         NotificationEmail = @NotificationEmail, NotifyOnCreation = @NotifyOnCreation, NotifyOnCompletion = @NotifyOnCompletion,
                         WorkflowDefinitionId = @WorkflowDefinitionId,
                         UpdatedAt = @UpdatedAt, UpdatedBy = @UpdatedBy
@@ -490,6 +498,8 @@ public class FormDefinitionService : IFormDefinitionService
                     formDefinition.Schema,
                     ApproverRoles = JsonSerializer.Serialize(formDefinition.ApproverRoles),
                     formDefinition.RequiresApproval,
+                    formDefinition.RequiresRequestComments,
+                    formDefinition.RequiresApprovalComments,
                     formDefinition.IsActive,
                     formDefinition.NotificationEmail,
                     formDefinition.NotifyOnCreation,
@@ -600,7 +610,7 @@ public class FormDefinitionService : IFormDefinitionService
 
             var sql = @"
                 SELECT fd.Id, fd.Name, fd.Description, fd.Category, fd.DatabaseConnectionName, fd.TableName, fd.[Schema], 
-                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.IsActive, fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
+                       fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.RequiresRequestComments, fd.RequiresApprovalComments, fd.IsActive, fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.SqlDataType, ff.MaxLength, 
                        ff.IsRequired, ff.IsReadOnly, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
                        ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull,
@@ -627,6 +637,8 @@ public class FormDefinitionService : IFormDefinitionService
                         TableName = (string)row.TableName,
                         Schema = (string)row.Schema,
                         RequiresApproval = (bool)row.RequiresApproval,
+                        RequiresRequestComments = (bool)row.RequiresRequestComments,
+                        RequiresApprovalComments = (bool)row.RequiresApprovalComments,
                         IsActive = (bool)row.IsActive,
                         CreatedAt = (DateTime)row.CreatedAt,
                         CreatedBy = (string)row.CreatedBy,

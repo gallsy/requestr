@@ -37,6 +37,7 @@
         RequestStatus.Rejected => "Rejected",
         RequestStatus.Applied => "Complete",
         RequestStatus.Failed => "Failed",
+        RequestStatus.Cancelled => "Cancelled",
         _ => "Status"
     };
 
@@ -57,6 +58,8 @@
             "This request has been completed and the changes are now in the database.",
         RequestStatus.Failed => 
             "This request failed to apply. An administrator can retry the operation.",
+        RequestStatus.Cancelled =>
+            "This request was cancelled by the requester.",
         _ => ""
     };
 
@@ -67,6 +70,7 @@
         RequestStatus.Rejected => "bi-x-circle-fill",
         RequestStatus.Applied => "bi-check2-all",
         RequestStatus.Failed => "bi-exclamation-triangle-fill",
+        RequestStatus.Cancelled => "bi-dash-circle",
         _ => "bi-info-circle"
     };
 
@@ -77,6 +81,7 @@
         RequestStatus.Rejected => "status-danger",
         RequestStatus.Applied => "status-success",
         RequestStatus.Failed => "status-danger",
+        RequestStatus.Cancelled => "status-info",
         _ => "status-info"
     };
 }

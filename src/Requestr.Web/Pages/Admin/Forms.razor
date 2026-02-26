@@ -8,6 +8,7 @@
 @attribute [Authorize(Roles = "Admin")]
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
+@inject IUserTimezoneService Tz
 <PageTitle>Form Management | @Branding.ApplicationName Admin</PageTitle>
 
 <PageHeader Title="Manage Forms" Description="Manage all forms including inactive ones">
@@ -114,7 +115,7 @@
                                         }
                                     </td>
                                     <td>
-                                        @form.CreatedAt.ToString("MMM dd, yyyy")
+                                        @Tz.FormatDate(form.CreatedAt)
                                         <br />
                                         <small class="text-muted">by @form.CreatedBy</small>
                                     </td>
@@ -186,7 +187,6 @@
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("console.error", $"Error loading forms: {ex.Message}");
             toastService.ShowError($"Error loading forms: {ex.Message}");
         }
         finally

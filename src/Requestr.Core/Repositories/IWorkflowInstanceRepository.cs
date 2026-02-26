@@ -64,9 +64,20 @@ public interface IWorkflowStepInstanceRepository
     Task<List<WorkflowStepInstance>> GetByWorkflowInstanceIdAsync(int workflowInstanceId);
     
     /// <summary>
+    /// Gets all step instances for a workflow instance within an existing connection/transaction.
+    /// </summary>
+    Task<List<WorkflowStepInstance>> GetByWorkflowInstanceIdAsync(int workflowInstanceId, System.Data.IDbConnection connection, System.Data.IDbTransaction transaction);
+    
+    /// <summary>
     /// Gets the current (in-progress) step instance for a workflow.
+    /// Returns the first in-progress step (for parallel workflows, use GetCurrentStepsAsync).
     /// </summary>
     Task<WorkflowStepInstance?> GetCurrentAsync(int workflowInstanceId);
+    
+    /// <summary>
+    /// Gets all current (in-progress) step instances for a workflow (supports parallel execution).
+    /// </summary>
+    Task<List<WorkflowStepInstance>> GetCurrentStepsAsync(int workflowInstanceId);
     
     /// <summary>
     /// Gets completed step instances for a workflow.

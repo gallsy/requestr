@@ -160,7 +160,6 @@ public class FormRequestQueryService : IFormRequestQueryService
                 LEFT JOIN Users uApp ON uApp.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.ApprovedBy)
                 WHERE ws.StepType = @ApprovalStepType
                   AND wsi.Status IN (@PendingStatus, @InProgressStatus, @CompletedStatus)
-                  AND fr.BulkFormRequestId IS NULL
                   AND (@IsAdmin = 1 
                        OR (ws.AssignedRoles IS NOT NULL 
                            AND ws.AssignedRoles != '[]' 

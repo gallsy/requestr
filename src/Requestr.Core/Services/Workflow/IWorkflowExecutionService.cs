@@ -74,6 +74,14 @@ public interface IWorkflowExecutionService
     Task<WorkflowStepInstance?> GetCurrentWorkflowStepAsync(int workflowInstanceId);
 
     /// <summary>
+    /// Gets all current (in-progress) workflow step instances for a workflow instance.
+    /// Supports parallel execution where multiple steps are active simultaneously.
+    /// </summary>
+    /// <param name="workflowInstanceId">The workflow instance ID.</param>
+    /// <returns>List of current step instances.</returns>
+    Task<List<WorkflowStepInstance>> GetCurrentWorkflowStepsAsync(int workflowInstanceId);
+
+    /// <summary>
     /// Gets completed workflow step instances for a workflow instance.
     /// </summary>
     /// <param name="workflowInstanceId">The workflow instance ID.</param>
@@ -98,4 +106,12 @@ public interface IWorkflowExecutionService
     /// <param name="userRoles">The user's roles.</param>
     /// <returns>List of available step IDs.</returns>
     Task<List<string>> GetAvailableStepsForUserAsync(int workflowInstanceId, string userId, List<string> userRoles);
+
+    /// <summary>
+    /// Checks if the current step of a workflow is a webhook step and, if so,
+    /// executes the webhook and advances the workflow. Should be called after
+    /// the transaction that started the workflow has been committed.
+    /// </summary>
+    /// <param name="workflowInstanceId">The workflow instance ID.</param>
+    Task ProcessPendingWebhookStepAsync(int workflowInstanceId);
 }

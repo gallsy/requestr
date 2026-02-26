@@ -19,6 +19,7 @@ public class BulkFormRequestService : IBulkFormRequestService
     private readonly ILogger<BulkFormRequestService> _logger;
     private readonly IFormDefinitionService _formDefinitionService;
     private readonly IWorkflowInstanceService _workflowInstanceService;
+    private readonly IWorkflowExecutionService _workflowExecutionService;
     private readonly IInputValidationService _inputValidationService;
     private readonly string _connectionString;
 
@@ -27,12 +28,14 @@ public class BulkFormRequestService : IBulkFormRequestService
         ILogger<BulkFormRequestService> logger,
         IFormDefinitionService formDefinitionService,
         IWorkflowInstanceService workflowInstanceService,
+        IWorkflowExecutionService workflowExecutionService,
         IInputValidationService inputValidationService)
     {
         _configuration = configuration;
         _logger = logger;
         _formDefinitionService = formDefinitionService;
         _workflowInstanceService = workflowInstanceService;
+        _workflowExecutionService = workflowExecutionService;
         _inputValidationService = inputValidationService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
@@ -525,7 +528,26 @@ public class BulkFormRequestService : IBulkFormRequestService
                 }
             }
 
+            // Record history entry
+            await RecordBulkHistoryAsync(connection, transaction, bulkRequestId,
+                FormRequestChangeType.Created, userId, userName, bulkRequest.Comments,
+                $"{bulkRequest.SelectedRows} items, {bulkRequest.RequestType} request");
+
             await transaction.CommitAsync();
+
+            // Process pending webhook step if the workflow starts with one (post-commit)
+            if (bulkRequest.WorkflowInstanceId.HasValue)
+            {
+                try
+                {
+                    await _workflowExecutionService.ProcessPendingWebhookStepAsync(bulkRequest.WorkflowInstanceId.Value);
+                }
+                catch (Exception webhookEx)
+                {
+                    _logger.LogError(webhookEx, "Error processing webhook step for bulk workflow {WorkflowId}", bulkRequest.WorkflowInstanceId.Value);
+                }
+            }
+
             return bulkRequest;
         }
         catch
@@ -651,6 +673,17 @@ public class BulkFormRequestService : IBulkFormRequestService
                     
                     bulkRequest.WorkflowFormRequestId = workflowFormRequestId;
                 }
+
+                // Load history
+                var historySql = @"
+                    SELECT bfh.*, COALESCE(u.DisplayName, bfh.ChangedBy) AS ChangedByName
+                    FROM BulkFormRequestHistory bfh
+                    LEFT JOIN Users u ON TRY_CONVERT(uniqueidentifier, bfh.ChangedBy) = u.UserObjectId
+                    WHERE bfh.BulkFormRequestId = @BulkFormRequestId
+                    ORDER BY bfh.ChangedAt";
+                
+                bulkRequest.History = (await connection.QueryAsync<BulkFormRequestHistory>(
+                    historySql, new { BulkFormRequestId = id })).ToList();
             }
 
             return bulkRequest;
@@ -970,6 +1003,10 @@ public class BulkFormRequestService : IBulkFormRequestService
 
                 await connection.ExecuteAsync(updateItemsSql, new { BulkFormRequestId = id }, transaction);
                 
+                // Record history entry
+                await RecordBulkHistoryAsync(connection, transaction, id,
+                    FormRequestChangeType.Approved, userId, userName, sanitizedComments);
+
                 // Commit the transaction for status updates
                 await transaction.CommitAsync();
                 _logger.LogInformation("Successfully approved bulk request {Id}", id);
@@ -1041,6 +1078,13 @@ public class BulkFormRequestService : IBulkFormRequestService
                 await connection.ExecuteAsync(itemsSql, new { BulkFormRequestId = id }, transaction);
             }
 
+            // Record history entry
+            if (result > 0)
+            {
+                await RecordBulkHistoryAsync(connection, transaction, id,
+                    FormRequestChangeType.Rejected, userId, userName, rejectionReason);
+            }
+
             await transaction.CommitAsync();
             return result > 0;
         }
@@ -1084,6 +1128,35 @@ public class BulkFormRequestService : IBulkFormRequestService
             "2" => RequestType.Delete,
             _ => throw new ArgumentException($"Invalid RequestType: {requestType}")
         };
+    }
+
+    /// <summary>
+    /// Records a history entry for a bulk form request within an existing transaction.
+    /// </summary>
+    private static async Task RecordBulkHistoryAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        int bulkFormRequestId,
+        FormRequestChangeType changeType,
+        string changedBy,
+        string changedByName,
+        string? comments = null,
+        string? details = null)
+    {
+        const string sql = @"
+            INSERT INTO BulkFormRequestHistory (BulkFormRequestId, ChangeType, ChangedBy, ChangedByName, ChangedAt, Comments, Details)
+            VALUES (@BulkFormRequestId, @ChangeType, @ChangedBy, @ChangedByName, @ChangedAt, @Comments, @Details)";
+
+        await connection.ExecuteAsync(sql, new
+        {
+            BulkFormRequestId = bulkFormRequestId,
+            ChangeType = (int)changeType,
+            ChangedBy = changedBy,
+            ChangedByName = changedByName,
+            ChangedAt = DateTime.UtcNow,
+            Comments = comments,
+            Details = details
+        }, transaction);
     }
 
     public async Task<List<BulkFormRequest>> GetBulkFormRequestsByFormDefinitionIdAsync(int formDefinitionId, int limit = 10)

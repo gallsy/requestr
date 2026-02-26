@@ -41,6 +41,21 @@ public class WorkflowStepInstanceRepository : IWorkflowStepInstanceRepository
         }
     }
 
+    public async Task<List<WorkflowStepInstance>> GetByWorkflowInstanceIdAsync(int workflowInstanceId, IDbConnection connection, IDbTransaction transaction)
+    {
+        var data = await connection.QueryAsync<dynamic>(
+            WorkflowQueries.GetStepInstancesByWorkflowId,
+            new { WorkflowInstanceId = workflowInstanceId },
+            transaction);
+
+        var results = new List<WorkflowStepInstance>();
+        foreach (var d in data)
+        {
+            results.Add(MapStepInstance(d));
+        }
+        return results;
+    }
+
     public async Task<WorkflowStepInstance?> GetCurrentAsync(int workflowInstanceId)
     {
         var connection = (SqlConnection)_connectionFactory.CreateConnection();
@@ -57,6 +72,30 @@ public class WorkflowStepInstanceRepository : IWorkflowStepInstanceRepository
                 });
 
             return data != null ? MapStepInstance(data) : null;
+        }
+    }
+
+    public async Task<List<WorkflowStepInstance>> GetCurrentStepsAsync(int workflowInstanceId)
+    {
+        var connection = (SqlConnection)_connectionFactory.CreateConnection();
+        await using (connection)
+        {
+            await connection.OpenAsync();
+
+            var data = await connection.QueryAsync<dynamic>(
+                WorkflowQueries.GetInProgressStepInstance,
+                new
+                {
+                    WorkflowInstanceId = workflowInstanceId,
+                    InProgressStatus = (int)WorkflowStepInstanceStatus.InProgress
+                });
+
+            var results = new List<WorkflowStepInstance>();
+            foreach (var d in data)
+            {
+                results.Add(MapStepInstance(d));
+            }
+            return results;
         }
     }
 

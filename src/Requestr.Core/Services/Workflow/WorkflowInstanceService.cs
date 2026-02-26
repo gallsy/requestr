@@ -152,6 +152,49 @@ public class WorkflowInstanceService : IWorkflowInstanceService
     }
 
     /// <inheritdoc />
+    public async Task CancelWorkflowAsync(int workflowInstanceId, string cancelledBy, string reason)
+    {
+        using var connection = (SqlConnection)_connectionFactory.CreateConnection();
+        await connection.OpenAsync();
+
+        // Update the workflow instance to Cancelled
+        const string cancelWorkflowSql = @"
+            UPDATE WorkflowInstances 
+            SET Status = @Status, FailureReason = @Reason, CompletedAt = @CompletedAt
+            WHERE Id = @Id";
+
+        await connection.ExecuteAsync(cancelWorkflowSql, new
+        {
+            Id = workflowInstanceId,
+            Status = (int)WorkflowInstanceStatus.Cancelled,
+            Reason = reason,
+            CompletedAt = DateTime.UtcNow
+        });
+
+        // Skip all pending/in-progress step instances
+        const string skipStepsSql = @"
+            UPDATE WorkflowStepInstances 
+            SET Status = @SkippedStatus, CompletedAt = @CompletedAt, CompletedBy = @CancelledBy,
+                Comments = @Comments
+            WHERE WorkflowInstanceId = @WorkflowInstanceId 
+            AND Status IN (@PendingStatus, @InProgressStatus)";
+
+        await connection.ExecuteAsync(skipStepsSql, new
+        {
+            WorkflowInstanceId = workflowInstanceId,
+            SkippedStatus = (int)WorkflowStepInstanceStatus.Skipped,
+            PendingStatus = (int)WorkflowStepInstanceStatus.Pending,
+            InProgressStatus = (int)WorkflowStepInstanceStatus.InProgress,
+            CompletedAt = DateTime.UtcNow,
+            CancelledBy = cancelledBy,
+            Comments = reason
+        });
+
+        _logger.LogInformation("Workflow instance {InstanceId} cancelled by {CancelledBy}: {Reason}", 
+            workflowInstanceId, cancelledBy, reason);
+    }
+
+    /// <inheritdoc />
     public async Task<bool> HasUserParticipatedInWorkflowAsync(string userId, List<string> userRoles, int workflowInstanceId)
     {
         var instance = await _instanceRepository.GetByIdAsync(workflowInstanceId);
@@ -203,23 +246,39 @@ public class WorkflowInstanceService : IWorkflowInstanceService
             connection,
             transaction);
 
-        // Get the next step
-        var nextStepId = await GetNextStepIdAsync(connection, transaction, workflowInstanceId, stepId, definition);
-        if (!string.IsNullOrEmpty(nextStepId))
+        // Get all next step IDs (fan-out: Start may have multiple outgoing transitions)
+        var nextStepIds = GetNextStepIds(definition, stepId);
+        if (nextStepIds.Count > 0)
         {
-            await MoveToNextStepAsync(connection, transaction, workflowInstanceId, nextStepId);
+            var activatedStepIds = new List<string>();
 
-            // Check if next step also needs auto-completion (End step)
-            var nextStep = definition.Steps.FirstOrDefault(s => s.StepId == nextStepId);
-            if (nextStep?.StepType == WorkflowStepType.End)
+            foreach (var nextStepId in nextStepIds)
             {
-                await AutoCompleteEndStepAsync(connection, transaction, workflowInstanceId, nextStepId);
+                await _stepInstanceRepository.UpdateToInProgressAsync(workflowInstanceId, nextStepId, connection, transaction);
+                activatedStepIds.Add(nextStepId);
+
+                var nextStep = definition.Steps.FirstOrDefault(s => s.StepId == nextStepId);
+                if (nextStep?.StepType == WorkflowStepType.End)
+                {
+                    activatedStepIds.RemoveAll(id => id.Equals(nextStepId, StringComparison.OrdinalIgnoreCase));
+                    await AutoCompleteEndStepAsync(connection, transaction, workflowInstanceId, nextStepId);
+                }
+                else if (nextStep?.StepType == WorkflowStepType.Webhook)
+                {
+                    // Webhook steps stay InProgress — they'll be executed post-commit
+                    _logger.LogInformation("Webhook step {StepId} activated for workflow {InstanceId} — will execute post-commit",
+                        nextStepId, workflowInstanceId);
+                }
+                else if (nextStep != null)
+                {
+                    // Send notification for the new active step
+                    await SendStepBecomesActiveNotificationAsync((SqlConnection)connection, (SqlTransaction)transaction, workflowInstanceId, nextStepId);
+                }
             }
-            else if (nextStep != null)
-            {
-                // Send notification for the new active step
-                await SendStepBecomesActiveNotificationAsync((SqlConnection)connection, (SqlTransaction)transaction, workflowInstanceId, nextStepId);
-            }
+
+            // Update current step IDs on the instance
+            var currentStepIdValue = string.Join(",", activatedStepIds);
+            await _instanceRepository.UpdateCurrentStepAsync(workflowInstanceId, currentStepIdValue, connection, transaction);
         }
 
         _logger.LogDebug("Auto-completed start step {StepId} for workflow {InstanceId}", stepId, workflowInstanceId);
@@ -246,14 +305,11 @@ public class WorkflowInstanceService : IWorkflowInstanceService
         _logger.LogInformation("Workflow {InstanceId} completed at End step {StepId}", workflowInstanceId, stepId);
     }
 
-    private async Task<string?> GetNextStepIdAsync(
-        IDbConnection connection,
-        IDbTransaction transaction,
-        int workflowInstanceId,
-        string currentStepId,
-        WorkflowDefinition definition)
+    /// <summary>
+    /// Gets all target step IDs from outgoing transitions (supports fan-out for parallel execution).
+    /// </summary>
+    private List<string> GetNextStepIds(WorkflowDefinition definition, string currentStepId)
     {
-        // Get transitions from the current step
         var transitions = definition.Transitions
             .Where(t => t.FromStepId.Equals(currentStepId, StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -261,26 +317,10 @@ public class WorkflowInstanceService : IWorkflowInstanceService
         if (!transitions.Any())
         {
             _logger.LogDebug("No transitions found from step {StepId}", currentStepId);
-            return null;
+            return new List<string>();
         }
 
-        // For now, just take the first transition (condition evaluation can be added later)
-        return transitions.First().ToStepId;
-    }
-
-    private async Task MoveToNextStepAsync(
-        IDbConnection connection,
-        IDbTransaction transaction,
-        int workflowInstanceId,
-        string nextStepId)
-    {
-        // Update workflow instance current step
-        await _instanceRepository.UpdateCurrentStepAsync(workflowInstanceId, nextStepId, connection, transaction);
-
-        // Update step instance to in-progress
-        await _stepInstanceRepository.UpdateToInProgressAsync(workflowInstanceId, nextStepId, connection, transaction);
-
-        _logger.LogDebug("Moved workflow {InstanceId} to step {StepId}", workflowInstanceId, nextStepId);
+        return transitions.Select(t => t.ToStepId).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     private async Task SendStepBecomesActiveNotificationAsync(SqlConnection connection, SqlTransaction transaction, int workflowInstanceId, string stepId)

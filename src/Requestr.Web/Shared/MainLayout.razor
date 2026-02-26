@@ -4,6 +4,8 @@
 @using Requestr.Core.Services.Workflow
 @inject IWorkflowExecutionService WorkflowExecutionService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JSRuntime
+@inject IUserTimezoneService UserTimezoneService
 @implements IDisposable
 
 <div class="page @(_isSidebarOpen ? "sidebar-open" : null)" data-theme="@(_isDarkMode ? "dark" : "light")">
@@ -92,6 +94,26 @@
         ThemeService.OnThemeChanged += OnThemeChanged;
         
         await CheckUserWorkflowSteps();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !UserTimezoneService.IsInitialized)
+        {
+            try
+            {
+                var timezone = await JSRuntime.InvokeAsync<string>("getUserTimezone");
+                if (!string.IsNullOrEmpty(timezone))
+                {
+                    UserTimezoneService.SetTimezone(timezone);
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                // JS interop can fail during prerendering — safe to ignore
+            }
+        }
     }
 
     private async Task CheckUserWorkflowSteps()

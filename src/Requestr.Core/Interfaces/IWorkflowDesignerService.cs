@@ -29,6 +29,11 @@ public interface IWorkflowDesignerService
     Task<WorkflowStep> AddStepAsync(int workflowDefinitionId, WorkflowStepType stepType, string name, int positionX, int positionY);
 
     /// <summary>
+    /// Gets the default step configuration for a given step type.
+    /// </summary>
+    WorkflowStepConfiguration GetDefaultStepConfiguration(WorkflowStepType stepType);
+
+    /// <summary>
     /// Updates an existing workflow step.
     /// </summary>
     /// <param name="stepId">The step database ID.</param>

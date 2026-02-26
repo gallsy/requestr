@@ -5,6 +5,7 @@
 @inject IWorkflowProgressService WorkflowProgressService
 @inject ILogger<WorkflowProgressDisplay> Logger
 @inject NavigationManager Navigation
+@inject IUserTimezoneService Tz
 
 @if (ShowCompact)
 {
@@ -156,18 +157,13 @@ else
                                                     <i class="bi bi-flag-checkered me-1"></i><text>Workflow Complete</text>
                                                 }
                                             </small>
-                                            @if (step.StepType == WorkflowStepType.End && step.Status != WorkflowStepInstanceStatus.Pending)
-                                            {
-                                                <span class="badge bg-@GetStepStatusBadgeColor(step.Status) badge-sm">
-                                                    @step.Status
-                                                </span>
-                                            }
+    
                                         </div>
                                         @if (step.StartedAt.HasValue)
                                         {
                                             <div class="mt-1">
                                                 <small class="text-muted">
-                                                    @step.StartedAt.Value.ToString(UiHelper.DateTimeFormat)
+                                                    @Tz.FormatDateTime(step.StartedAt.Value)
                                                     @if (step.CompletedAt.HasValue && step.StepType == WorkflowStepType.End)
                                                     {
                                                         <span class="ms-2">(@((step.CompletedAt.Value - step.StartedAt.Value).TotalMinutes < 1 ? "<1 min" : $"{(int)(step.CompletedAt.Value - step.StartedAt.Value).TotalMinutes} min"))</span>
@@ -217,17 +213,9 @@ else
                                                     {
                                                         @step.StepName
                                                     }
-                                                    @if (step.StepType == WorkflowStepType.Approval)
+                                                    @if (step.StepType != WorkflowStepType.Approval)
                                                     {
-                                                        <span class="badge bg-info ms-1">Approval</span>
-                                                    }
-                                                    else if (step.StepType == WorkflowStepType.Parallel)
-                                                    {
-                                                        <span class="badge bg-secondary ms-1">Parallel</span>
-                                                    }
-                                                    else if (step.StepType == WorkflowStepType.Branch)
-                                                    {
-                                                        <span class="badge bg-warning ms-1">Branch</span>
+                                                        <small class="text-muted ms-2">@step.StepType</small>
                                                     }
                                                 </h6>
                                                 @if (!string.IsNullOrEmpty(step.StepDescription))
@@ -260,10 +248,11 @@ else
                                                 {
                                                     <div class="mb-1">
                                                         <small class="text-muted">
-                                                            Started: @step.StartedAt.Value.ToString(UiHelper.DateTimeFormat)
-                                                            @if (step.DaysInStep > 0)
+                                                            Started: @Tz.FormatDateTime(step.StartedAt.Value)
+                                                            @{ var duration = GetStepDuration(step); }
+                                                            @if (!string.IsNullOrEmpty(duration))
                                                             {
-                                                                <span class="ms-2">(@step.DaysInStep days)</span>
+                                                                <span class="ms-2">(@duration)</span>
                                                             }
                                                         </small>
                                                     </div>
@@ -273,7 +262,7 @@ else
                                                 {
                                                     <div class="mb-1">
                                                         <small class="text-muted">
-                                                            Completed: @step.CompletedAt.Value.ToString(UiHelper.DateTimeFormat)
+                                                            Completed: @Tz.FormatDateTime(step.CompletedAt.Value)
                                                             by @(step.CompletedByName ?? step.CompletedBy)
                                                         </small>
                                                     </div>
@@ -296,9 +285,12 @@ else
                                                     </div>
                                                 }
                                             </div>
-                                            <span class="badge bg-@GetStepStatusBadgeColor(step.Status)">
-                                                @step.Status
-                                            </span>
+                                            @if (step.IsCurrent)
+                                            {
+                                                <span class="badge bg-@GetStepStatusBadgeColor(step.Status)">
+                                                    @step.Status
+                                                </span>
+                                            }
                                         </div>
                                     </div>
                                 </div>
@@ -440,5 +432,17 @@ else
     {
         if (!dateTime.HasValue) return "Unknown";
         return UiHelper.FormatRelativeTime(dateTime.Value);
+    }
+
+    private string? GetStepDuration(WorkflowStepProgress step)
+    {
+        if (!step.StartedAt.HasValue) return null;
+        var end = step.CompletedAt ?? DateTime.UtcNow;
+        var ts = end - step.StartedAt.Value;
+        if (ts.TotalMinutes < 1) return "<1 min";
+        if (ts.TotalMinutes < 60) return $"{(int)ts.TotalMinutes} min";
+        if (ts.TotalHours < 24) return $"{(int)ts.TotalHours}h {ts.Minutes}m";
+        if (ts.TotalDays < 7) return $"{(int)ts.TotalDays}d {ts.Hours}h";
+        return $"{(int)ts.TotalDays} days";
     }
 }

@@ -353,8 +353,16 @@ else
                             </div>
                             
                             <div class="mt-4">
-                                <label class="form-label">Comments (Optional)</label>
-                                <textarea class="form-control" rows="3" @bind="_comments" placeholder="Add any additional comments about this request..."></textarea>
+                                <label class="form-label">Comments @(_formDefinition.RequiresRequestComments ? "*" : "(Optional)")</label>
+                                <textarea class="form-control @(_commentsValidationError != null ? "is-invalid" : "")" rows="3" @bind="_comments" placeholder="Add any additional comments about this request..."></textarea>
+                                @if (_commentsValidationError != null)
+                                {
+                                    <div class="invalid-feedback">@_commentsValidationError</div>
+                                }
+                                @if (_formDefinition.RequiresRequestComments)
+                                {
+                                    <small class="form-text text-muted">Minimum 10 characters required</small>
+                                }
                             </div>
                             
                             <div class="mt-4 d-flex justify-content-between">
@@ -395,6 +403,7 @@ else
     private RequestType _requestType = RequestType.Insert;
     private string _selectedRecordId = "";
     private string _comments = "";
+    private string? _commentsValidationError;
     private string _errorMessage = "";
     private string _successMessage = "";
     private bool _isLoading = true;
@@ -617,7 +626,16 @@ else
                         
                         if (controlType == "checkbox" || dataType == "bit")
                         {
-                            _checkboxValues[fieldValue.Key] = Convert.ToBoolean(fieldValue.Value);
+                            if (fieldValue.Value is System.Text.Json.JsonElement jsonEl)
+                            {
+                                _checkboxValues[fieldValue.Key] = jsonEl.ValueKind == System.Text.Json.JsonValueKind.True
+                                    || (jsonEl.ValueKind == System.Text.Json.JsonValueKind.Number && jsonEl.GetInt32() != 0)
+                                    || (jsonEl.ValueKind == System.Text.Json.JsonValueKind.String && bool.TryParse(jsonEl.GetString(), out var parsed) && parsed);
+                            }
+                            else
+                            {
+                                _checkboxValues[fieldValue.Key] = Convert.ToBoolean(fieldValue.Value);
+                            }
                         }
                         else if (controlType == "date" && fieldValue.Value != null)
                         {
@@ -781,6 +799,15 @@ else
             if (_requestType != RequestType.Insert && string.IsNullOrWhiteSpace(_selectedRecordId) && !RequestId.HasValue)
             {
                 _errorMessage = "No record selected. Please open this form from the Data View row actions to update or delete a record.";
+                return;
+            }
+
+            // Validate comments if required
+            _commentsValidationError = null;
+            if (_formDefinition.RequiresRequestComments && (_comments?.Trim().Length ?? 0) < 10)
+            {
+                _commentsValidationError = "Comments are required and must be at least 10 characters.";
+                _errorMessage = "Please provide comments (minimum 10 characters).";
                 return;
             }
 

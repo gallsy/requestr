@@ -15,6 +15,7 @@
 @attribute [Authorize]
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
+@inject IUserTimezoneService Tz
 <h1 class="visually-hidden">Bulk Actions - @Branding.ApplicationName</h1>
 
 @if (_isLoading)
@@ -159,7 +160,7 @@ else
                                                         @request.Status
                                                     </span>
                                                 </td>
-                                                <td>@request.RequestedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                                                <td>@Tz.FormatDateTime(request.RequestedAt)</td>
                                                 <td>
                                                     <a href="/bulk-requests/@request.Id" class="btn btn-sm btn-outline-primary">
                                                         <i class="bi bi-eye"></i>
