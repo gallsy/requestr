@@ -502,7 +502,9 @@
                                                                         </div>
                                                                         <div class="col-md-3">
                                                                             <label class="form-label small">Value</label>
-                                                                            <input type="text" class="form-control form-control-sm" @bind="condition.Value" />
+                                                                            <input type="text" class="form-control form-control-sm"
+                                                                                   value="@(condition.Value?.ToString() ?? "")"
+                                                                                   @onchange="@(e => { condition.Value = e.Value?.ToString(); MarkDirty(); })" />
                                                                         </div>
                                                                         <div class="col-md-3">
                                                                             <label class="form-label small">Target Step</label>

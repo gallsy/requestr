@@ -64,11 +64,11 @@
                                 <small class="text-muted">@Tz.FormatDateTime(entry.Timestamp)</small>
                             </div>
                             <div class="timeline-body">
-                                @if (!string.IsNullOrEmpty(entry.ActorName))
+                                @if (!string.IsNullOrEmpty(entry.ActorName) && !entry.ActorName.Equals("System", StringComparison.OrdinalIgnoreCase))
                                 {
                                     <p class="mb-1"><strong>By:</strong> @entry.ActorName</p>
                                 }
-                                @if (!string.IsNullOrEmpty(entry.Duration))
+                                @if (!string.IsNullOrEmpty(entry.Duration) && !string.Equals(entry.ActorName, "System", StringComparison.OrdinalIgnoreCase))
                                 {
                                     <p class="mb-1 text-muted small">Duration: @entry.Duration</p>
                                 }

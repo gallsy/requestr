@@ -74,17 +74,17 @@
                         <div class="col-md-12">
                             <div class="d-flex justify-content-between align-items-center">
                                 <small class="text-muted">
-                                    @if (FilteredRequests?.Any() == true)
+                                    @if (FilteredTasks.Any())
                                     {
-                                        <text>Showing @FilteredRequests.Count() of @AllRequests?.Count() requests</text>
+                                        <text>Showing @FilteredTasks.Count of @AllTasks.Count approval tasks</text>
                                     }
-                                    else if (AllRequests?.Any() == true)
+                                    else if (AllTasks.Any())
                                     {
-                                        <text>No requests match your current filters (@AllRequests.Count() total)</text>
+                                        <text>No tasks match your current filters (@AllTasks.Count total)</text>
                                     }
                                     else
                                     {
-                                        <text>No requests found</text>
+                                        <text>No approval tasks found</text>
                                     }
                                 </small>
                                 <button class="btn btn-sm btn-outline-primary" @onclick="RefreshData">
@@ -115,7 +115,7 @@
                     {
                         <LoadingSpinner Message="Loading approvals..." />
                     }
-                    else if (FilteredRequests?.Any() != true)
+                    else if (!FilteredTasks.Any())
                     {
                         <EmptyState Title="No pending approvals" 
                                     Description="@GetEmptyStateDescription()" />
@@ -128,6 +128,7 @@
                                     <tr>
                                         <th>ID</th>
                                         <th>Form</th>
+                                        <th>Step</th>
                                         <th>Type</th>
                                         <th>Status</th>
                                         <th>Requested By</th>
@@ -136,35 +137,36 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var request in FilteredRequests)
+                                    @foreach (var task in FilteredTasks)
                                     {
                                         <tr>
                                             <td>
-                                                @if (request.BulkFormRequestId.HasValue)
+                                                @if (task.Request.BulkFormRequestId.HasValue)
                                                 {
-                                                    <strong>Bulk #@request.BulkFormRequestId</strong>
+                                                    <strong>Bulk #@task.Request.BulkFormRequestId</strong>
                                                 }
                                                 else
                                                 {
-                                                    <strong>#@request.Id</strong>
+                                                    <strong>#@task.Request.Id</strong>
                                                 }
                                             </td>
-                                            <td>@request.FormDefinition?.Name</td>
+                                            <td>@task.Request.FormDefinition?.Name</td>
+                                            <td>@task.StepName</td>
                                             <td>
-                                                <span class="badge bg-@(GetRequestTypeBadgeColor(request.RequestType))">
-                                                    @request.RequestType
+                                                <span class="badge bg-@(GetRequestTypeBadgeColor(task.Request.RequestType))">
+                                                    @task.Request.RequestType
                                                 </span>
                                             </td>
                                             <td>
-                                                <span class="badge @GetStatusBadgeClass(request.Status)">@request.Status</span>
+                                                <span class="badge @GetStatusBadgeClass(task.Request.Status)">@task.Request.Status</span>
                                             </td>
-                                            <td>@request.RequestedByName</td>
+                                            <td>@task.Request.RequestedByName</td>
                                             <td>
-                                                <small>@Tz.FormatDate(request.RequestedAt)</small>
+                                                <small>@Tz.FormatDate(task.Request.RequestedAt)</small>
                                             </td>
                                             <td>
                                                 <button class="btn btn-sm btn-outline-primary" 
-                                                        @onclick="() => ViewRequest(request.Id)">
+                                                        @onclick="() => ViewApprovalTask(task)">
                                                     <i class="bi bi-eye"></i>
                                                 </button>
                                             </td>
@@ -179,9 +181,11 @@
         </div>
 
 @code {
+    private record ApprovalTask(FormRequest Request, WorkflowStepInstance Step, string StepName);
+    
     private List<FormRequest>? AllRequests;
-    private List<FormRequest>? FilteredRequests;
-    private Dictionary<int, WorkflowStepInstance?> WorkflowSteps = new();
+    private List<ApprovalTask> AllTasks = new();
+    private List<ApprovalTask> FilteredTasks = new();
     private bool IsLoading = true;
     private bool _showAdvancedFilters = true;
     private string SelectedFormFilter = "";
@@ -245,8 +249,8 @@
                 
                 Logger.LogInformation("WorkflowApprovals: Received {RequestCount} requests from service", AllRequests?.Count ?? 0);
 
-                // Load workflow step information for each request
-                WorkflowSteps.Clear();
+                // Build flat list of approval tasks (one per active step per request)
+                AllTasks.Clear();
                 if (AllRequests?.Any() == true)
                 {
                     Logger.LogInformation("WorkflowApprovals: Loading workflow steps for {RequestCount} requests", AllRequests.Count);
@@ -254,28 +258,47 @@
                     {
                         try
                         {
-                            var currentStep = await FormRequestApprovalService.GetCurrentWorkflowStepAsync(request.Id);
-                            WorkflowSteps[request.Id] = currentStep;
-                            Logger.LogInformation("WorkflowApprovals: Request {RequestId} - WorkflowInstanceId: {WorkflowInstanceId}, CurrentStep: {StepId}", 
-                                request.Id, request.WorkflowInstanceId, currentStep?.StepId ?? "None");
+                            var currentSteps = await FormRequestApprovalService.GetCurrentWorkflowStepsAsync(request.Id);
+                            if (currentSteps.Count > 0)
+                            {
+                                // Get workflow definition for step names
+                                WorkflowDefinition? workflowDef = null;
+                                if (request.WorkflowInstanceId.HasValue)
+                                {
+                                    var instance = await WorkflowInstanceService.GetWorkflowInstanceAsync(request.WorkflowInstanceId.Value);
+                                    if (instance != null)
+                                        workflowDef = await WorkflowDefinitionQueryService.GetWorkflowDefinitionAsync(instance.WorkflowDefinitionId);
+                                }
+
+                                foreach (var step in currentSteps)
+                                {
+                                    var stepDef = workflowDef?.Steps.FirstOrDefault(s => s.StepId == step.StepId);
+                                    // Only include Approval steps
+                                    if (stepDef?.StepType == WorkflowStepType.Approval || stepDef == null)
+                                    {
+                                        var stepName = stepDef?.Name ?? step.StepId;
+                                        AllTasks.Add(new ApprovalTask(request, step, stepName));
+                                        Logger.LogInformation("WorkflowApprovals: Request {RequestId} - Step: {StepId} ({StepName})", 
+                                            request.Id, step.StepId, stepName);
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // Fallback: no active steps, still show the request
+                                var singleStep = await FormRequestApprovalService.GetCurrentWorkflowStepAsync(request.Id);
+                                AllTasks.Add(new ApprovalTask(request, singleStep!, singleStep?.StepId ?? "Unknown"));
+                            }
                         }
                         catch (Exception ex)
                         {
-                            Logger.LogError(ex, "Error loading workflow step for request {RequestId}", request.Id);
-                            WorkflowSteps[request.Id] = null;
+                            Logger.LogError(ex, "Error loading workflow steps for request {RequestId}", request.Id);
                         }
                     }
                 }
-                else
-                {
-                    Logger.LogWarning("WorkflowApprovals: No requests returned from service");
-                }
 
-                Logger.LogInformation("WorkflowApprovals: Finished loading data. WorkflowSteps dictionary now contains {Count} entries", WorkflowSteps.Count);
-                foreach (var kvp in WorkflowSteps)
-                {
-                    Logger.LogInformation("  Request {RequestId}: StepId={StepId}", kvp.Key, kvp.Value?.StepId ?? "null");
-                }
+                Logger.LogInformation("WorkflowApprovals: Built {TaskCount} approval tasks from {RequestCount} requests", 
+                    AllTasks.Count, AllRequests?.Count ?? 0);
 
                 await ApplyFilters();
             }
@@ -293,141 +316,57 @@
 
     private Task ApplyFilters()
     {
-        if (AllRequests == null)
-        {
-            FilteredRequests = new List<FormRequest>();
-            return Task.CompletedTask;
-        }
-
-        var filtered = AllRequests.AsEnumerable();
+        var filtered = AllTasks.AsEnumerable();
 
         // Filter by form
         if (!string.IsNullOrEmpty(SelectedFormFilter) && int.TryParse(SelectedFormFilter, out var formId))
         {
-            filtered = filtered.Where(r => r.FormDefinitionId == formId);
+            filtered = filtered.Where(t => t.Request.FormDefinitionId == formId);
         }
 
         // Filter by workflow step status
         if (!string.IsNullOrEmpty(SelectedStatusFilter))
         {
-            filtered = filtered.Where(r =>
-            {
-                // Get the current step for this request from our WorkflowSteps dictionary
-                if (WorkflowSteps.TryGetValue(r.Id, out var step) && step != null)
-                {
-                    return step.Status.ToString() == SelectedStatusFilter;
-                }
-                return false; // If no step found, don't include in filtered results when status filter is applied
-            });
+            filtered = filtered.Where(t => t.Step?.Status.ToString() == SelectedStatusFilter);
         }
 
         // Sort
         filtered = SortOrder switch
         {
-            "oldest" => filtered.OrderBy(r => r.RequestedAt),
-            _ => filtered.OrderByDescending(r => r.RequestedAt)
+            "oldest" => filtered.OrderBy(t => t.Request.RequestedAt),
+            _ => filtered.OrderByDescending(t => t.Request.RequestedAt)
         };
 
-        FilteredRequests = filtered.ToList();
+        FilteredTasks = filtered.ToList();
         StateHasChanged();
         return Task.CompletedTask;
     }
 
-    private async Task ViewRequest(int requestId)
+    private void ViewApprovalTask(ApprovalTask task)
     {
         try
         {
-            Logger.LogInformation("ViewRequest called for requestId: {RequestId}", requestId);
+            var request = task.Request;
             
-            var request = AllRequests?.FirstOrDefault(r => r.Id == requestId);
-            
-            Logger.LogInformation("Found request: {RequestFound}, WorkflowInstanceId: {WorkflowInstanceId}", request != null, request?.WorkflowInstanceId);
-            
-            if (request?.WorkflowInstanceId != null)
+            if (request.WorkflowInstanceId.HasValue && task.Step != null)
             {
-                // Get all step instances for this workflow
-                var allStepInstances = await WorkflowExecutionService.GetStepInstancesAsync(request.WorkflowInstanceId.Value);
-                Logger.LogInformation("Found {StepCount} step instances for workflow {WorkflowInstanceId}", allStepInstances?.Count ?? 0, request.WorkflowInstanceId.Value);
-                
-                // Get the workflow definition to understand step roles
-                var workflowInstance = await WorkflowInstanceService.GetWorkflowInstanceAsync(request.WorkflowInstanceId.Value);
-                WorkflowDefinition? workflowDefinition = null;
-                if (workflowInstance != null)
-                {
-                    workflowDefinition = await WorkflowDefinitionQueryService.GetWorkflowDefinitionAsync(workflowInstance.WorkflowDefinitionId);
-                }
-                
-                // Find approval steps that this user has permission for
-                WorkflowStepInstance? targetStepInstance = null;
-                string? targetStepId = null;
-                
-                if (allStepInstances != null && workflowDefinition?.Steps != null)
-                {
-                    foreach (var stepInstance in allStepInstances)
-                    {
-                        var stepDefinition = workflowDefinition.Steps.FirstOrDefault(s => s.StepId == stepInstance.StepId);
-                        
-                        if (stepDefinition?.StepType == WorkflowStepType.Approval && stepDefinition.AssignedRoles != null)
-                        {
-                            // Check if user has permission for this approval step
-                            var userCanApprove = stepDefinition.AssignedRoles.Any(role => UserRoles.Contains(role)) || UserRoles.Contains("Admin");
-                            
-                            if (userCanApprove)
-                            {
-                                // Only allow navigation to InProgress steps (not Pending)
-                                if (stepInstance.Status == WorkflowStepInstanceStatus.InProgress)
-                                {
-                                    targetStepInstance = stepInstance;
-                                    targetStepId = stepInstance.StepId;
-                                    Logger.LogInformation("Found in-progress approval step: {StepId} with status {Status}", stepInstance.StepId, stepInstance.Status);
-                                    break;
-                                }
-                                // For historical approvals, remember the last completed one they could have approved
-                                else if (stepInstance.Status == WorkflowStepInstanceStatus.Completed && targetStepInstance == null)
-                                {
-                                    targetStepInstance = stepInstance;
-                                    targetStepId = stepInstance.StepId;
-                                    Logger.LogInformation("Found completed approval step: {StepId} with status {Status}", stepInstance.StepId, stepInstance.Status);
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                if (targetStepId != null)
-                {
-                    var workflowUrl = $"/workflow/{request.WorkflowInstanceId}/step/{targetStepId}";
-                    Logger.LogInformation("Navigating to approval step URL: {WorkflowUrl}", workflowUrl);
-                    Navigation.NavigateTo(workflowUrl);
-                }
-                else
-                {
-                    // Fallback: navigate to the appropriate detail page
-                    var fallbackUrl = request.BulkFormRequestId.HasValue
-                        ? $"/bulk-requests/{request.BulkFormRequestId}"
-                        : $"/requests/{requestId}";
-                    Logger.LogInformation("No appropriate approval step found, using fallback URL: {FallbackUrl}", fallbackUrl);
-                    Navigation.NavigateTo(fallbackUrl);
-                }
+                var workflowUrl = $"/workflow/{request.WorkflowInstanceId}/step/{task.Step.StepId}";
+                Logger.LogInformation("Navigating to approval step URL: {WorkflowUrl}", workflowUrl);
+                Navigation.NavigateTo(workflowUrl);
             }
             else
             {
-                var fallbackUrl = request?.BulkFormRequestId.HasValue == true
+                var fallbackUrl = request.BulkFormRequestId.HasValue
                     ? $"/bulk-requests/{request.BulkFormRequestId}"
-                    : $"/requests/{requestId}";
-                Logger.LogInformation("No workflow instance, using fallback URL: {FallbackUrl}", fallbackUrl);
+                    : $"/requests/{request.Id}";
+                Logger.LogInformation("No workflow step, using fallback URL: {FallbackUrl}", fallbackUrl);
                 Navigation.NavigateTo(fallbackUrl);
             }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Exception in ViewRequest for requestId: {RequestId}", requestId);
-            // Fallback to the appropriate detail view
-            var request = AllRequests?.FirstOrDefault(r => r.Id == requestId);
-            var fallbackUrl = request?.BulkFormRequestId.HasValue == true
-                ? $"/bulk-requests/{request.BulkFormRequestId}"
-                : $"/requests/{requestId}";
-            Navigation.NavigateTo(fallbackUrl);
+            Logger.LogError(ex, "Exception in ViewApprovalTask for requestId: {RequestId}", task.Request.Id);
+            Navigation.NavigateTo($"/requests/{task.Request.Id}");
         }
     }
 

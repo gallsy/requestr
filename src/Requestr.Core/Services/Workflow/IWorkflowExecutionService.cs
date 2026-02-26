@@ -74,6 +74,14 @@ public interface IWorkflowExecutionService
     Task<WorkflowStepInstance?> GetCurrentWorkflowStepAsync(int workflowInstanceId);
 
     /// <summary>
+    /// Gets all current (in-progress) workflow step instances for a workflow instance.
+    /// Supports parallel execution where multiple steps are active simultaneously.
+    /// </summary>
+    /// <param name="workflowInstanceId">The workflow instance ID.</param>
+    /// <returns>List of current step instances.</returns>
+    Task<List<WorkflowStepInstance>> GetCurrentWorkflowStepsAsync(int workflowInstanceId);
+
+    /// <summary>
     /// Gets completed workflow step instances for a workflow instance.
     /// </summary>
     /// <param name="workflowInstanceId">The workflow instance ID.</param>

@@ -77,7 +77,9 @@ public class WorkflowProgressService : IWorkflowProgressService
             CompletedByName = step.CompletedByName,
             Action = step.Action != null ? (WorkflowStepAction)(int)step.Action : null,
             Comments = step.Comments,
-            IsCurrent = step.StepId == (string)result.CurrentStepId,
+            IsCurrent = ((string)result.CurrentStepIds)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Any(id => id.Equals((string)step.StepId, StringComparison.OrdinalIgnoreCase)),
             DaysInStep = step.StartedAt != null
                 ? (int)((step.CompletedAt != null ? (DateTime)step.CompletedAt : DateTime.UtcNow) - ((DateTime)step.StartedAt)).TotalDays
                 : 0,
@@ -93,14 +95,24 @@ public class WorkflowProgressService : IWorkflowProgressService
             ? (int)(DateTime.UtcNow - currentStepStartedAt.Value).TotalDays
             : 0;
 
+        // Build current step names from all active steps
+        var currentStepIdsRaw = (string)result.CurrentStepIds;
+        var currentStepIdsList = currentStepIdsRaw
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        var currentStepNames = steps
+            .Where(s => currentStepIdsList.Any(id => id.Equals(s.StepId, StringComparison.OrdinalIgnoreCase)))
+            .Select(s => s.StepName)
+            .ToList();
+
         var progress = new WorkflowProgress
         {
             FormRequestId = formRequestId,
             WorkflowInstanceId = workflowInstanceId,
             Status = workflowStatus,
             WorkflowName = (string)result.WorkflowName,
-            CurrentStepId = (string)result.CurrentStepId,
-            CurrentStepName = (string?)result.CurrentStepName ?? result.CurrentStepId,
+            CurrentStepId = currentStepIdsRaw,
+            CurrentStepName = currentStepNames.Count > 0 ? string.Join(", ", currentStepNames) : currentStepIdsRaw,
             CurrentStepStatus = result.CurrentStepStatus != null
                 ? ParseStepInstanceStatus(result.CurrentStepStatus)
                 : WorkflowStepInstanceStatus.Pending,

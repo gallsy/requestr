@@ -373,14 +373,31 @@ public class FormRequestApprovalService : IFormRequestApprovalService
             }
 
             // Record the action in form request history
+            // Use workflow-specific change types for individual step actions so they don't
+            // duplicate the step instance entries shown in the activity timeline.
+            // Only use Approved/Rejected when the entire workflow completes.
+            FormRequestChangeType changeType;
+            if (result.WorkflowCompleted && result.WorkflowApproved)
+            {
+                changeType = FormRequestChangeType.Approved;
+            }
+            else if (result.WorkflowCompleted && !result.WorkflowApproved)
+            {
+                changeType = FormRequestChangeType.Rejected;
+            }
+            else
+            {
+                changeType = actionType.ToLower() switch
+                {
+                    "approve" => FormRequestChangeType.WorkflowStepApproved,
+                    "reject" => FormRequestChangeType.WorkflowStepRejected,
+                    _ => FormRequestChangeType.WorkflowStepCompleted
+                };
+            }
+
             await _historyService.RecordChangeAsync(
                 formRequestId,
-                actionType.ToLower() switch
-                {
-                    "approve" => FormRequestChangeType.Approved,
-                    "reject" => FormRequestChangeType.Rejected,
-                    _ => FormRequestChangeType.StatusChanged
-                },
+                changeType,
                 new Dictionary<string, object?> { { "PreviousStep", result.PreviousStepName } },
                 new Dictionary<string, object?> 
                 { 
@@ -419,6 +436,25 @@ public class FormRequestApprovalService : IFormRequestApprovalService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting current workflow step for form request {FormRequestId}", formRequestId);
+            throw;
+        }
+    }
+
+    public async Task<List<WorkflowStepInstance>> GetCurrentWorkflowStepsAsync(int formRequestId)
+    {
+        try
+        {
+            var formRequest = await _formRequestRepository.GetByIdAsync(formRequestId);
+            if (formRequest?.WorkflowInstanceId == null)
+            {
+                return new List<WorkflowStepInstance>();
+            }
+
+            return await _workflowExecutionService.GetCurrentWorkflowStepsAsync(formRequest.WorkflowInstanceId.Value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting current workflow steps for form request {FormRequestId}", formRequestId);
             throw;
         }
     }
