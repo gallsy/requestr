@@ -28,6 +28,15 @@ public interface IFormRequestCommandService
     Task UpdateStatusAsync(int id, RequestStatus status, string? failureMessage = null);
     
     /// <summary>
+    /// Cancels a pending form request. Also cancels any associated workflow.
+    /// </summary>
+    /// <param name="id">The form request ID.</param>
+    /// <param name="userId">The user ID of the requester.</param>
+    /// <param name="userName">The display name of the requester.</param>
+    /// <returns>True if the request was cancelled.</returns>
+    Task<bool> CancelAsync(int id, string userId, string userName);
+
+    /// <summary>
     /// Updates field values for a form request.
     /// </summary>
     Task UpdateFieldValuesAsync(int id, Dictionary<string, object?> fieldValues);

@@ -31,6 +31,7 @@ public static class UiHelper
         RequestStatus.Rejected => "bg-danger",
         RequestStatus.Applied  => "bg-info",
         RequestStatus.Failed   => "bg-danger",
+        RequestStatus.Cancelled => "bg-secondary",
         _ => "bg-secondary"
     };
 
@@ -42,6 +43,7 @@ public static class UiHelper
         RequestStatus.Rejected => "danger",
         RequestStatus.Applied  => "info",
         RequestStatus.Failed   => "danger",
+        RequestStatus.Cancelled => "secondary",
         _ => "secondary"
     };
 
@@ -53,6 +55,7 @@ public static class UiHelper
         RequestStatus.Rejected => "bi-x-circle-fill",
         RequestStatus.Applied  => "bi-check2-all",
         RequestStatus.Failed   => "bi-exclamation-triangle-fill",
+        RequestStatus.Cancelled => "bi-dash-circle",
         _ => "bi-info-circle"
     };
 
@@ -64,6 +67,7 @@ public static class UiHelper
         RequestStatus.Rejected => "text-danger",
         RequestStatus.Applied  => "text-info",
         RequestStatus.Failed   => "text-danger",
+        RequestStatus.Cancelled => "text-secondary",
         _ => "text-muted"
     };
 
@@ -75,6 +79,7 @@ public static class UiHelper
         RequestStatus.Rejected => "bg-danger bg-opacity-10",
         RequestStatus.Applied  => "bg-info bg-opacity-10",
         RequestStatus.Failed   => "bg-danger bg-opacity-10",
+        RequestStatus.Cancelled => "bg-secondary bg-opacity-10",
         _ => "bg-light"
     };
 
@@ -87,6 +92,7 @@ public static class UiHelper
         RequestStatus.Rejected => "Rejected",
         RequestStatus.Applied  => "Complete",
         RequestStatus.Failed   => "Failed",
+        RequestStatus.Cancelled => "Cancelled",
         _ => "Status"
     };
 
@@ -105,6 +111,8 @@ public static class UiHelper
             "This request has been completed and the changes are now in the database.",
         RequestStatus.Failed =>
             "This request failed to apply. An administrator can retry the operation.",
+        RequestStatus.Cancelled =>
+            "This request was cancelled by the requester.",
         _ => ""
     };
 
@@ -200,6 +208,7 @@ public static class UiHelper
         FormRequestChangeType.WorkflowStepApproved   => "bg-success",
         FormRequestChangeType.WorkflowStepRejected   => "bg-danger",
         FormRequestChangeType.WorkflowCompleted      => "bg-success",
+        FormRequestChangeType.Cancelled              => "bg-secondary",
         _ => "bg-secondary"
     };
 

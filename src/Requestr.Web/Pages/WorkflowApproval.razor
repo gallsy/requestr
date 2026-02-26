@@ -91,13 +91,6 @@ else
                                     <br><small>Completed by @_currentStep.CompletedByName on @Tz.FormatDateTime(_currentStep.CompletedAt)</small>
                                 }
                             </StandardAlert>
-                            
-                            <div class="mb-4">
-                                <button type="button" class="btn btn-outline-secondary" @onclick="@(() => Navigation.NavigateTo(GetRequestLink() ?? "/approvals"))">
-                                    <i class="bi bi-box-arrow-up-right me-1"></i>
-                                    View Request
-                                </button>
-                            </div>
                         }
 
                         @if (_hasConflicts)
@@ -222,11 +215,7 @@ else
                                     </div>
                                 </div>
                                 
-                                <div class="d-flex justify-content-between">
-                                    <button type="button" class="btn btn-outline-secondary" @onclick="@(() => Navigation.NavigateTo(GetRequestLink() ?? "/approvals"))">
-                                        <i class="bi bi-box-arrow-up-right me-1"></i>
-                                        View Request
-                                    </button>
+                                <div class="d-flex justify-content-end">
                                     <div>
                                         <button type="button" class="btn btn-danger me-2" @onclick="RejectStep" disabled="@_isProcessing">
                                             @if (_isProcessing && _actionType == "reject")

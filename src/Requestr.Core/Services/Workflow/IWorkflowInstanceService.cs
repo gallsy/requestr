@@ -63,6 +63,14 @@ public interface IWorkflowInstanceService
     Task FailWorkflowAsync(int workflowInstanceId, string failureReason);
 
     /// <summary>
+    /// Cancels a workflow instance and skips all pending/in-progress step instances.
+    /// </summary>
+    /// <param name="workflowInstanceId">The workflow instance ID.</param>
+    /// <param name="cancelledBy">The user who cancelled the workflow.</param>
+    /// <param name="reason">The reason for cancellation.</param>
+    Task CancelWorkflowAsync(int workflowInstanceId, string cancelledBy, string reason);
+
+    /// <summary>
     /// Checks if a user has participated in a workflow.
     /// </summary>
     /// <param name="userId">The user ID.</param>

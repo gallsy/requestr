@@ -265,6 +265,68 @@ public class FormRequestCommandService : IFormRequestCommandService
         }
     }
 
+    public async Task<bool> CancelAsync(int id, string userId, string userName)
+    {
+        try
+        {
+            var request = await _formRequestRepository.GetByIdAsync(id);
+            if (request == null)
+            {
+                _logger.LogWarning("Form request {Id} not found for cancellation", id);
+                return false;
+            }
+
+            if (request.RequestedBy != userId)
+            {
+                _logger.LogWarning("User {UserId} is not the owner of form request {Id}", userId, id);
+                return false;
+            }
+
+            if (request.Status != RequestStatus.Pending)
+            {
+                _logger.LogWarning("Form request {Id} is not in Pending status (Status: {Status})", id, request.Status);
+                return false;
+            }
+
+            // Cancel the workflow if one exists
+            if (request.WorkflowInstanceId.HasValue)
+            {
+                try
+                {
+                    await _workflowInstanceService.CancelWorkflowAsync(
+                        request.WorkflowInstanceId.Value,
+                        userId,
+                        $"Cancelled by requester: {userName}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error cancelling workflow {WorkflowInstanceId} for request {Id}",
+                        request.WorkflowInstanceId.Value, id);
+                }
+            }
+
+            // Update request status to Cancelled
+            await _formRequestRepository.UpdateStatusAsync(id, RequestStatus.Cancelled);
+
+            // Record history
+            await _historyService.RecordChangeAsync(
+                id,
+                FormRequestChangeType.Cancelled,
+                null, null,
+                userId,
+                userName,
+                "Request cancelled by requester");
+
+            _logger.LogInformation("Form request {Id} cancelled by {UserId}", id, userId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cancelling form request {Id}", id);
+            throw;
+        }
+    }
+
     public async Task UpdateFieldValuesAsync(int id, Dictionary<string, object?> fieldValues)
     {
         try

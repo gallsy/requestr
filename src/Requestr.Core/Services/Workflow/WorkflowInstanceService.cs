@@ -152,6 +152,49 @@ public class WorkflowInstanceService : IWorkflowInstanceService
     }
 
     /// <inheritdoc />
+    public async Task CancelWorkflowAsync(int workflowInstanceId, string cancelledBy, string reason)
+    {
+        using var connection = (SqlConnection)_connectionFactory.CreateConnection();
+        await connection.OpenAsync();
+
+        // Update the workflow instance to Cancelled
+        const string cancelWorkflowSql = @"
+            UPDATE WorkflowInstances 
+            SET Status = @Status, FailureReason = @Reason, CompletedAt = @CompletedAt
+            WHERE Id = @Id";
+
+        await connection.ExecuteAsync(cancelWorkflowSql, new
+        {
+            Id = workflowInstanceId,
+            Status = (int)WorkflowInstanceStatus.Cancelled,
+            Reason = reason,
+            CompletedAt = DateTime.UtcNow
+        });
+
+        // Skip all pending/in-progress step instances
+        const string skipStepsSql = @"
+            UPDATE WorkflowStepInstances 
+            SET Status = @SkippedStatus, CompletedAt = @CompletedAt, CompletedBy = @CancelledBy,
+                Comments = @Comments
+            WHERE WorkflowInstanceId = @WorkflowInstanceId 
+            AND Status IN (@PendingStatus, @InProgressStatus)";
+
+        await connection.ExecuteAsync(skipStepsSql, new
+        {
+            WorkflowInstanceId = workflowInstanceId,
+            SkippedStatus = (int)WorkflowStepInstanceStatus.Skipped,
+            PendingStatus = (int)WorkflowStepInstanceStatus.Pending,
+            InProgressStatus = (int)WorkflowStepInstanceStatus.InProgress,
+            CompletedAt = DateTime.UtcNow,
+            CancelledBy = cancelledBy,
+            Comments = reason
+        });
+
+        _logger.LogInformation("Workflow instance {InstanceId} cancelled by {CancelledBy}: {Reason}", 
+            workflowInstanceId, cancelledBy, reason);
+    }
+
+    /// <inheritdoc />
     public async Task<bool> HasUserParticipatedInWorkflowAsync(string userId, List<string> userRoles, int workflowInstanceId)
     {
         var instance = await _instanceRepository.GetByIdAsync(workflowInstanceId);

@@ -20,6 +20,7 @@
 @inject IDatabaseService DatabaseService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IUserTimezoneService Tz
+@inject IFormRequestCommandService FormRequestCommandService
 @attribute [Authorize]
 
 @if (_isLoading)
@@ -101,6 +102,23 @@ else
                             Edit Request
                         </Button>
                     }
+                    @if (_request.Status == RequestStatus.Pending && _request.RequestedBy == _currentUserId)
+                    {
+                        <Button Color="ButtonColor.Danger" Size="ButtonSize.Small" Outline="true"
+                                Disabled="_isCancelling"
+                                @onclick="CancelRequestAsync">
+                            @if (_isCancelling)
+                            {
+                                <Spinner Size="SpinnerSize.Small" Class="me-1" />
+                                <span>Cancelling...</span>
+                            }
+                            else
+                            {
+                                <Icon Name="IconName.XCircle" class="me-1" />
+                                <span>Cancel Request</span>
+                            }
+                        </Button>
+                    }
                 </ActionButtons>
             </RequestSummaryCard>
 
@@ -134,6 +152,7 @@ else
     private List<string> _userRoles = new();
     private bool _isAdmin = false;
     private bool _isRetrying = false;
+    private bool _isCancelling = false;
     private string? _retryMessage;
     private bool _retrySuccess;
     
@@ -431,6 +450,40 @@ else
         finally
         {
             _isRetrying = false;
+        }
+    }
+
+    private async Task CancelRequestAsync()
+    {
+        if (_request == null || _isCancelling) return;
+
+        _isCancelling = true;
+        StateHasChanged();
+
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var userName = authState.User.Identity?.Name ?? _currentUserId;
+
+            var success = await FormRequestCommandService.CancelAsync(
+                _request.Id, _currentUserId, userName);
+
+            if (success)
+            {
+                await LoadRequest();
+            }
+            else
+            {
+                Logger.LogWarning("Failed to cancel request {RequestId}", RequestId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cancelling request {RequestId}", RequestId);
+        }
+        finally
+        {
+            _isCancelling = false;
         }
     }
 

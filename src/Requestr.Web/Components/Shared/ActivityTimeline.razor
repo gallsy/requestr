@@ -72,15 +72,10 @@
                                 {
                                     <p class="mb-1 text-muted small">Duration: @entry.Duration</p>
                                 }
-                                @if (entry.AssignedRoles?.Any() == true)
+                                @{ var visibleRoles = entry.AssignedRoles?.Where(r => !r.Equals("Admin", StringComparison.OrdinalIgnoreCase)).ToList(); }
+                                @if (visibleRoles?.Any() == true)
                                 {
-                                    <div class="mb-1">
-                                        <small class="text-muted">Assigned to: </small>
-                                        @foreach (var role in entry.AssignedRoles)
-                                        {
-                                            <span class="badge bg-secondary bg-opacity-25 text-body border me-1">@role</span>
-                                        }
-                                    </div>
+                                    <p class="mb-1 text-muted small">Assigned to @string.Join(", ", visibleRoles)</p>
                                 }
                                 @if (!string.IsNullOrEmpty(entry.Comments))
                                 {
@@ -197,6 +192,7 @@
         FormRequestChangeType.WorkflowStepApproved => "bi-check-circle-fill",
         FormRequestChangeType.WorkflowStepRejected => "bi-x-circle-fill",
         FormRequestChangeType.WorkflowCompleted => "bi-flag-fill",
+        FormRequestChangeType.Cancelled => "bi-dash-circle",
         _ => "bi-circle"
     };
 
@@ -214,6 +210,7 @@
         FormRequestChangeType.WorkflowStepApproved => "Workflow Step Approved",
         FormRequestChangeType.WorkflowStepRejected => "Workflow Step Rejected",
         FormRequestChangeType.WorkflowCompleted => "Workflow Completed",
+        FormRequestChangeType.Cancelled => "Request Cancelled",
         _ => changeType.ToString()
     };
 
@@ -233,6 +230,7 @@
         FormRequestChangeType.Rejected             => 60,
         FormRequestChangeType.Applied              => 70,
         FormRequestChangeType.Failed               => 70,
+        FormRequestChangeType.Cancelled              => 80,
         _                                          => 50
     };
 
@@ -303,6 +301,7 @@
                         Duration = step.StartedAt.HasValue
                             ? FormatDuration(step.CompletedAt.Value - step.StartedAt.Value) : null,
                         AssignedRoles = step.AssignedRoles?.Any() == true ? step.AssignedRoles : null,
+                        SortPriority = 30,
                         LinkUrl = (step.StepType == WorkflowStepType.Approval && progress.WorkflowInstanceId > 0)
                             ? $"/workflow/{progress.WorkflowInstanceId}/step/{step.StepId}" : null,
                         DeduplicationKey = key
@@ -323,6 +322,7 @@
                         AssignedRoles = step.AssignedRoles?.Any() == true ? step.AssignedRoles : null,
                         Duration = step.StartedAt.HasValue
                             ? FormatDuration(DateTime.UtcNow - step.StartedAt.Value) : null,
+                        SortPriority = 25,
                         LinkUrl = (step.StepType == WorkflowStepType.Approval && progress.WorkflowInstanceId > 0)
                             ? $"/workflow/{progress.WorkflowInstanceId}/step/{step.StepId}" : null,
                         DeduplicationKey = key
