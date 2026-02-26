@@ -258,6 +258,13 @@ public class WorkflowInstanceService : IWorkflowInstanceService
             {
                 await AutoCompleteEndStepAsync(connection, transaction, workflowInstanceId, nextStepId);
             }
+            else if (nextStep?.StepType == WorkflowStepType.Webhook)
+            {
+                // Webhook steps stay InProgress — they'll be executed post-commit
+                // via ProcessPendingWebhookStepAsync called by the workflow starter
+                _logger.LogInformation("Webhook step {StepId} activated for workflow {InstanceId} — will execute post-commit",
+                    nextStepId, workflowInstanceId);
+            }
             else if (nextStep != null)
             {
                 // Send notification for the new active step

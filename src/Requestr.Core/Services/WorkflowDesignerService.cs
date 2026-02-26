@@ -137,7 +137,7 @@ public class WorkflowDesignerService : IWorkflowDesignerService
             PositionY = positionY,
             IsRequired = stepType != WorkflowStepType.Branch, // Branch steps are optional
             AssignedRoles = new List<string>(),
-            Configuration = CreateDefaultStepConfiguration(stepType),
+            Configuration = GetDefaultStepConfiguration(stepType),
             FieldConfigurations = new List<WorkflowStepFieldConfiguration>()
         };
 
@@ -493,7 +493,7 @@ public class WorkflowDesignerService : IWorkflowDesignerService
         return stepId;
     }
 
-    private WorkflowStepConfiguration CreateDefaultStepConfiguration(WorkflowStepType stepType)
+    public WorkflowStepConfiguration GetDefaultStepConfiguration(WorkflowStepType stepType)
     {
         return stepType switch
         {
@@ -512,6 +512,10 @@ public class WorkflowDesignerService : IWorkflowDesignerService
             WorkflowStepType.Branch => new WorkflowStepConfiguration
             {
                 BranchConditions = new List<BranchCondition>()
+            },
+            WorkflowStepType.Webhook => new WorkflowStepConfiguration
+            {
+                Webhook = new WebhookStepConfiguration()
             },
             _ => new WorkflowStepConfiguration()
         };

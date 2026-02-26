@@ -63,7 +63,14 @@ public enum WorkflowStepType
     End = 1,
     Approval = 2,
     Parallel = 3,
-    Branch = 4
+    Branch = 4,
+    Webhook = 5
+}
+
+public enum WebhookAuthType
+{
+    None = 0,
+    ManagedIdentity = 1
 }
 
 public enum WorkflowInstanceStatus

@@ -19,6 +19,7 @@ public class FormRequestCommandService : IFormRequestCommandService
     private readonly IFormDefinitionService _formDefinitionService;
     private readonly IWorkflowDefinitionQueryService _workflowDefinitionQueryService;
     private readonly IWorkflowInstanceService _workflowInstanceService;
+    private readonly IWorkflowExecutionService _workflowExecutionService;
     private readonly IInputValidationService _inputValidationService;
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<FormRequestCommandService> _logger;
@@ -29,6 +30,7 @@ public class FormRequestCommandService : IFormRequestCommandService
         IFormDefinitionService formDefinitionService,
         IWorkflowDefinitionQueryService workflowDefinitionQueryService,
         IWorkflowInstanceService workflowInstanceService,
+        IWorkflowExecutionService workflowExecutionService,
         IInputValidationService inputValidationService,
         IDbConnectionFactory connectionFactory,
         ILogger<FormRequestCommandService> logger)
@@ -38,6 +40,7 @@ public class FormRequestCommandService : IFormRequestCommandService
         _formDefinitionService = formDefinitionService;
         _workflowDefinitionQueryService = workflowDefinitionQueryService;
         _workflowInstanceService = workflowInstanceService;
+        _workflowExecutionService = workflowExecutionService;
         _inputValidationService = inputValidationService;
         _connectionFactory = connectionFactory;
         _logger = logger;
@@ -121,6 +124,19 @@ public class FormRequestCommandService : IFormRequestCommandService
             );
 
             await transaction.CommitAsync();
+
+            // Process pending webhook step if the workflow starts with one (post-commit)
+            if (createdRequest.WorkflowInstanceId.HasValue)
+            {
+                try
+                {
+                    await _workflowExecutionService.ProcessPendingWebhookStepAsync(createdRequest.WorkflowInstanceId.Value);
+                }
+                catch (Exception webhookEx)
+                {
+                    _logger.LogError(webhookEx, "Error processing webhook step for workflow {WorkflowId}", createdRequest.WorkflowInstanceId.Value);
+                }
+            }
             
             return createdRequest;
         }

@@ -42,6 +42,9 @@ public class WorkflowStepConfiguration
     // Configuration for parallel steps
     public List<string> ParallelStepIds { get; set; } = new();
     public bool RequireAllParallelSteps { get; set; } = true;
+    
+    // Configuration for webhook steps
+    public WebhookStepConfiguration? Webhook { get; set; }
 }
 
 public class BranchCondition

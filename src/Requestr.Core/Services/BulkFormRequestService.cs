@@ -19,6 +19,7 @@ public class BulkFormRequestService : IBulkFormRequestService
     private readonly ILogger<BulkFormRequestService> _logger;
     private readonly IFormDefinitionService _formDefinitionService;
     private readonly IWorkflowInstanceService _workflowInstanceService;
+    private readonly IWorkflowExecutionService _workflowExecutionService;
     private readonly IInputValidationService _inputValidationService;
     private readonly string _connectionString;
 
@@ -27,12 +28,14 @@ public class BulkFormRequestService : IBulkFormRequestService
         ILogger<BulkFormRequestService> logger,
         IFormDefinitionService formDefinitionService,
         IWorkflowInstanceService workflowInstanceService,
+        IWorkflowExecutionService workflowExecutionService,
         IInputValidationService inputValidationService)
     {
         _configuration = configuration;
         _logger = logger;
         _formDefinitionService = formDefinitionService;
         _workflowInstanceService = workflowInstanceService;
+        _workflowExecutionService = workflowExecutionService;
         _inputValidationService = inputValidationService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
@@ -531,6 +534,20 @@ public class BulkFormRequestService : IBulkFormRequestService
                 $"{bulkRequest.SelectedRows} items, {bulkRequest.RequestType} request");
 
             await transaction.CommitAsync();
+
+            // Process pending webhook step if the workflow starts with one (post-commit)
+            if (bulkRequest.WorkflowInstanceId.HasValue)
+            {
+                try
+                {
+                    await _workflowExecutionService.ProcessPendingWebhookStepAsync(bulkRequest.WorkflowInstanceId.Value);
+                }
+                catch (Exception webhookEx)
+                {
+                    _logger.LogError(webhookEx, "Error processing webhook step for bulk workflow {WorkflowId}", bulkRequest.WorkflowInstanceId.Value);
+                }
+            }
+
             return bulkRequest;
         }
         catch

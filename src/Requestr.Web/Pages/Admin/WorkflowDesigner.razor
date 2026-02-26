@@ -13,14 +13,16 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @attribute [Authorize(Roles = "Admin")]
+@implements IAsyncDisposable
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
 <PageTitle>Workflow Designer | @Branding.ApplicationName Admin</PageTitle>
 
 <style>
     .workflow-canvas {
-        background-image: radial-gradient(circle, #dee2e6 1px, transparent 1px);
+        background-image: radial-gradient(circle, var(--border-color) 1px, transparent 1px);
         background-size: 20px 20px;
+        background-color: var(--bg-subtle);
     }
     
     .workflow-step.dragging {
@@ -35,12 +37,13 @@
     }
     
     .workflow-step .card {
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        box-shadow: var(--shadow-sm);
         transition: box-shadow 0.2s ease;
+        background-color: var(--card-bg);
     }
     
     .workflow-step:hover .card {
-        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        box-shadow: var(--shadow);
     }
     
     .workflow-step.linking-source {
@@ -121,24 +124,23 @@
         width: 32px;
         height: 32px;
         border-radius: 6px;
-        border: 1px solid #6c757d;
-        background: #ffffff;
+        border: 1px solid var(--border-color);
+        background: var(--card-bg);
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
         transition: all 0.2s ease;
         text-decoration: none;
-        color: #212529;
+        color: var(--text-color);
         font-weight: 600;
     }
     
     .action-icon:hover {
-        background: #f8f9fa;
-        border-color: #212529;
-        color: #000000;
+        background: var(--bg-subtle);
+        border-color: var(--text-color);
         transform: translateY(-1px);
-        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        box-shadow: var(--shadow);
     }
     
     .action-icon.active {
@@ -157,12 +159,35 @@
         border-color: #ffc107;
         color: #000;
     }
+
+    .unsaved-indicator {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #ffc107;
+        margin-left: 6px;
+        animation: unsavedPulse 2s ease-in-out infinite;
+    }
+
+    @@keyframes unsavedPulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+
+    .border-purple {
+        border-color: #6f42c1 !important;
+    }
 </style>
 
 <PageHeader Title="@(workflow?.Name ?? "Workflow Designer")" Description="@workflow?.Description">
     <Actions>
-        <button class="btn btn-outline-primary" @onclick="SaveWorkflow">
+        <button class="btn @(hasUnsavedChanges ? "btn-primary" : "btn-outline-primary")" @onclick="SaveWorkflow">
             <i class="bi bi-save me-1"></i> Save
+            @if (hasUnsavedChanges)
+            {
+                <span class="unsaved-indicator" title="Unsaved changes"></span>
+            }
         </button>
         <button class="btn btn-secondary" @onclick="GoBack">
             <i class="bi bi-arrow-left me-1"></i> Back
@@ -223,6 +248,9 @@
                                     </button>
                                     <button class="btn btn-outline-warning btn-sm" @onclick="() => AddStep(WorkflowStepType.Branch)">
                                         <i class="bi bi-signpost-split"></i> Branch Step
+                                    </button>
+                                    <button class="btn btn-outline-secondary btn-sm" style="border-color: #6f42c1; color: #6f42c1;" @onclick="() => AddStep(WorkflowStepType.Webhook)">
+                                        <i class="bi bi-globe"></i> Webhook Step
                                     </button>
                                 </div>
                             </div>
@@ -309,7 +337,7 @@
                                     </div>
                                 }
 
-                                <div class="workflow-canvas" id="workflowCanvas" style="min-height: 600px; position: relative; border: 1px dashed #dee2e6; border-radius: 0.375rem; overflow: hidden;">
+                                <div class="workflow-canvas" id="workflowCanvas" style="min-height: 600px; position: relative; border: 1px dashed var(--border-color); border-radius: 0.375rem; overflow: auto;">
                                     @if (workflow.Steps.Any())
                                     {
                                         @foreach (var step in workflow.Steps)
@@ -346,7 +374,7 @@
                                             <defs>
                                                 <marker id="arrowhead" markerWidth="10" markerHeight="7" 
                                                         refX="9" refY="3.5" orient="auto" markerUnits="strokeWidth">
-                                                    <polygon points="0 0, 10 3.5, 0 7" fill="#6c757d" />
+                                                    <polygon points="0 0, 10 3.5, 0 7" fill="var(--text-muted)" />
                                                 </marker>
                                             </defs>
                                             @foreach (var transition in workflow.Transitions)
@@ -357,7 +385,7 @@
                                                 {
                                                     var (x1, y1, x2, y2) = CalculateConnectionPoints(fromStep, toStep);
                                                     <line x1="@x1" y1="@y1" x2="@x2" y2="@y2"
-                                                          stroke="@(isDeletingConnections ? "#dc3545" : "#6c757d")" 
+                                                          stroke="@(isDeletingConnections ? "#dc3545" : "var(--text-muted)")" 
                                                           stroke-width="@(isDeletingConnections ? "4" : "2")" 
                                                           marker-end="url(#arrowhead)"
                                                           style="cursor: @(isDeletingConnections ? "pointer" : "default")"
@@ -400,7 +428,7 @@
                                 </div>
                                 <div class="card-body">
                                     <div class="row">
-                                        <div class="col-md-6">
+                                        <div class="@(selectedStep.StepType == WorkflowStepType.Webhook ? "col-md-4" : "col-md-6")">
                                             <div class="mb-3">
                                                 <label class="form-label">Step Name</label>
                                                 <input type="text" class="form-control" @bind="selectedStep.Name" />
@@ -410,7 +438,7 @@
                                                 <textarea class="form-control" rows="2" @bind="selectedStep.Description"></textarea>
                                             </div>
                                         </div>
-                                        <div class="col-md-6">
+                                        <div class="@(selectedStep.StepType == WorkflowStepType.Webhook ? "col-md-8" : "col-md-6")">
                                             @if (selectedStep.StepType == WorkflowStepType.Approval)
                                             {
                                                 <div class="mb-3">
@@ -523,6 +551,105 @@
                                                     </div>
                                                 </div>
                                             }
+                                            @if (selectedStep.StepType == WorkflowStepType.Webhook)
+                                            {
+                                                EnsureWebhookConfig();
+                                                <div class="row">
+                                                    <div class="col-md-6">
+                                                        <div class="mb-3">
+                                                            <label class="form-label">URL</label>
+                                                            <input type="text" class="form-control" placeholder="https://api.example.com/webhook" 
+                                                                   @bind="selectedStep.Configuration.Webhook!.Url" />
+                                                            <small class="form-text text-muted">Supports <code>{<!-- -->{FieldName}}</code> placeholders.</small>
+                                                        </div>
+                                                        <div class="row">
+                                                            <div class="col-6">
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">HTTP Method</label>
+                                                                    <select class="form-select" @bind="selectedStep.Configuration.Webhook!.HttpMethod">
+                                                                        <option value="POST">POST</option>
+                                                                        <option value="GET">GET</option>
+                                                                        <option value="PUT">PUT</option>
+                                                                        <option value="PATCH">PATCH</option>
+                                                                        <option value="DELETE">DELETE</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                            <div class="col-6">
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">Authentication</label>
+                                                                    <select class="form-select" @bind="selectedStep.Configuration.Webhook!.AuthType">
+                                                                        @foreach (var authType in Enum.GetValues<WebhookAuthType>())
+                                                                        {
+                                                                            <option value="@authType">@authType</option>
+                                                                        }
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        @if (selectedStep.Configuration.Webhook!.AuthType == WebhookAuthType.ManagedIdentity)
+                                                        {
+                                                            <div class="mb-3">
+                                                                <label class="form-label">Managed Identity Scope</label>
+                                                                <input type="text" class="form-control" placeholder="api://your-api/.default" 
+                                                                       @bind="selectedStep.Configuration.Webhook!.ManagedIdentityScope" />
+                                                                <small class="form-text text-muted">The token audience/scope for the target API.</small>
+                                                            </div>
+                                                            <div class="mb-3">
+                                                                <label class="form-label">Client ID (User-Assigned MI)</label>
+                                                                <input type="text" class="form-control" placeholder="Leave empty for System-Assigned MI" 
+                                                                       @bind="selectedStep.Configuration.Webhook!.ManagedIdentityClientId" />
+                                                                <small class="form-text text-muted">Optional. Leave blank to use System-Assigned identity.</small>
+                                                            </div>
+                                                        }
+                                                        <div class="mb-3">
+                                                            <label class="form-label">Custom Headers</label>
+                                                            <div class="border rounded p-2" style="min-height: 44px;">
+                                                                @foreach (var header in selectedStep.Configuration.Webhook!.Headers)
+                                                                {
+                                                                    <div class="d-flex align-items-center mb-1 gap-2">
+                                                                        <input type="text" class="form-control form-control-sm" style="flex:1" value="@header.Key" disabled />
+                                                                        <input type="text" class="form-control form-control-sm" style="flex:2" value="@header.Value" disabled />
+                                                                        <button type="button" class="btn btn-danger btn-sm" @onclick="() => RemoveWebhookHeader(header.Key)">
+                                                                            <i class="bi bi-trash"></i>
+                                                                        </button>
+                                                                    </div>
+                                                                }
+                                                                @if (!selectedStep.Configuration.Webhook!.Headers.Any())
+                                                                {
+                                                                    <div class="text-muted small">No custom headers</div>
+                                                                }
+                                                            </div>
+                                                            <div class="input-group mt-2">
+                                                                <input type="text" class="form-control form-control-sm" placeholder="Header name" @bind="newHeaderKey" />
+                                                                <input type="text" class="form-control form-control-sm" placeholder="Header value" @bind="newHeaderValue" />
+                                                                <button class="btn btn-outline-primary btn-sm" @onclick="AddWebhookHeader">Add</button>
+                                                            </div>
+                                                        </div>
+                                                        <div class="mb-3">
+                                                            <div class="form-check">
+                                                                <input class="form-check-input" type="checkbox" 
+                                                                       @bind="selectedStep.Configuration.Webhook!.FailOnError" 
+                                                                       id="failOnError">
+                                                                <label class="form-check-label" for="failOnError">
+                                                                    Fail workflow step on HTTP error (4xx/5xx)
+                                                                </label>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <div class="mb-3">
+                                                            <label class="form-label">Body Template (JSON)</label>
+                                                            <textarea class="form-control font-monospace" rows="12" 
+                                                                      placeholder="@("{\n  \"requestId\": \"{{RequestId}}\",\n  \"field\": \"{{MyField}}\"\n}")"
+                                                                      @bind="selectedStep.Configuration.Webhook!.BodyTemplate"></textarea>
+                                                            <small class="form-text text-muted">
+                                                                Use <code>{<!-- -->{FieldName}}</code> for form fields, or <code>{<!-- -->{RequestId}}</code>, <code>{<!-- -->{RequestedBy}}</code>, <code>{<!-- -->{FormName}}</code>, <code>{<!-- -->{RequestType}}</code>.
+                                                            </small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            }
                                         </div>
                                     </div>
                                 </div>
@@ -540,6 +667,11 @@
     private WorkflowStep? selectedStep;
     private List<string> validationErrors = new();
     private string newRoleName = string.Empty;
+    private bool hasUnsavedChanges = false;
+
+    // Webhook header editing
+    private string newHeaderKey = string.Empty;
+    private string newHeaderValue = string.Empty;
 
     // Linking mode state
     private bool isLinkingMode = false;
@@ -633,6 +765,7 @@
 
             workflow.Transitions.Add(newTransition);
             
+            MarkDirty();
             ToastService.ShowSuccess($"Connected {fromStep.Name} to {toStep.Name}");
             StateHasChanged();
         }
@@ -734,6 +867,7 @@
         try
         {
             workflow?.Transitions.Remove(transition);
+            MarkDirty();
             ToastService.ShowSuccess("Connection deleted successfully");
             StateHasChanged();
         }
@@ -748,50 +882,59 @@
     {
         if (!isDeletingSteps) return;
 
-        try
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete the step '{step.Name}'?");
+        if (confirmed)
         {
-            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete the step '{step.Name}'?");
-            if (confirmed)
+            // Remove any transitions that reference this step
+            workflow?.Transitions.RemoveAll(t => t.FromStepId == step.StepId || t.ToStepId == step.StepId);
+            workflow?.Steps.Remove(step);
+            if (selectedStep?.StepId == step.StepId)
             {
-                await WorkflowDesignerService.DeleteStepAsync(step.Id);
-                if (selectedStep?.Id == step.Id)
-                {
-                    selectedStep = null;
-                }
-                await LoadWorkflow();
-                StateHasChanged();
+                selectedStep = null;
             }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error deleting step");
-            ToastService.ShowError($"Error deleting step: {ex.Message}");
+            MarkDirty();
+            StateHasChanged();
         }
     }
 
-    private async Task AddStep(WorkflowStepType stepType)
+    private void AddStep(WorkflowStepType stepType)
     {
-        try
+        if (workflow == null) return;
+
+        // Calculate position — place below the lowest existing step
+        var maxY = workflow.Steps.Any() ? workflow.Steps.Max(s => s.PositionY) : 0;
+        var stepsAtMaxY = workflow.Steps.Count(s => s.PositionY == maxY);
+        var x = 150 + (stepsAtMaxY % 4) * 150;
+        var y = maxY + 120;
+
+        // Generate unique StepId from in-memory steps
+        var baseId = stepType.ToString().ToLower();
+        var counter = 1;
+        string stepId;
+        do
         {
-            if (workflow == null) return;
+            stepId = $"{baseId}{counter}";
+            counter++;
+        } while (workflow.Steps.Any(s => s.StepId == stepId));
 
-            // Calculate position (simple grid layout)
-            var existingSteps = workflow.Steps.Count;
-            var x = 150 + (existingSteps % 4) * 150;
-            var y = 50 + (existingSteps / 4) * 120;
-
-            var stepName = $"{stepType} {existingSteps + 1}";
-            var newStep = await WorkflowDesignerService.AddStepAsync(workflow.Id, stepType, stepName, x, y);
-
-            // Reload workflow to get updated data
-            await LoadWorkflow();
-            StateHasChanged();
-        }
-        catch (Exception ex)
+        var newStep = new WorkflowStep
         {
-            Logger.LogError(ex, "Error adding step");
-            ToastService.ShowError($"Error adding step: {ex.Message}");
-        }
+            WorkflowDefinitionId = workflow.Id,
+            StepId = stepId,
+            StepType = stepType,
+            Name = $"{stepType} {workflow.Steps.Count + 1}",
+            Description = $"{stepType} step",
+            PositionX = x,
+            PositionY = y,
+            IsRequired = stepType != WorkflowStepType.Branch,
+            AssignedRoles = new List<string>(),
+            Configuration = WorkflowDesignerService.GetDefaultStepConfiguration(stepType),
+            FieldConfigurations = new List<WorkflowStepFieldConfiguration>()
+        };
+
+        workflow.Steps.Add(newStep);
+        MarkDirty();
+        StateHasChanged();
     }
 
     private void SelectStep(WorkflowStep step)
@@ -802,23 +945,17 @@
 
     private async Task DeleteSelectedStep()
     {
-        if (selectedStep == null) return;
+        if (selectedStep == null || workflow == null) return;
 
-        try
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete the step '{selectedStep.Name}'?");
+        if (confirmed)
         {
-            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete the step '{selectedStep.Name}'?");
-            if (confirmed)
-            {
-                await WorkflowDesignerService.DeleteStepAsync(selectedStep.Id);
-                selectedStep = null;
-                await LoadWorkflow();
-                StateHasChanged();
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error deleting step from selected step");
-            ToastService.ShowError($"Error deleting step: {ex.Message}");
+            // Remove any transitions that reference this step
+            workflow.Transitions.RemoveAll(t => t.FromStepId == selectedStep.StepId || t.ToStepId == selectedStep.StepId);
+            workflow.Steps.Remove(selectedStep);
+            selectedStep = null;
+            MarkDirty();
+            StateHasChanged();
         }
     }
 
@@ -832,6 +969,7 @@
         }
 
         newRoleName = string.Empty;
+        MarkDirty();
         StateHasChanged();
     }
 
@@ -840,6 +978,7 @@
         if (selectedStep == null) return;
 
         selectedStep.AssignedRoles.Remove(roleName);
+        MarkDirty();
         StateHasChanged();
     }
 
@@ -901,6 +1040,8 @@
         try
         {
             await WorkflowDefinitionCommandService.UpdateWorkflowDefinitionAsync(workflow);
+            hasUnsavedChanges = false;
+            await UpdateBeforeUnloadGuard();
             ToastService.ShowSuccess("Workflow saved successfully!");
         }
         catch (Exception ex)
@@ -910,8 +1051,15 @@
         }
     }
 
-    private void GoBack()
+    private async void GoBack()
     {
+        if (hasUnsavedChanges)
+        {
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "You have unsaved changes. Are you sure you want to leave?");
+            if (!confirmed) return;
+        }
+        hasUnsavedChanges = false;
+        await UpdateBeforeUnloadGuard();
         Navigation.NavigateTo("/admin/workflows");
     }
 
@@ -923,6 +1071,7 @@
             WorkflowStepType.Approval => "primary",
             WorkflowStepType.Parallel => "info",
             WorkflowStepType.Branch => "warning",
+            WorkflowStepType.Webhook => "purple",
             WorkflowStepType.End => "danger",
             _ => "secondary"
         };
@@ -936,6 +1085,7 @@
             WorkflowStepType.Approval => "bi-person-check",
             WorkflowStepType.Parallel => "bi-arrows-fullscreen",
             WorkflowStepType.Branch => "bi-signpost-split",
+            WorkflowStepType.Webhook => "bi-globe",
             WorkflowStepType.End => "bi-stop-circle",
             _ => "bi-circle"
         };
@@ -1093,5 +1243,68 @@
         {
             await JSRuntime.InvokeVoidAsync("eval", "if(window.workflowDesignerInstance) window.workflowDesignerInstance.setupDraggableElements();");
         }
+    }
+
+    private void EnsureWebhookConfig()
+    {
+        if (selectedStep?.Configuration != null && selectedStep.Configuration.Webhook == null)
+        {
+            selectedStep.Configuration.Webhook = new WebhookStepConfiguration();
+        }
+    }
+
+    private void AddWebhookHeader()
+    {
+        if (selectedStep?.Configuration?.Webhook == null) return;
+        if (string.IsNullOrWhiteSpace(newHeaderKey)) return;
+
+        selectedStep.Configuration.Webhook.Headers[newHeaderKey.Trim()] = newHeaderValue;
+        newHeaderKey = string.Empty;
+        newHeaderValue = string.Empty;
+        MarkDirty();
+    }
+
+    private void RemoveWebhookHeader(string key)
+    {
+        selectedStep?.Configuration?.Webhook?.Headers.Remove(key);
+        MarkDirty();
+    }
+
+    private void MarkDirty()
+    {
+        if (!hasUnsavedChanges)
+        {
+            hasUnsavedChanges = true;
+            _ = UpdateBeforeUnloadGuard();
+        }
+    }
+
+    private async Task UpdateBeforeUnloadGuard()
+    {
+        try
+        {
+            if (hasUnsavedChanges)
+            {
+                await JSRuntime.InvokeVoidAsync("eval",
+                    "window.__wfDesignerBeforeUnload = function(e) { e.preventDefault(); e.returnValue = ''; };" +
+                    "window.addEventListener('beforeunload', window.__wfDesignerBeforeUnload);");
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("eval",
+                    "if(window.__wfDesignerBeforeUnload) { window.removeEventListener('beforeunload', window.__wfDesignerBeforeUnload); window.__wfDesignerBeforeUnload = null; }");
+            }
+        }
+        catch (JSDisconnectedException) { /* circuit disposed */ }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("eval",
+                "if(window.__wfDesignerBeforeUnload) { window.removeEventListener('beforeunload', window.__wfDesignerBeforeUnload); window.__wfDesignerBeforeUnload = null; }");
+        }
+        catch { /* ignore during dispose */ }
     }
 }

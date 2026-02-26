@@ -51,6 +51,7 @@ builder.Services.AddBlazorBootstrap();
 
 // Add application services
 builder.Services.AddRequestrCore();
+builder.Services.AddHttpClient("Webhook");
 
 // Branding options
 builder.Services.Configure<AppBrandingOptions>(builder.Configuration.GetSection("AppBranding"));

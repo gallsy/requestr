@@ -54,6 +54,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IWorkflowInstanceService, WorkflowInstanceService>();
         services.AddScoped<IWorkflowExecutionService, WorkflowExecutionService>();
         services.AddScoped<IWorkflowProgressService, WorkflowProgressService>();
+        services.AddScoped<IWebhookExecutionService, WebhookExecutionService>();
         
         // Notification Services
         services.AddScoped<IEmailConfigurationService, EmailConfigurationService>();

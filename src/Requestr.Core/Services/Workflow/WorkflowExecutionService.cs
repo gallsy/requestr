@@ -22,6 +22,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     private readonly IDataService _dataService;
     private readonly IFormDefinitionService _formDefinitionService;
     private readonly INotificationService _notificationService;
+    private readonly IWebhookExecutionService _webhookExecutionService;
+    private readonly IFormRequestRepository _formRequestRepository;
     private readonly IConfiguration _configuration;
     private readonly ILogger<WorkflowExecutionService> _logger;
 
@@ -38,7 +40,17 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         string? CompletedBy = null,
         bool WasApproved = false,
         string? Comments = null,
-        int? WorkflowInstanceIdForDataApplication = null);
+        int? WorkflowInstanceIdForDataApplication = null,
+        WebhookPostCommitInfo? WebhookInfo = null);
+
+    /// <summary>
+    /// Information needed to execute a webhook step after transaction commit.
+    /// </summary>
+    private record WebhookPostCommitInfo(
+        int WorkflowInstanceId,
+        string StepId,
+        WebhookStepConfiguration Config,
+        int FormRequestId);
 
     public WorkflowExecutionService(
         IWorkflowInstanceRepository instanceRepository,
@@ -48,6 +60,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         IDataService dataService,
         IFormDefinitionService formDefinitionService,
         INotificationService notificationService,
+        IWebhookExecutionService webhookExecutionService,
+        IFormRequestRepository formRequestRepository,
         IConfiguration configuration,
         ILogger<WorkflowExecutionService> logger)
     {
@@ -58,6 +72,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         _dataService = dataService;
         _formDefinitionService = formDefinitionService;
         _notificationService = notificationService;
+        _webhookExecutionService = webhookExecutionService;
+        _formRequestRepository = formRequestRepository;
         _configuration = configuration;
         _logger = logger;
     }
@@ -310,6 +326,46 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         return availableSteps;
     }
 
+    /// <inheritdoc />
+    public async Task ProcessPendingWebhookStepAsync(int workflowInstanceId)
+    {
+        try
+        {
+            var instance = await _instanceRepository.GetByIdAsync(workflowInstanceId);
+            if (instance == null || instance.Status != WorkflowInstanceStatus.InProgress)
+                return;
+
+            var definition = await _definitionRepository.GetByIdAsync(instance.WorkflowDefinitionId);
+            if (definition == null)
+                return;
+
+            var currentStep = definition.Steps.FirstOrDefault(s => s.StepId == instance.CurrentStepId);
+            if (currentStep?.StepType != WorkflowStepType.Webhook)
+                return;
+
+            var webhookConfig = currentStep.Configuration?.Webhook;
+            if (webhookConfig == null)
+            {
+                _logger.LogWarning("Webhook step {StepId} has no configuration — auto-completing", currentStep.StepId);
+                await CompleteStepAsync(workflowInstanceId, currentStep.StepId, "System", "System",
+                    WorkflowStepAction.Completed, "Webhook skipped: no configuration", null);
+                return;
+            }
+
+            var webhookInfo = new WebhookPostCommitInfo(
+                WorkflowInstanceId: workflowInstanceId,
+                StepId: currentStep.StepId,
+                Config: webhookConfig,
+                FormRequestId: instance.FormRequestId);
+
+            await ExecuteWebhookPostCommitAsync(webhookInfo);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing pending webhook step for workflow {WorkflowInstanceId}", workflowInstanceId);
+        }
+    }
+
     private async Task<string?> GetNextStepIdAsync(WorkflowDefinition definition, string currentStepId)
     {
         var transitions = definition.Transitions
@@ -345,6 +401,35 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         if (nextStep?.StepType == WorkflowStepType.End)
         {
             return await AutoCompleteEndStepAsync(connection, transaction, workflowInstanceId, nextStepId, completedBy);
+        }
+        else if (nextStep?.StepType == WorkflowStepType.Webhook)
+        {
+            // Webhook steps are left InProgress — the actual HTTP call runs post-commit
+            // to avoid holding the DB transaction open during network I/O.
+            var webhookConfig = nextStep.Configuration?.Webhook;
+            if (webhookConfig == null)
+            {
+                _logger.LogWarning("Webhook step {StepId} has no webhook configuration — auto-completing", nextStepId);
+                await _stepInstanceRepository.UpdateToCompletedAsync(
+                    workflowInstanceId, nextStepId, "System", WorkflowStepAction.Completed,
+                    "Auto-completed webhook step (no configuration)", null, connection, transaction);
+                
+                var afterWebhookStepId = await GetNextStepIdAsync(definition, nextStepId);
+                if (!string.IsNullOrEmpty(afterWebhookStepId))
+                {
+                    return await MoveToNextStepAsync(connection, transaction, workflowInstanceId, afterWebhookStepId, definition, completedBy);
+                }
+                return null;
+            }
+
+            // Get the form request ID from the workflow instance
+            var instance = await _instanceRepository.GetByIdAsync(workflowInstanceId, connection, transaction);
+            return new PostCommitActions(
+                WebhookInfo: new WebhookPostCommitInfo(
+                    WorkflowInstanceId: workflowInstanceId,
+                    StepId: nextStepId,
+                    Config: webhookConfig,
+                    FormRequestId: instance?.FormRequestId ?? 0));
         }
         else
         {
@@ -486,6 +571,84 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             {
                 _logger.LogError(ex, "Error applying data changes for workflow {WorkflowInstanceId}",
                     actions.WorkflowInstanceIdForDataApplication.Value);
+            }
+        }
+
+        if (actions.WebhookInfo != null)
+        {
+            await ExecuteWebhookPostCommitAsync(actions.WebhookInfo);
+        }
+    }
+
+    /// <summary>
+    /// Executes a webhook step after transaction commit, then auto-completes the step
+    /// and advances the workflow. This avoids holding DB transactions open during HTTP calls.
+    /// </summary>
+    private async Task ExecuteWebhookPostCommitAsync(WebhookPostCommitInfo info)
+    {
+        try
+        {
+            _logger.LogInformation("Executing webhook for workflow {WorkflowInstanceId}, step {StepId}",
+                info.WorkflowInstanceId, info.StepId);
+
+            // Load the form request for variable substitution
+            var formRequest = await _formRequestRepository.GetByIdAsync(info.FormRequestId);
+            if (formRequest == null)
+            {
+                _logger.LogError("Form request {FormRequestId} not found for webhook step", info.FormRequestId);
+                await CompleteStepAsync(info.WorkflowInstanceId, info.StepId, "System", "System",
+                    WorkflowStepAction.Completed, "Webhook skipped: form request not found", null);
+                return;
+            }
+
+            // Load form definition for system variables
+            FormDefinition? formDefinition = null;
+            try
+            {
+                formDefinition = await _formDefinitionService.GetByIdAsync(formRequest.FormDefinitionId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not load form definition {FormDefId} for webhook variables",
+                    formRequest.FormDefinitionId);
+            }
+
+            // Execute the webhook
+            var result = await _webhookExecutionService.ExecuteAsync(info.Config, formRequest, formDefinition);
+
+            // Build completion comment with webhook result summary
+            var comment = result.Success
+                ? $"Webhook completed: HTTP {result.StatusCode}"
+                : $"Webhook failed: {result.ErrorMessage}";
+
+            if (result.Success)
+            {
+                // Complete the step and advance the workflow
+                await CompleteStepAsync(info.WorkflowInstanceId, info.StepId, "System", "System",
+                    WorkflowStepAction.Completed, comment, null);
+            }
+            else
+            {
+                // Fail the step — this will reject/fail the workflow
+                await CompleteStepAsync(info.WorkflowInstanceId, info.StepId, "System", "System",
+                    WorkflowStepAction.Rejected, comment, null);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error executing webhook for workflow {WorkflowInstanceId}, step {StepId}",
+                info.WorkflowInstanceId, info.StepId);
+
+            // Attempt to fail the step gracefully
+            try
+            {
+                await CompleteStepAsync(info.WorkflowInstanceId, info.StepId, "System", "System",
+                    WorkflowStepAction.Rejected, $"Webhook execution error: {ex.Message}", null);
+            }
+            catch (Exception innerEx)
+            {
+                _logger.LogError(innerEx, "Failed to mark webhook step as failed for workflow {WorkflowInstanceId}",
+                    info.WorkflowInstanceId);
             }
         }
     }

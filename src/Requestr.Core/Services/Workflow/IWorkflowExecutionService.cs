@@ -98,4 +98,12 @@ public interface IWorkflowExecutionService
     /// <param name="userRoles">The user's roles.</param>
     /// <returns>List of available step IDs.</returns>
     Task<List<string>> GetAvailableStepsForUserAsync(int workflowInstanceId, string userId, List<string> userRoles);
+
+    /// <summary>
+    /// Checks if the current step of a workflow is a webhook step and, if so,
+    /// executes the webhook and advances the workflow. Should be called after
+    /// the transaction that started the workflow has been committed.
+    /// </summary>
+    /// <param name="workflowInstanceId">The workflow instance ID.</param>
+    Task ProcessPendingWebhookStepAsync(int workflowInstanceId);
 }

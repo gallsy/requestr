@@ -626,7 +626,16 @@ else
                         
                         if (controlType == "checkbox" || dataType == "bit")
                         {
-                            _checkboxValues[fieldValue.Key] = Convert.ToBoolean(fieldValue.Value);
+                            if (fieldValue.Value is System.Text.Json.JsonElement jsonEl)
+                            {
+                                _checkboxValues[fieldValue.Key] = jsonEl.ValueKind == System.Text.Json.JsonValueKind.True
+                                    || (jsonEl.ValueKind == System.Text.Json.JsonValueKind.Number && jsonEl.GetInt32() != 0)
+                                    || (jsonEl.ValueKind == System.Text.Json.JsonValueKind.String && bool.TryParse(jsonEl.GetString(), out var parsed) && parsed);
+                            }
+                            else
+                            {
+                                _checkboxValues[fieldValue.Key] = Convert.ToBoolean(fieldValue.Value);
+                            }
                         }
                         else if (controlType == "date" && fieldValue.Value != null)
                         {

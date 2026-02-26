@@ -124,6 +124,56 @@ public enum ConditionAction
 }
 
 /// <summary>
+/// Configuration for webhook workflow steps
+/// </summary>
+public class WebhookStepConfiguration : IStepConfiguration
+{
+    public string StepType => "webhook";
+    public bool InheritFromWorkflow { get; set; } = false;
+
+    /// <summary>The target URL. Supports {{FieldName}} placeholders.</summary>
+    public string Url { get; set; } = string.Empty;
+
+    /// <summary>HTTP method: GET, POST, PUT, PATCH, DELETE.</summary>
+    public string HttpMethod { get; set; } = "POST";
+
+    /// <summary>Custom HTTP headers (key/value pairs).</summary>
+    public Dictionary<string, string> Headers { get; set; } = new();
+
+    /// <summary>JSON body template with {{FieldName}} placeholders for variable substitution.</summary>
+    public string? BodyTemplate { get; set; }
+
+    /// <summary>Authentication type for the webhook request.</summary>
+    public WebhookAuthType AuthType { get; set; } = WebhookAuthType.None;
+
+    /// <summary>
+    /// The scope/resource URI to request a token for when using Managed Identity.
+    /// Example: "api://your-api/.default"
+    /// </summary>
+    public string? ManagedIdentityScope { get; set; }
+
+    /// <summary>
+    /// Optional Client ID for a User-Assigned Managed Identity.
+    /// Leave null/empty to use the System-Assigned Managed Identity.
+    /// </summary>
+    public string? ManagedIdentityClientId { get; set; }
+
+    /// <summary>If true, the workflow step fails when the webhook returns a 4xx/5xx status code.</summary>
+    public bool FailOnError { get; set; } = true;
+}
+
+/// <summary>
+/// Result of a webhook execution
+/// </summary>
+public class WebhookResult
+{
+    public bool Success { get; set; }
+    public int StatusCode { get; set; }
+    public string? ResponseBody { get; set; }
+    public string? ErrorMessage { get; set; }
+}
+
+/// <summary>
 /// Validation result for step configurations
 /// </summary>
 public class StepConfigurationValidationResult
