@@ -525,14 +525,16 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                        fr.FieldValues, fr.OriginalValues, fr.RequestType,
                        fr.FormDefinitionId, fr.RequestedBy,
                        COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName,
+                       COALESCE(uComp.DisplayName, @CompletedBy) as CompletedByName,
                        fd.DatabaseConnectionName, fd.TableName, fd.[Schema]
                 FROM WorkflowInstances wi
                 INNER JOIN FormRequests fr ON wi.FormRequestId = fr.Id
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
                 LEFT JOIN Users uReq ON uReq.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
+                LEFT JOIN Users uComp ON uComp.UserObjectId = TRY_CONVERT(uniqueidentifier, @CompletedBy)
                 WHERE wi.Id = @WorkflowInstanceId";
 
-            var workflowData = await connection.QueryFirstOrDefaultAsync(getFormRequestSql, new { WorkflowInstanceId = workflowInstanceId });
+            var workflowData = await connection.QueryFirstOrDefaultAsync(getFormRequestSql, new { WorkflowInstanceId = workflowInstanceId, CompletedBy = completedBy });
 
             if (workflowData == null)
             {
@@ -567,6 +569,22 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                     BulkRequestId = bulkFormRequestId.Value,
                     ApprovedStatus = (int)RequestStatus.Approved,
                     PendingStatus = (int)RequestStatus.Pending
+                });
+
+                // Record workflow-approved history for the bulk request
+                string completedByName = workflowData.CompletedByName;
+                const string insertBulkHistorySql = @"
+                    INSERT INTO BulkFormRequestHistory (BulkFormRequestId, ChangeType, ChangedBy, ChangedByName, ChangedAt, Comments, Details)
+                    VALUES (@BulkFormRequestId, @ChangeType, @ChangedBy, @ChangedByName, @ChangedAt, @Comments, @Details)";
+                await connection.ExecuteAsync(insertBulkHistorySql, new
+                {
+                    BulkFormRequestId = bulkFormRequestId.Value,
+                    ChangeType = (int)FormRequestChangeType.Approved,
+                    ChangedBy = completedBy,
+                    ChangedByName = completedByName,
+                    ChangedAt = DateTime.UtcNow,
+                    Comments = "Approved via workflow",
+                    Details = (string?)null
                 });
 
                 applicationSuccess = await ApplyBulkRequestItemsAsync(connection, bulkFormRequestId.Value);
@@ -913,6 +931,20 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                 BulkRequestId = bulkFormRequestId,
                 Status = (int)overallStatus,
                 ProcessingSummary = processingSummary
+            });
+
+            // Record history entry for bulk request
+            var historyChangeType = failureCount == 0 ? FormRequestChangeType.Applied : FormRequestChangeType.Failed;
+            const string insertHistorySql = @"
+                INSERT INTO BulkFormRequestHistory (BulkFormRequestId, ChangeType, ChangedBy, ChangedByName, ChangedAt, Comments, Details)
+                VALUES (@BulkFormRequestId, @ChangeType, 'system', 'System', @ChangedAt, @Comments, @Details)";
+            await connection.ExecuteAsync(insertHistorySql, new
+            {
+                BulkFormRequestId = bulkFormRequestId,
+                ChangeType = (int)historyChangeType,
+                ChangedAt = DateTime.UtcNow,
+                Comments = processingSummary,
+                Details = (string?)null
             });
 
             _logger.LogInformation("Completed bulk request processing for {BulkRequestId}. Summary: {ProcessingSummary}",

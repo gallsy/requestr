@@ -114,140 +114,8 @@ else
 
         <!-- Right column: Activity Timeline -->
         <div class="col-12 col-xl-5">
-            <!-- Unified Activity Timeline -->
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h5 class="mb-0">
-                        <i class="bi bi-clock-history me-2"></i>Activity
-                    </h5>
-                </div>
-                <div class="card-body">
-                    @* Workflow progress bar (if workflow exists) *@
-                    @if (_workflowProgress != null)
-                    {
-                        <div class="mb-4 pb-3 border-bottom">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <span class="fw-medium">@_workflowProgress.WorkflowName</span>
-                                <span class="text-muted small">@_workflowProgress.CompletedStepsCount of @_workflowProgress.TotalStepsCount steps</span>
-                            </div>
-                            <div class="progress" style="height: 8px;">
-                                <div class="progress-bar bg-@GetWorkflowProgressColor()" 
-                                     style="width: @(_workflowProgress.ProgressPercentage)%"
-                                     role="progressbar">
-                                </div>
-                            </div>
-                            @if (_workflowProgress.IsStalled)
-                            {
-                                <div class="small text-warning mt-1">
-                                    <i class="bi bi-exclamation-triangle"></i>
-                                    Stalled — @_workflowProgress.DaysInCurrentStep days in current step
-                                </div>
-                            }
-                        </div>
-                    }
-
-                    @* Merged timeline *@
-                    @if (_unifiedTimeline?.Any() == true)
-                    {
-                        <div class="timeline">
-                            @foreach (var entry in _unifiedTimeline)
-                            {
-                                <div class="timeline-item @(entry.IsCompact ? "compact" : "")">
-                                    <div class="timeline-marker @entry.MarkerColor">
-                                        <i class="bi @entry.Icon"></i>
-                                    </div>
-                                    <div class="timeline-content">
-                                        <div class="timeline-header">
-                                            <div>
-                                                @if (!string.IsNullOrEmpty(entry.LinkUrl))
-                                                {
-                                                    <a href="@entry.LinkUrl" class="fw-bold">@entry.Title</a>
-                                                }
-                                                else
-                                                {
-                                                    <strong>@entry.Title</strong>
-                                                }
-                                                @if (entry.IsCompact && !string.IsNullOrEmpty(entry.Duration))
-                                                {
-                                                    <small class="text-muted ms-2">@entry.Duration</small>
-                                                }
-                                            </div>
-                                            <small class="text-muted">@Tz.FormatDateTime(entry.Timestamp)</small>
-                                        </div>
-                                        <div class="timeline-body">
-                                            @if (!string.IsNullOrEmpty(entry.ActorName))
-                                            {
-                                                <p class="mb-1"><strong>By:</strong> @entry.ActorName</p>
-                                            }
-                                            @if (!string.IsNullOrEmpty(entry.Duration))
-                                            {
-                                                <p class="mb-1 text-muted small">Duration: @entry.Duration</p>
-                                            }
-                                            @if (entry.AssignedRoles?.Any() == true)
-                                            {
-                                                <div class="mb-1">
-                                                    <small class="text-muted">Assigned to: </small>
-                                                    @foreach (var role in entry.AssignedRoles)
-                                                    {
-                                                        <span class="badge bg-secondary bg-opacity-25 text-body border me-1">@role</span>
-                                                    }
-                                                </div>
-                                            }
-                                            @if (!string.IsNullOrEmpty(entry.Comments))
-                                            {
-                                                <div class="mt-2 p-2 bg-light rounded">
-                                                    <small><strong>Comments:</strong> @entry.Comments</small>
-                                                </div>
-                                            }
-                                            @if (entry.FieldChangesJson != null)
-                                            {
-                                                <div class="mt-2">
-                                                    <strong>Field Changes:</strong>
-                                                    <div class="mt-1">
-                                                        @try
-                                                        {
-                                                            var fieldChangesElement = (JsonElement)entry.FieldChangesJson;
-                                                            if (fieldChangesElement.ValueKind == JsonValueKind.Array)
-                                                            {
-                                                                foreach (var changeElement in fieldChangesElement.EnumerateArray())
-                                                                {
-                                                                    var fieldName = changeElement.GetProperty("FieldName").GetString() ?? "";
-                                                                    var previousValue = changeElement.TryGetProperty("PreviousValue", out var prevProp) ? prevProp.GetString() : "null";
-                                                                    var newValue = changeElement.TryGetProperty("NewValue", out var newProp) ? newProp.GetString() : "null";
-                                                                    var displayFieldName = fieldName.StartsWith("Original_") ? fieldName.Substring(9) + " (Original)" : fieldName;
-                                                                    
-                                                                    <div class="field-change-item mb-2 p-2 border rounded bg-light">
-                                                                        <strong class="field-name">@displayFieldName:</strong>
-                                                                        <div class="field-change-values mt-1">
-                                                                            <div class="d-flex align-items-center flex-wrap">
-                                                                                <span class="text-muted text-decoration-line-through me-2">@(previousValue ?? "null")</span>
-                                                                                <i class="bi bi-arrow-right text-muted small mx-1"></i>
-                                                                                <span class="fw-medium ms-2">@(newValue ?? "null")</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                }
-                                                            }
-                                                        }
-                                                        catch (Exception ex)
-                                                        {
-                                                            <small class="text-warning">Unable to parse field changes: @ex.Message</small>
-                                                        }
-                                                    </div>
-                                                </div>
-                                            }
-                                        </div>
-                                    </div>
-                                </div>
-                            }
-                        </div>
-                    }
-                    else
-                    {
-                        <p class="text-muted">No activity recorded yet.</p>
-                    }
-                </div>
-            </div>
+            <ActivityTimeline WorkflowProgress="@_workflowProgress"
+                             Entries="@_unifiedTimeline" />
         </div>
     </div>
 }
@@ -275,7 +143,7 @@ else
     private WorkflowProgress? _workflowProgress;
     
     // Unified timeline
-    private List<UnifiedTimelineEntry> _unifiedTimeline = new();
+    private List<ActivityTimeline.TimelineEntry> _unifiedTimeline = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -577,41 +445,7 @@ else
         _ => requestType.ToString()
     };
 
-    private string GetHistoryMarkerColor(FormRequestChangeType changeType) => UiHelper.GetHistoryMarkerColor(changeType);
 
-    private string GetHistoryIcon(FormRequestChangeType changeType) => changeType switch
-    {
-        FormRequestChangeType.Created => "bi-plus-circle",
-        FormRequestChangeType.Updated => "bi-pencil-square",
-        FormRequestChangeType.StatusChanged => "bi-arrow-repeat",
-        FormRequestChangeType.Approved => "bi-check-circle",
-        FormRequestChangeType.Rejected => "bi-x-circle",
-        FormRequestChangeType.Applied => "bi-check2-all",
-        FormRequestChangeType.Failed => "bi-exclamation-triangle",
-        FormRequestChangeType.WorkflowStarted => "bi-play-circle",
-        FormRequestChangeType.WorkflowStepCompleted => "bi-check-square",
-        FormRequestChangeType.WorkflowStepApproved => "bi-check-circle-fill",
-        FormRequestChangeType.WorkflowStepRejected => "bi-x-circle-fill",
-        FormRequestChangeType.WorkflowCompleted => "bi-flag-fill",
-        _ => "bi-circle"
-    };
-
-    private string GetHistoryTitle(FormRequestChangeType changeType) => changeType switch
-    {
-        FormRequestChangeType.Created => "Request Created",
-        FormRequestChangeType.Updated => "Request Updated",
-        FormRequestChangeType.StatusChanged => "Status Changed",
-        FormRequestChangeType.Approved => "Request Approved",
-        FormRequestChangeType.Rejected => "Request Rejected",
-        FormRequestChangeType.Applied => "Changes Applied",
-        FormRequestChangeType.Failed => "Application Failed",
-        FormRequestChangeType.WorkflowStarted => "Workflow Started",
-        FormRequestChangeType.WorkflowStepCompleted => "Workflow Step Completed",
-        FormRequestChangeType.WorkflowStepApproved => "Workflow Step Approved",
-        FormRequestChangeType.WorkflowStepRejected => "Workflow Step Rejected",
-        FormRequestChangeType.WorkflowCompleted => "Workflow Completed",
-        _ => changeType.ToString()
-    };
 
     private string GetFieldDisplayName(string fieldName)
     {
@@ -626,23 +460,7 @@ else
         return formField?.DisplayName ?? fieldName;
     }
 
-    private bool IsWorkflowHistoryType(FormRequestChangeType changeType) => changeType switch
-    {
-        FormRequestChangeType.WorkflowStarted => true,
-        FormRequestChangeType.WorkflowStepCompleted => true,
-        FormRequestChangeType.WorkflowStepApproved => true,
-        FormRequestChangeType.WorkflowStepRejected => true,
-        FormRequestChangeType.WorkflowCompleted => true,
-        _ => false
-    };
 
-    private string GetActionBadgeClass(string? action) => action switch
-    {
-        "Approved" => "bg-success",
-        "Rejected" => "bg-danger",
-        "Completed" => "bg-primary",
-        _ => "bg-secondary"
-    };
 
     // ==========================================
     // Workflow Progress
@@ -660,118 +478,22 @@ else
         }
     }
 
-    private string GetWorkflowProgressColor()
-    {
-        if (_workflowProgress == null) return "secondary";
-        return _workflowProgress.Status switch
-        {
-            WorkflowInstanceStatus.Completed => "success",
-            WorkflowInstanceStatus.InProgress => "primary",
-            WorkflowInstanceStatus.Cancelled or WorkflowInstanceStatus.Failed => "danger",
-            _ => "secondary"
-        };
-    }
-
     // ==========================================
     // Unified Timeline Builder
     // ==========================================
 
-    private class UnifiedTimelineEntry
-    {
-        public DateTime Timestamp { get; set; }
-        public string Title { get; set; } = string.Empty;
-        public string Icon { get; set; } = "bi-circle";
-        public string MarkerColor { get; set; } = "bg-secondary";
-        public string? ActorName { get; set; }
-        public string? Comments { get; set; }
-        public string? Duration { get; set; }
-        public List<string>? AssignedRoles { get; set; }
-        public string? LinkUrl { get; set; }
-        public object? FieldChangesJson { get; set; }
-        public bool IsCompact { get; set; }
-        /// <summary>Tiebreaker for entries with the same timestamp. Lower = earlier in the timeline.</summary>
-        public int SortPriority { get; set; }
-        /// <summary>Used for deduplication — a unique key per logical event</summary>
-        public string DeduplicationKey { get; set; } = string.Empty;
-    }
-
     private void BuildUnifiedTimeline()
     {
-        var entries = new List<UnifiedTimelineEntry>();
+        var entries = new List<ActivityTimeline.TimelineEntry>();
         var seenKeys = new HashSet<string>();
 
-        // 1. Add workflow step entries (these have richer data like duration and roles)
-        if (_workflowProgress?.Steps != null)
+        // 1. Add workflow step entries (richer data: duration, roles)
+        if (_workflowProgress != null)
         {
-            foreach (var step in _workflowProgress.Steps)
+            foreach (var e in ActivityTimeline.BuildWorkflowStepEntries(_workflowProgress))
             {
-                // Skip Start and End steps — the progress bar already shows workflow status
-                if (step.StepType == WorkflowStepType.Start || step.StepType == WorkflowStepType.End)
-                    continue;
-
-                if (step.CompletedAt.HasValue)
-                {
-                    // Completed approval/parallel/branch step
-                    var key = $"step-completed-{step.StepId}";
-                    if (seenKeys.Add(key))
-                    {
-                        var title = step.Action switch
-                        {
-                            WorkflowStepAction.Approved => $"{step.StepName} — Approved",
-                            WorkflowStepAction.Rejected => $"{step.StepName} — Rejected",
-                            _ => $"{step.StepName} — Completed"
-                        };
-                        var icon = step.Action switch
-                        {
-                            WorkflowStepAction.Approved => "bi-check-circle-fill",
-                            WorkflowStepAction.Rejected => "bi-x-circle-fill",
-                            _ => "bi-check-square"
-                        };
-                        var markerColor = step.Action switch
-                        {
-                            WorkflowStepAction.Approved => "bg-success",
-                            WorkflowStepAction.Rejected => "bg-danger",
-                            _ => "bg-primary"
-                        };
-
-                        entries.Add(new UnifiedTimelineEntry
-                        {
-                            Timestamp = step.CompletedAt.Value,
-                            Title = title,
-                            Icon = icon,
-                            MarkerColor = markerColor,
-                            ActorName = step.CompletedByName ?? step.CompletedBy,
-                            Comments = step.Comments,
-                            Duration = step.StartedAt.HasValue 
-                                ? FormatDuration(step.CompletedAt.Value - step.StartedAt.Value) : null,
-                            AssignedRoles = step.AssignedRoles?.Any() == true ? step.AssignedRoles : null,
-                            LinkUrl = (step.StepType == WorkflowStepType.Approval && _workflowProgress.WorkflowInstanceId > 0)
-                                ? $"/workflow/{_workflowProgress.WorkflowInstanceId}/step/{step.StepId}" : null,
-                            DeduplicationKey = key
-                        });
-                    }
-                }
-                else if (step.IsCurrent)
-                {
-                    // Currently active step
-                    var key = $"step-active-{step.StepId}";
-                    if (seenKeys.Add(key))
-                    {
-                        entries.Add(new UnifiedTimelineEntry
-                        {
-                            Timestamp = step.StartedAt ?? DateTime.UtcNow,
-                            Title = $"{step.StepName} — Awaiting action",
-                            Icon = "bi-clock",
-                            MarkerColor = "bg-primary",
-                            AssignedRoles = step.AssignedRoles?.Any() == true ? step.AssignedRoles : null,
-                            Duration = step.StartedAt.HasValue
-                                ? FormatDuration(DateTime.UtcNow - step.StartedAt.Value) : null,
-                            LinkUrl = (step.StepType == WorkflowStepType.Approval && _workflowProgress.WorkflowInstanceId > 0)
-                                ? $"/workflow/{_workflowProgress.WorkflowInstanceId}/step/{step.StepId}" : null,
-                            DeduplicationKey = key
-                        });
-                    }
-                }
+                if (seenKeys.Add(e.DeduplicationKey))
+                    entries.Add(e);
             }
         }
 
@@ -780,8 +502,7 @@ else
         {
             foreach (var h in _requestHistory)
             {
-                // Skip workflow history entries that overlap with step data we already have
-                if (_workflowProgress != null && IsWorkflowHistoryType(h.ChangeType))
+                if (_workflowProgress != null && ActivityTimeline.IsWorkflowHistoryType(h.ChangeType))
                     continue;
 
                 var key = $"history-{h.ChangeType}-{h.ChangedAt.Ticks}";
@@ -793,58 +514,21 @@ else
                     fieldChanges = h.NewValues["FieldChanges"];
                 }
 
-                entries.Add(new UnifiedTimelineEntry
+                entries.Add(new ActivityTimeline.TimelineEntry
                 {
                     Timestamp = h.ChangedAt,
-                    Title = GetHistoryTitle(h.ChangeType),
-                    Icon = GetHistoryIcon(h.ChangeType),
-                    MarkerColor = GetHistoryMarkerColor(h.ChangeType),
+                    Title = ActivityTimeline.GetHistoryTitle(h.ChangeType),
+                    Icon = ActivityTimeline.GetHistoryIcon(h.ChangeType),
+                    MarkerColor = ActivityTimeline.GetHistoryMarkerColor(h.ChangeType),
                     ActorName = h.ChangedByName,
                     Comments = h.Comments,
                     FieldChangesJson = fieldChanges,
-                    SortPriority = GetHistorySortPriority(h.ChangeType),
+                    SortPriority = ActivityTimeline.GetHistorySortPriority(h.ChangeType),
                     DeduplicationKey = key
                 });
             }
         }
 
-        // Bucket timestamps to the nearest minute so events from the same logical operation
-        // (e.g. request creation + first workflow step) sort by lifecycle order, not by
-        // sub-second database insert differences.
-        _unifiedTimeline = entries
-            .OrderBy(e => e.Timestamp.Ticks / TimeSpan.TicksPerMinute)
-            .ThenBy(e => e.SortPriority)
-            .ThenBy(e => e.Timestamp)
-            .ToList();
+        _unifiedTimeline = ActivityTimeline.SortEntries(entries);
     }
-
-    private static string FormatDuration(TimeSpan ts)
-    {
-        if (ts.TotalMinutes < 1) return "<1 min";
-        if (ts.TotalMinutes < 60) return $"{(int)ts.TotalMinutes} min";
-        if (ts.TotalHours < 24) return $"{(int)ts.TotalHours}h {ts.Minutes}m";
-        if (ts.TotalDays < 7) return $"{(int)ts.TotalDays}d {ts.Hours}h";
-        return $"{(int)ts.TotalDays} days";
-    }
-
-    /// <summary>
-    /// Returns a sort priority for history change types so that entries with identical
-    /// timestamps appear in logical lifecycle order (lower = earlier).
-    /// </summary>
-    private static int GetHistorySortPriority(FormRequestChangeType changeType) => changeType switch
-    {
-        FormRequestChangeType.Created              => 0,
-        FormRequestChangeType.Updated              => 10,
-        FormRequestChangeType.WorkflowStarted      => 20,
-        FormRequestChangeType.WorkflowStepCompleted => 30,
-        FormRequestChangeType.WorkflowStepApproved => 30,
-        FormRequestChangeType.WorkflowStepRejected => 30,
-        FormRequestChangeType.WorkflowCompleted    => 40,
-        FormRequestChangeType.StatusChanged        => 50,
-        FormRequestChangeType.Approved             => 60,
-        FormRequestChangeType.Rejected             => 60,
-        FormRequestChangeType.Applied              => 70,
-        FormRequestChangeType.Failed               => 70,
-        _                                          => 50
-    };
 }

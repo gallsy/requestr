@@ -11,13 +11,12 @@
 @inject IBulkFormRequestService BulkFormRequestService
 @inject IConflictDetectionService ConflictDetectionService
 @inject IWorkflowInstanceService WorkflowInstanceService
+@inject IWorkflowProgressService WorkflowProgressService
 @inject ILogger<BulkRequestDetails> Logger
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IUserTimezoneService Tz
 @attribute [Authorize]
-
-@inject Requestr.Web.Configuration.AppBrandingOptions Branding
-<h1 class="visually-hidden">Bulk Request Details - @Branding.ApplicationName</h1>
 
 @if (_isLoading)
 {
@@ -36,164 +35,126 @@ else if (_bulkRequest == null)
 }
 else
 {
-    <PageHeader Title="@(_bulkRequest.FormDefinition?.Name ?? "Bulk Request")" 
-                Description="@($"Bulk {_bulkRequest.RequestType} Request")">
-    </PageHeader>
+    <PageHeader Title="@($"Bulk Request #{BulkRequestId}")" 
+                Description="@(_bulkRequest.FormDefinition?.Name ?? "Bulk Request Details")" />
 
-    <div>
-        <div class="row">
-            <div class="col-12">
+    @if (!string.IsNullOrEmpty(_conflictWarning))
+    {
+        <StandardAlert AlertType="warning" 
+                     Title="Data Conflicts Detected">
+            <div style="white-space: pre-line;">@_conflictWarning</div>
+        </StandardAlert>
+    }
 
-                @if (!string.IsNullOrEmpty(_errorMessage))
-                {
-                    <StandardAlert AlertType="danger" 
-                                 Message="@_errorMessage" />
-                }
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <StandardAlert AlertType="danger" 
+                     Message="@_errorMessage" />
+    }
 
-                @if (!string.IsNullOrEmpty(_conflictWarning))
-                {
-                    <div class="mb-4">
-                        <StandardAlert AlertType="warning" 
-                                     Title="Data Conflicts Detected">
-                            <div style="white-space: pre-line;">@_conflictWarning</div>
-                        </StandardAlert>
-                    </div>
-                }
+    <div class="row g-4">
+        <!-- Left column: Summary + Individual Items -->
+        <div class="col-12 col-xl-7 d-flex flex-column">
+            <BulkSummaryCard FormName="@(_bulkRequest.FormDefinition?.Name ?? "Unknown Form")"
+                             TableName="@(_bulkRequest.FormDefinition?.TableName ?? "")"
+                             RequestType="@_bulkRequest.RequestType"
+                             Status="@_bulkRequest.Status"
+                             TotalRows="@_bulkRequest.TotalRows"
+                             Comments="@_bulkRequest.Comments"
+                             RejectionReason="@_bulkRequest.RejectionReason"
+                             ProcessingSummary="@_bulkRequest.ProcessingSummary"
+                             SubmittedBy="@_bulkRequest.RequestedByName"
+                             SubmittedAt="@_bulkRequest.RequestedAt"
+                             ProcessedBy="@_bulkRequest.ApprovedByName"
+                             ProcessedAt="@_bulkRequest.ApprovedAt" />
 
-                <!-- Visual Summary Card -->
-                <BulkSummaryCard FormName="@(_bulkRequest.FormDefinition?.Name ?? "Unknown Form")"
-                                 TableName="@(_bulkRequest.FormDefinition?.TableName ?? "")"
-                                 RequestType="@_bulkRequest.RequestType"
-                                 Status="@_bulkRequest.Status"
-                                 TotalRows="@_bulkRequest.TotalRows"
-                                 Comments="@_bulkRequest.Comments"
-                                 ProcessingSummary="@_bulkRequest.ProcessingSummary"
-                                 SubmittedBy="@_bulkRequest.RequestedByName"
-                                 SubmittedAt="@_bulkRequest.RequestedAt"
-                                 ProcessedBy="@_bulkRequest.ApprovedByName"
-                                 ProcessedAt="@_bulkRequest.ApprovedAt" />
-
-                @if (!string.IsNullOrEmpty(_bulkRequest.RejectionReason))
-                {
-                    <div class="alert alert-danger mb-4">
-                        <h6 class="alert-heading">
-                            <i class="bi bi-x-circle me-2"></i>Rejection Reason
-                        </h6>
-                        <p class="mb-0">@_bulkRequest.RejectionReason</p>
-                    </div>
-                }
-
-                <!-- Workflow Progress Section -->
-                @if (_bulkRequest.WorkflowInstanceId.HasValue && _bulkRequest.WorkflowFormRequestId.HasValue)
-                {
-                    <div class="mb-4">
-                        <WorkflowProgressDisplay FormRequestId="@_bulkRequest.WorkflowFormRequestId.Value" 
-                                               ShowCompact="false" 
-                                               AutoLoad="true" />
-                    </div>
-                }
-                else if (_bulkRequest.WorkflowInstanceId.HasValue)
-                {
-                    <div class="mb-4">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5 class="mb-0">
-                                    <i class="bi bi-diagram-3 me-2"></i>
-                                    Workflow Progress
-                                </h5>
-                            </div>
-                            <div class="card-body">
-                                <StandardAlert AlertType="warning" 
-                                             Dismissable="false">
-                                    This bulk request has a workflow (Instance #@_bulkRequest.WorkflowInstanceId) but the workflow FormRequest could not be found.
-                                </StandardAlert>
-                            </div>
-                        </div>
-                    </div>
-                }
-
-                <!-- Individual Items -->
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">
-                            <i class="bi bi-list-ul me-2"></i>
-                            Individual Items (@_bulkRequest.Items.Count)
-                        </h5>
-                        @if (_bulkRequest.Items.Count > 0)
-                        {
-                            <Button Color="ButtonColor.Link" Size="ButtonSize.Small" @onclick="ToggleAllRows">
-                                @if (_expandedRows.Count == _bulkRequest.Items.Count)
-                                {
-                                    <span>Collapse All</span>
-                                }
-                                else
-                                {
-                                    <span>Expand All</span>
-                                }
-                            </Button>
-                        }
-                    </div>
-                    <div class="card-body">
-                        @if (_bulkRequest.Items.Any())
-                        {
-                            <div class="bulk-items-list">
-                                @foreach (var item in _bulkRequest.Items.OrderBy(i => i.RowNumber))
-                                {
-                                    var isExpanded = _expandedRows.Contains(item.RowNumber);
-                                    var keyFields = GetKeyFields(item);
-                                    
-                                    <div class="bulk-item-row @(isExpanded ? "expanded" : "") mb-2">
-                                        <div class="bulk-item-header p-3 rounded @GetItemBackgroundClass(item.Status)" 
-                                             @onclick="@(() => ToggleRow(item.RowNumber))"
-                                             style="cursor: pointer;">
-                                            <div class="d-flex justify-content-between align-items-center">
-                                                <div class="d-flex align-items-center gap-3">
-                                                    <span class="text-muted fw-bold">Row @item.RowNumber</span>
-                                                    <span class="badge @GetStatusBadgeClass(item.Status)">
-                                                        @item.Status
-                                                    </span>
-                                                    @if (!string.IsNullOrEmpty(keyFields))
-                                                    {
-                                                        <span class="key-fields text-muted">@keyFields</span>
-                                                    }
-                                                </div>
-                                                <div class="d-flex align-items-center gap-2">
-                                                    <span class="field-count text-muted small">
-                                                        @item.FieldValues.Count field(s)
-                                                    </span>
-                                                    <i class="bi @(isExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
-                                                </div>
+            <!-- Individual Items -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-list-ul me-2"></i>
+                        Individual Items (@_bulkRequest.Items.Count)
+                    </h5>
+                    @if (_bulkRequest.Items.Count > 0)
+                    {
+                        <Button Color="ButtonColor.Link" Size="ButtonSize.Small" @onclick="ToggleAllRows">
+                            @if (_expandedRows.Count == _bulkRequest.Items.Count)
+                            {
+                                <span>Collapse All</span>
+                            }
+                            else
+                            {
+                                <span>Expand All</span>
+                            }
+                        </Button>
+                    }
+                </div>
+                <div class="card-body">
+                    @if (_bulkRequest.Items.Any())
+                    {
+                        <div class="bulk-items-list">
+                            @foreach (var item in _bulkRequest.Items.OrderBy(i => i.RowNumber))
+                            {
+                                var isExpanded = _expandedRows.Contains(item.RowNumber);
+                                var keyFields = GetKeyFields(item);
+                                
+                                <div class="bulk-item-row @(isExpanded ? "expanded" : "") mb-2">
+                                    <div class="bulk-item-header p-3 rounded @GetItemBackgroundClass(item.Status)" 
+                                         @onclick="@(() => ToggleRow(item.RowNumber))"
+                                         style="cursor: pointer;">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div class="d-flex align-items-center gap-3">
+                                                <span class="text-muted fw-bold">Row @item.RowNumber</span>
+                                                <span class="badge @GetStatusBadgeClass(item.Status)">
+                                                    @item.Status
+                                                </span>
+                                                @if (!string.IsNullOrEmpty(keyFields))
+                                                {
+                                                    <span class="key-fields text-muted">@keyFields</span>
+                                                }
+                                            </div>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <span class="field-count text-muted small">
+                                                    @item.FieldValues.Count field(s)
+                                                </span>
+                                                <i class="bi @(isExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
                                             </div>
                                         </div>
-                                        
-                                        @if (isExpanded)
-                                        {
-                                            <div class="bulk-item-details border border-top-0 rounded-bottom">
-                                                <RequestFieldValuesCard 
-                                                    FieldValues="@item.FieldValues"
-                                                    OriginalValues="@item.OriginalValues"
-                                                    FormFields="@_bulkRequest.FormDefinition?.Fields"
-                                                    RequestType="@_bulkRequest.RequestType"
-                                                    ProcessingResult="@item.ProcessingResult"
-                                                    Status="@item.Status"
-                                                    ShowHeader="false"
-                                                    Compact="true" />
-                                            </div>
-                                        }
                                     </div>
-                                }
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="text-center p-4">
-                                <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
-                                <p class="text-muted mt-2">No individual items found.</p>
-                            </div>
-                        }
-                    </div>
+                                    
+                                    @if (isExpanded)
+                                    {
+                                        <div class="bulk-item-details border border-top-0 rounded-bottom">
+                                            <RequestFieldValuesCard 
+                                                FieldValues="@item.FieldValues"
+                                                OriginalValues="@item.OriginalValues"
+                                                FormFields="@_bulkRequest.FormDefinition?.Fields"
+                                                RequestType="@_bulkRequest.RequestType"
+                                                ProcessingResult="@item.ProcessingResult"
+                                                Status="@item.Status"
+                                                ShowHeader="false"
+                                                Compact="true" />
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center p-4">
+                            <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+                            <p class="text-muted mt-2">No individual items found.</p>
+                        </div>
+                    }
                 </div>
             </div>
+        </div>
+
+        <!-- Right column: Activity Timeline -->
+        <div class="col-12 col-xl-5">
+            <ActivityTimeline WorkflowProgress="@_workflowProgress"
+                             Entries="@_unifiedTimeline" />
         </div>
     </div>
 }
@@ -216,6 +177,10 @@ else
     private string _currentUserId = "";
     private List<string> _userRoles = new();
     private bool _isAdmin = false;
+    
+    // Workflow + timeline
+    private WorkflowProgress? _workflowProgress;
+    private List<ActivityTimeline.TimelineEntry> _unifiedTimeline = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -250,10 +215,19 @@ else
             {
                 Logger.LogWarning("User {UserId} attempted to access bulk request {BulkRequestId} without permission", 
                     _currentUserId, BulkRequestId);
-                _bulkRequest = null; // Clear the request so it's not displayed
+                _bulkRequest = null;
                 _errorMessage = "You don't have permission to view this bulk request.";
                 return;
             }
+
+            // Load workflow progress if applicable
+            if (_bulkRequest.WorkflowInstanceId.HasValue && _bulkRequest.WorkflowFormRequestId.HasValue)
+            {
+                await LoadWorkflowProgressAsync();
+            }
+
+            // Build the unified timeline
+            BuildUnifiedTimeline();
 
             // Check for conflicts only if the request is not in a terminal state
             var isCompleted = _bulkRequest.Status == RequestStatus.Approved || 
@@ -276,48 +250,103 @@ else
         }
     }
     
+    // ==========================================
+    // Workflow Progress
+    // ==========================================
+
+    private async Task LoadWorkflowProgressAsync()
+    {
+        try
+        {
+            if (_bulkRequest?.WorkflowFormRequestId.HasValue == true)
+            {
+                _workflowProgress = await WorkflowProgressService.GetWorkflowProgressAsync(
+                    _bulkRequest.WorkflowFormRequestId.Value);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load workflow progress for BulkRequestId {BulkRequestId}", BulkRequestId);
+        }
+    }
+
+    // ==========================================
+    // Unified Timeline Builder
+    // ==========================================
+
+    private void BuildUnifiedTimeline()
+    {
+        var entries = new List<ActivityTimeline.TimelineEntry>();
+        var seenKeys = new HashSet<string>();
+
+        // 1. Add workflow step entries
+        if (_workflowProgress != null)
+        {
+            foreach (var e in ActivityTimeline.BuildWorkflowStepEntries(_workflowProgress))
+            {
+                if (seenKeys.Add(e.DeduplicationKey))
+                    entries.Add(e);
+            }
+        }
+
+        // 2. Add bulk request history entries
+        if (_bulkRequest?.History != null)
+        {
+            foreach (var h in _bulkRequest.History)
+            {
+                if (_workflowProgress != null && ActivityTimeline.IsWorkflowHistoryType(h.ChangeType))
+                    continue;
+
+                var key = $"history-{h.ChangeType}-{h.ChangedAt.Ticks}";
+                if (!seenKeys.Add(key)) continue;
+
+                entries.Add(new ActivityTimeline.TimelineEntry
+                {
+                    Timestamp = h.ChangedAt,
+                    Title = ActivityTimeline.GetHistoryTitle(h.ChangeType),
+                    Icon = ActivityTimeline.GetHistoryIcon(h.ChangeType),
+                    MarkerColor = ActivityTimeline.GetHistoryMarkerColor(h.ChangeType),
+                    ActorName = h.ChangedByName,
+                    Comments = h.Comments,
+                    SortPriority = ActivityTimeline.GetHistorySortPriority(h.ChangeType),
+                    DeduplicationKey = key
+                });
+            }
+        }
+
+        _unifiedTimeline = ActivityTimeline.SortEntries(entries);
+    }
+
+    // ==========================================
+    // Access Control
+    // ==========================================
+
     private bool CanUserAccessBulkRequest()
     {
         if (_bulkRequest == null) return false;
-        
-        // Admin can access any request
         if (_isAdmin) return true;
-        
-        // User can access if they created the request
         if (_bulkRequest.RequestedBy == _currentUserId) return true;
         
-        // User can access if they are an approver for this form (legacy role-based)
         if (_bulkRequest.FormDefinition?.ApproverRoles != null && _bulkRequest.FormDefinition.ApproverRoles.Any())
         {
             if (_userRoles.Any(ur => _bulkRequest.FormDefinition.ApproverRoles.Contains(ur, StringComparer.OrdinalIgnoreCase)))
-            {
                 return true;
-            }
         }
         
-        // For workflow-based requests, check is done asynchronously in CanUserAccessBulkRequestAsync
-        // This method just handles the synchronous checks
         return false;
     }
     
     private async Task<bool> CanUserAccessBulkRequestAsync()
     {
-        // First do synchronous checks
         if (CanUserAccessBulkRequest()) return true;
         
-        // User can access if the request has a workflow and user has participated in it
-        // (either completed a step or is assigned to an approval step by role)
         if (_bulkRequest?.WorkflowInstanceId.HasValue == true)
         {
             try
             {
-                // Check if user has participated in this workflow (completed a step or is assigned)
                 var hasParticipated = await WorkflowInstanceService.HasUserParticipatedInWorkflowAsync(
                     _currentUserId, _userRoles, _bulkRequest.WorkflowInstanceId.Value);
-                if (hasParticipated)
-                {
-                    return true;
-                }
+                if (hasParticipated) return true;
             }
             catch (Exception ex)
             {
@@ -343,21 +372,20 @@ else
         }
         catch (Exception ex)
         {
-            // Log the error but don't show it to the user since conflict detection is supplementary
             Logger.LogWarning(ex, "Conflict detection error for BulkRequestId {BulkRequestId}", BulkRequestId);
         }
     }
 
+    // ==========================================
+    // Item List Helpers
+    // ==========================================
+
     private void ToggleRow(int rowNumber)
     {
         if (_expandedRows.Contains(rowNumber))
-        {
             _expandedRows.Remove(rowNumber);
-        }
         else
-        {
             _expandedRows.Add(rowNumber);
-        }
     }
 
     private void ToggleAllRows()
@@ -365,18 +393,13 @@ else
         if (_bulkRequest == null) return;
         
         if (_expandedRows.Count == _bulkRequest.Items.Count)
-        {
             _expandedRows.Clear();
-        }
         else
-        {
             _expandedRows = _bulkRequest.Items.Select(i => i.RowNumber).ToHashSet();
-        }
     }
 
     private string GetKeyFields(BulkFormRequestItem item)
     {
-        // Show first 2-3 key fields as a preview
         var preview = item.FieldValues.Take(3).Select(f => $"{f.Key}: {TruncateValue(f.Value?.ToString())}");
         return string.Join(" | ", preview);
     }
@@ -385,14 +408,6 @@ else
     {
         if (string.IsNullOrEmpty(value)) return "(empty)";
         return value.Length > maxLength ? value.Substring(0, maxLength) + "..." : value;
-    }
-
-    private bool HasValueChanged(BulkFormRequestItem item, string fieldKey)
-    {
-        if (_bulkRequest?.RequestType != RequestType.Update) return false;
-        if (!item.OriginalValues.TryGetValue(fieldKey, out var originalValue)) return false;
-        if (!item.FieldValues.TryGetValue(fieldKey, out var newValue)) return false;
-        return originalValue?.ToString() != newValue?.ToString();
     }
 
     private string GetItemBackgroundClass(RequestStatus status) => status switch
@@ -405,5 +420,4 @@ else
     };
 
     private string GetStatusBadgeClass(RequestStatus status) => UiHelper.GetStatusBadgeClass(status);
-    private string GetRequestTypeBadgeColor(RequestType requestType) => UiHelper.GetRequestTypeBadgeClass(requestType);
 }
