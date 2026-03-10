@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Web;
 using Requestr.Core.Models;
@@ -106,7 +107,7 @@ public static class InputValidator
                 break;
 
             case "date":
-                if (!DateTime.TryParse(input, out _))
+                if (!IsValidDateValue(input))
                 {
                     result.IsValid = false;
                     result.Errors.Add($"{field.DisplayName} must be a valid date.");
@@ -115,7 +116,8 @@ public static class InputValidator
 
             case "datetime":
             case "datetime2":
-                if (!DateTime.TryParse(input, out _))
+            case "datetime-local":
+                if (!IsValidDateValue(input))
                 {
                     result.IsValid = false;
                     result.Errors.Add($"{field.DisplayName} must be a valid date and time.");
@@ -161,6 +163,34 @@ public static class InputValidator
         };
 
         return sanitized;
+    }
+
+    /// <summary>
+    /// Validates a date value, accepting both standard date strings and OLE Automation date
+    /// numbers (used internally by Excel for date cells).
+    /// </summary>
+    private static bool IsValidDateValue(string input)
+    {
+        // Standard date string
+        if (DateTime.TryParse(input, CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+            return true;
+
+        // OLE Automation date number (Excel stores dates as a double representing days since 1899-12-30)
+        if (double.TryParse(input, NumberStyles.Any, CultureInfo.InvariantCulture, out var oaDate))
+        {
+            try
+            {
+                DateTime.FromOADate(oaDate);
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                // Value out of OLE Automation date range
+                return false;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsValidEmail(string email)
