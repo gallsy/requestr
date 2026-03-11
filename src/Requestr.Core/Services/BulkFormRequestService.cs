@@ -21,6 +21,7 @@ public class BulkFormRequestService : IBulkFormRequestService
     private readonly IWorkflowInstanceService _workflowInstanceService;
     private readonly IWorkflowExecutionService _workflowExecutionService;
     private readonly IInputValidationService _inputValidationService;
+    private readonly IDataService _dataService;
     private readonly string _connectionString;
 
     public BulkFormRequestService(
@@ -29,7 +30,8 @@ public class BulkFormRequestService : IBulkFormRequestService
         IFormDefinitionService formDefinitionService,
         IWorkflowInstanceService workflowInstanceService,
         IWorkflowExecutionService workflowExecutionService,
-        IInputValidationService inputValidationService)
+        IInputValidationService inputValidationService,
+        IDataService dataService)
     {
         _configuration = configuration;
         _logger = logger;
@@ -37,6 +39,7 @@ public class BulkFormRequestService : IBulkFormRequestService
         _workflowInstanceService = workflowInstanceService;
         _workflowExecutionService = workflowExecutionService;
         _inputValidationService = inputValidationService;
+        _dataService = dataService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
     }
@@ -528,14 +531,57 @@ public class BulkFormRequestService : IBulkFormRequestService
                 }
             }
 
+            // If no workflow, auto-approve the bulk request (matching single form request behavior)
+            if (!formDefinition.WorkflowDefinitionId.HasValue)
+            {
+                _logger.LogInformation("No workflow for form definition {FormDefinitionId}, auto-approving bulk request {BulkRequestId}",
+                    formDefinition.Id, bulkRequestId);
+
+                var autoApproveAt = DateTime.UtcNow;
+                var autoApproveSql = @"
+                    UPDATE BulkFormRequests 
+                    SET Status = @Status, ApprovedBy = @UserId, ApprovedAt = @ApprovedAt,
+                        UpdatedBy = @UserId, UpdatedAt = @ApprovedAt
+                    WHERE Id = @Id";
+
+                await connection.ExecuteAsync(autoApproveSql, new
+                {
+                    Id = bulkRequestId,
+                    Status = (int)RequestStatus.Approved,
+                    UserId = userId,
+                    ApprovedAt = autoApproveAt
+                }, transaction);
+
+                bulkRequest.Status = RequestStatus.Approved;
+
+                // Set all items to Approved
+                var approveItemsSql = @"
+                    UPDATE BulkFormRequestItems 
+                    SET Status = @Status 
+                    WHERE BulkFormRequestId = @BulkFormRequestId AND Status = @PendingStatus";
+
+                await connection.ExecuteAsync(approveItemsSql, new
+                {
+                    BulkFormRequestId = bulkRequestId,
+                    Status = (int)RequestStatus.Approved,
+                    PendingStatus = (int)RequestStatus.Pending
+                }, transaction);
+            }
+
             // Record history entry
             await RecordBulkHistoryAsync(connection, transaction, bulkRequestId,
                 FormRequestChangeType.Created, userId, userName, bulkRequest.Comments,
                 $"{bulkRequest.SelectedRows} items, {bulkRequest.RequestType} request");
 
+            if (!formDefinition.WorkflowDefinitionId.HasValue)
+            {
+                await RecordBulkHistoryAsync(connection, transaction, bulkRequestId,
+                    FormRequestChangeType.Approved, userId, userName, "Auto-approved (no workflow)");
+            }
+
             await transaction.CommitAsync();
 
-            // Process pending webhook step if the workflow starts with one (post-commit)
+            // Post-commit: process pending webhook step or apply data for no-workflow requests
             if (bulkRequest.WorkflowInstanceId.HasValue)
             {
                 try
@@ -545,6 +591,18 @@ public class BulkFormRequestService : IBulkFormRequestService
                 catch (Exception webhookEx)
                 {
                     _logger.LogError(webhookEx, "Error processing webhook step for bulk workflow {WorkflowId}", bulkRequest.WorkflowInstanceId.Value);
+                }
+            }
+            else
+            {
+                // No workflow — apply data changes immediately
+                try
+                {
+                    await ApplyBulkRequestDataAsync(bulkRequestId, formDefinition);
+                }
+                catch (Exception applyEx)
+                {
+                    _logger.LogError(applyEx, "Error auto-applying bulk request {BulkRequestId}", bulkRequestId);
                 }
             }
 
@@ -1128,6 +1186,180 @@ public class BulkFormRequestService : IBulkFormRequestService
             "2" => RequestType.Delete,
             _ => throw new ArgumentException($"Invalid RequestType: {requestType}")
         };
+    }
+
+    /// <summary>
+    /// Applies data changes for a no-workflow bulk request after auto-approval.
+    /// Called post-commit so items are already in Approved status.
+    /// </summary>
+    private async Task ApplyBulkRequestDataAsync(int bulkRequestId, FormDefinition formDefinition)
+    {
+        using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        try
+        {
+            // Get bulk request details
+            var bulkRequest = await connection.QuerySingleOrDefaultAsync<BulkFormRequest>(
+                "SELECT * FROM BulkFormRequests WHERE Id = @Id", new { Id = bulkRequestId });
+
+            if (bulkRequest == null)
+            {
+                _logger.LogWarning("Bulk request {BulkRequestId} not found for auto-apply", bulkRequestId);
+                return;
+            }
+
+            var requestType = bulkRequest.RequestType;
+            var dbConnectionName = formDefinition.DatabaseConnectionName;
+            var tableName = formDefinition.TableName;
+            var schema = formDefinition.Schema;
+            var fields = formDefinition.Fields;
+
+            // Get all approved items
+            var items = await connection.QueryAsync(
+                @"SELECT Id, FieldValues, OriginalValues, RowNumber
+                  FROM BulkFormRequestItems
+                  WHERE BulkFormRequestId = @BulkRequestId AND Status = @ApprovedStatus
+                  ORDER BY RowNumber",
+                new { BulkRequestId = bulkRequestId, ApprovedStatus = (int)RequestStatus.Approved });
+
+            if (!items.Any())
+            {
+                _logger.LogInformation("No approved items to apply for bulk request {BulkRequestId}", bulkRequestId);
+                return;
+            }
+
+            _logger.LogInformation("Auto-applying {ItemCount} items for no-workflow bulk request {BulkRequestId}",
+                items.Count(), bulkRequestId);
+
+            int successCount = 0;
+            int failureCount = 0;
+
+            foreach (var item in items)
+            {
+                try
+                {
+                    var fieldValuesJson = item.FieldValues?.ToString() ?? "{}";
+                    var originalValuesJson = item.OriginalValues?.ToString() ?? "{}";
+
+                    var fieldValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(fieldValuesJson) ?? new Dictionary<string, object?>();
+                    var originalValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(originalValuesJson) ?? new Dictionary<string, object?>();
+
+                    fieldValues = SqlTypeConverter.ConvertDictionary(fieldValues, fields);
+                    originalValues = SqlTypeConverter.ConvertDictionary(originalValues, fields);
+
+                    bool itemSuccess = false;
+                    string processingResult;
+
+                    switch (requestType)
+                    {
+                        case RequestType.Insert:
+                            itemSuccess = await _dataService.InsertDataAsync(dbConnectionName, tableName, schema, fieldValues);
+                            processingResult = itemSuccess ? "Successfully inserted into database" : "Failed to insert into database";
+                            break;
+
+                        case RequestType.Update:
+                            var pkColumns = await _dataService.GetPrimaryKeyColumnsAsync(dbConnectionName, tableName, schema);
+                            if (pkColumns.Count == 0)
+                                throw new InvalidOperationException($"No primary key found for table {schema}.{tableName}");
+
+                            var whereConditions = new Dictionary<string, object?>();
+                            foreach (var pk in pkColumns)
+                            {
+                                if (originalValues.ContainsKey(pk))
+                                    whereConditions[pk] = originalValues[pk];
+                                else
+                                    throw new InvalidOperationException($"Primary key column '{pk}' not found in original values for item {(int)item.Id}");
+                            }
+
+                            itemSuccess = await _dataService.UpdateDataAsync(dbConnectionName, tableName, schema, fieldValues, whereConditions);
+                            processingResult = itemSuccess ? "Successfully updated in database" : "Failed to update in database";
+                            break;
+
+                        case RequestType.Delete:
+                            var deletePkColumns = await _dataService.GetPrimaryKeyColumnsAsync(dbConnectionName, tableName, schema);
+                            if (deletePkColumns.Count == 0)
+                                throw new InvalidOperationException($"No primary key found for table {schema}.{tableName}");
+
+                            var deleteConditions = new Dictionary<string, object?>();
+                            foreach (var pk in deletePkColumns)
+                            {
+                                if (originalValues.ContainsKey(pk))
+                                    deleteConditions[pk] = originalValues[pk];
+                                else
+                                    throw new InvalidOperationException($"Primary key column '{pk}' not found in original values for item {(int)item.Id}");
+                            }
+
+                            itemSuccess = await _dataService.DeleteDataAsync(dbConnectionName, tableName, schema, deleteConditions);
+                            processingResult = itemSuccess ? "Successfully deleted from database" : "Failed to delete from database";
+                            break;
+
+                        default:
+                            processingResult = $"Unknown request type: {requestType}";
+                            break;
+                    }
+
+                    await connection.ExecuteAsync(
+                        @"UPDATE BulkFormRequestItems SET Status = @Status, ProcessingResult = @ProcessingResult WHERE Id = @ItemId",
+                        new
+                        {
+                            ItemId = item.Id,
+                            Status = itemSuccess ? (int)RequestStatus.Applied : (int)RequestStatus.Failed,
+                            ProcessingResult = processingResult
+                        });
+
+                    if (itemSuccess) successCount++;
+                    else failureCount++;
+                }
+                catch (Exception ex)
+                {
+                    failureCount++;
+                    _logger.LogError(ex, "Error auto-applying bulk item {ItemId} (row {RowNumber})", (object)item.Id, (object)item.RowNumber);
+
+                    await connection.ExecuteAsync(
+                        @"UPDATE BulkFormRequestItems SET Status = @Status, ProcessingResult = @ProcessingResult WHERE Id = @ItemId",
+                        new
+                        {
+                            ItemId = item.Id,
+                            Status = (int)RequestStatus.Failed,
+                            ProcessingResult = $"Error: {ex.Message}"
+                        });
+                }
+            }
+
+            // Update bulk request status
+            var overallStatus = failureCount == 0 ? RequestStatus.Applied :
+                                successCount > 0 ? RequestStatus.Applied : RequestStatus.Failed;
+            var processingSummary = $"Processed {successCount + failureCount} items. {successCount} succeeded, {failureCount} failed.";
+
+            await connection.ExecuteAsync(
+                @"UPDATE BulkFormRequests SET Status = @Status, ProcessingSummary = @ProcessingSummary WHERE Id = @BulkRequestId",
+                new
+                {
+                    BulkRequestId = bulkRequestId,
+                    Status = (int)overallStatus,
+                    ProcessingSummary = processingSummary
+                });
+
+            // Record history
+            var historyChangeType = failureCount == 0 ? FormRequestChangeType.Applied : FormRequestChangeType.Failed;
+            await connection.ExecuteAsync(
+                @"INSERT INTO BulkFormRequestHistory (BulkFormRequestId, ChangeType, ChangedBy, ChangedByName, ChangedAt, Comments, Details)
+                  VALUES (@BulkFormRequestId, @ChangeType, 'system', 'System', @ChangedAt, @Comments, NULL)",
+                new
+                {
+                    BulkFormRequestId = bulkRequestId,
+                    ChangeType = (int)historyChangeType,
+                    ChangedAt = DateTime.UtcNow,
+                    Comments = processingSummary
+                });
+
+            _logger.LogInformation("Auto-apply complete for bulk request {BulkRequestId}. {Summary}", bulkRequestId, processingSummary);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during auto-apply of bulk request {BulkRequestId}", bulkRequestId);
+        }
     }
 
     /// <summary>

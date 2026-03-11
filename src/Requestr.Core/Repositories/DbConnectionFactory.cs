@@ -18,9 +18,19 @@ public class DbConnectionFactory : IDbConnectionFactory
         _defaultConnectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
         
-        _namedConnectionStrings = new Dictionary<string, string>();
+        _namedConnectionStrings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         
-        // Load named database connections from configuration
+        // Include ConnectionStrings entries so forms targeting "DefaultConnection" resolve correctly
+        var connectionStringsSection = configuration.GetSection("ConnectionStrings");
+        foreach (var child in connectionStringsSection.GetChildren())
+        {
+            if (!string.IsNullOrEmpty(child.Value))
+            {
+                _namedConnectionStrings[child.Key] = child.Value;
+            }
+        }
+
+        // Load named database connections from configuration (overrides any ConnectionStrings with same key)
         var dbSection = configuration.GetSection("DatabaseConnections");
         foreach (var child in dbSection.GetChildren())
         {

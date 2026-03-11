@@ -69,9 +69,13 @@
             }
             <div class="row mb-2">
                 <div class="col-md-3">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" @bind="Field.IsRequired" />
+                    <div class="form-check" title="@(HasComputedValue ? "Auto-generated fields cannot be required" : "")">
+                        <input class="form-check-input" type="checkbox" @bind="Field.IsRequired" disabled="@HasComputedValue" />
                         <label class="form-check-label">Required</label>
+                        @if (HasComputedValue)
+                        {
+                            <small class="d-block text-muted">Disabled (auto-generated)</small>
+                        }
                     </div>
                 </div>
                 <div class="col-md-3">
@@ -323,6 +327,8 @@
         else
         {
             Field.ComputedValueType = (ComputedValueType)intValue;
+            // Auto-generated fields cannot be required
+            Field.IsRequired = false;
         }
     }
 
