@@ -21,6 +21,7 @@ public class FormRequestCommandService : IFormRequestCommandService
     private readonly IWorkflowInstanceService _workflowInstanceService;
     private readonly IWorkflowExecutionService _workflowExecutionService;
     private readonly IInputValidationService _inputValidationService;
+    private readonly IFormRequestApplicationService _applicationService;
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<FormRequestCommandService> _logger;
 
@@ -32,6 +33,7 @@ public class FormRequestCommandService : IFormRequestCommandService
         IWorkflowInstanceService workflowInstanceService,
         IWorkflowExecutionService workflowExecutionService,
         IInputValidationService inputValidationService,
+        IFormRequestApplicationService applicationService,
         IDbConnectionFactory connectionFactory,
         ILogger<FormRequestCommandService> logger)
     {
@@ -42,6 +44,7 @@ public class FormRequestCommandService : IFormRequestCommandService
         _workflowInstanceService = workflowInstanceService;
         _workflowExecutionService = workflowExecutionService;
         _inputValidationService = inputValidationService;
+        _applicationService = applicationService;
         _connectionFactory = connectionFactory;
         _logger = logger;
     }
@@ -135,6 +138,26 @@ public class FormRequestCommandService : IFormRequestCommandService
                 catch (Exception webhookEx)
                 {
                     _logger.LogError(webhookEx, "Error processing webhook step for workflow {WorkflowId}", createdRequest.WorkflowInstanceId.Value);
+                }
+            }
+            else
+            {
+                // No workflow — apply data changes to the target database immediately
+                try
+                {
+                    var applied = await _applicationService.ApplyAsync(createdRequest.Id);
+                    if (applied)
+                    {
+                        _logger.LogInformation("Form request {RequestId} auto-applied (no workflow)", createdRequest.Id);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Form request {RequestId} auto-apply returned false", createdRequest.Id);
+                    }
+                }
+                catch (Exception applyEx)
+                {
+                    _logger.LogError(applyEx, "Error auto-applying form request {RequestId}", createdRequest.Id);
                 }
             }
             

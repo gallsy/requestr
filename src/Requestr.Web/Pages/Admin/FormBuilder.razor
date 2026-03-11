@@ -1669,10 +1669,12 @@
             {
                 _formDefinition.UpdatedAt = DateTime.Now;
                 _formDefinition.UpdatedBy = currentUser;
+                // Always sync the selected workflow before saving so that clearing the workflow persists as NULL
+                _formDefinition.WorkflowDefinitionId = _selectedWorkflowId;
                 await FormDefinitionService.UpdateAsync(_formDefinition);
             }
 
-            // Save workflow configuration if workflow is assigned
+            // Save workflow step configuration if workflow is assigned
             if (_selectedWorkflowId.HasValue)
             {
                 await SaveWorkflowConfiguration();

@@ -64,14 +64,23 @@
     /// <summary>Description of what the computed value will be</summary>
     [Parameter] public string? ComputedDescription { get; set; }
 
+    /// <summary>The control type of the field (e.g. "date", "datetime-local") for display formatting</summary>
+    [Parameter] public string? ControlType { get; set; }
+
     private string ResolvedDisplayName => !string.IsNullOrEmpty(DisplayName) ? DisplayName : FieldName;
     
     private bool HasOriginal => RequestType != RequestType.Insert && OriginalValue != null;
     
     private bool HasChanged => (HasOriginal && !AreValuesEqual(OriginalValue, NewValue)) || (HasOriginal && IsComputedPending);
 
+    private bool IsDateOnly => string.Equals(ControlType, "date", StringComparison.OrdinalIgnoreCase);
+
     private string FormatDateTimeUtc(DateTime dt)
     {
+        // Date-only fields: show date without time component
+        if (IsDateOnly)
+            return dt.ToString("yyyy-MM-dd");
+
         // Normalize to UTC and display with UTC indicator
         var utc = dt.Kind == DateTimeKind.Local ? dt.ToUniversalTime() : dt;
         return utc.ToString("yyyy-MM-dd HH:mm:ss") + " UTC";

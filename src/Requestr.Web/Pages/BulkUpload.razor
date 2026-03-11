@@ -239,7 +239,7 @@ else
                                                         <td>
                                                             @if (result.ParsedData.TryGetValue(field.Name, out var value))
                                                             {
-                                                                @(value?.ToString() ?? "")
+                                                                @(FormatCellValue(value, field))
                                                             }
                                                         </td>
                                                     }
@@ -407,6 +407,19 @@ else
         {
             _isProcessing = false;
         }
+    }
+
+    private static string FormatCellValue(object? value, FormField field)
+    {
+        if (value == null) return "";
+        
+        // For date-only fields, strip the time component from DateTime values
+        if (string.Equals(field.ControlType, "date", StringComparison.OrdinalIgnoreCase) && value is DateTime dt)
+        {
+            return dt.ToString("dd/MM/yyyy");
+        }
+        
+        return value.ToString() ?? "";
     }
 
     private void OnRequestTypeChanged(ChangeEventArgs e)

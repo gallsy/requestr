@@ -441,6 +441,12 @@ public class FormDefinitionService : IFormDefinitionService
                     {
                         field.FormDefinitionId = formId;
                         
+                        // Auto-generated fields cannot be required
+                        if (field.ComputedValueType != null && field.ComputedValueType != ComputedValueType.None)
+                        {
+                            field.IsRequired = false;
+                        }
+
                         // Map the FormSectionId if it exists in our mapping
                         if (field.FormSectionId.HasValue && sectionIdMapping.ContainsKey(field.FormSectionId.Value))
                         {
@@ -549,6 +555,12 @@ public class FormDefinitionService : IFormDefinitionService
                     {
                         field.FormDefinitionId = formDefinition.Id;
                         
+                        // Auto-generated fields cannot be required
+                        if (field.ComputedValueType != null && field.ComputedValueType != ComputedValueType.None)
+                        {
+                            field.IsRequired = false;
+                        }
+
                         // Map the FormSectionId if it exists in our mapping
                         if (field.FormSectionId.HasValue && sectionIdMapping.ContainsKey(field.FormSectionId.Value))
                         {

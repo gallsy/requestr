@@ -54,6 +54,8 @@
                         var originalValue = GetOriginalValue(field.Key);
                         var showBorder = field.Key != lastField.Key;
                         var computedInfo = GetComputedFieldInfo(field.Key);
+                        var formFieldForDisplay = FormFields?.FirstOrDefault(f =>
+                            string.Equals(f.Name, field.Key, StringComparison.OrdinalIgnoreCase));
                         
                         <FieldValueDisplay 
                             FieldName="@field.Key"
@@ -65,7 +67,8 @@
                             RequestType="@RequestType"
                             IsComputed="@computedInfo.IsComputed"
                             IsComputedPending="@computedInfo.IsPending"
-                            ComputedDescription="@computedInfo.Description" />
+                            ComputedDescription="@computedInfo.Description"
+                            ControlType="@(formFieldForDisplay?.ControlType)" />
                     }
                 </div>
             }

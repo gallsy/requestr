@@ -18,9 +18,19 @@ public class DatabaseService : IDatabaseService
     {
         _configuration = configuration;
         _logger = logger;
-        _connectionStrings = new Dictionary<string, string>();
+        _connectionStrings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         
-        // Load predefined database connections from configuration
+        // Include ConnectionStrings entries so forms targeting "DefaultConnection" resolve correctly
+        var connectionStringsSection = _configuration.GetSection("ConnectionStrings");
+        foreach (var child in connectionStringsSection.GetChildren())
+        {
+            if (!string.IsNullOrEmpty(child.Value))
+            {
+                _connectionStrings[child.Key] = child.Value;
+            }
+        }
+
+        // Load predefined database connections from configuration (overrides any ConnectionStrings with same key)
         var dbSection = _configuration.GetSection("DatabaseConnections");
         foreach (var child in dbSection.GetChildren())
         {

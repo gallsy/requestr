@@ -167,10 +167,14 @@ public static class SqlTypeConverter
         return normalised switch
         {
             "int" or "smallint" or "tinyint"
-                => int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var i) ? i : (object)value,
+                => int.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var i)
+                    ? i
+                    : TryParseBooleanToInt(value, out var boolInt) ? boolInt : (object)value,
 
             "bigint"
-                => long.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var l) ? l : (object)value,
+                => long.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var l)
+                    ? l
+                    : TryParseBooleanToLong(value, out var boolLong) ? boolLong : (object)value,
 
             "bit" => ParseBoolean(value),
 
@@ -286,6 +290,48 @@ public static class SqlTypeConverter
         JsonValueKind.String => Guid.TryParse(element.GetString(), out var g) ? g : (object?)element.GetString(),
         _ => element.ToString()
     };
+
+    /// <summary>
+    /// Attempts to parse a boolean string (TRUE/FALSE/YES/NO) and return it as an int (1/0).
+    /// Used when Excel provides boolean text for an integer SQL column.
+    /// </summary>
+    private static bool TryParseBooleanToInt(string value, out int result)
+    {
+        var normalized = value.Trim().ToUpperInvariant();
+        switch (normalized)
+        {
+            case "TRUE" or "YES":
+                result = 1;
+                return true;
+            case "FALSE" or "NO":
+                result = 0;
+                return true;
+            default:
+                result = 0;
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Attempts to parse a boolean string (TRUE/FALSE/YES/NO) and return it as a long (1/0).
+    /// Used when Excel provides boolean text for a bigint SQL column.
+    /// </summary>
+    private static bool TryParseBooleanToLong(string value, out long result)
+    {
+        var normalized = value.Trim().ToUpperInvariant();
+        switch (normalized)
+        {
+            case "TRUE" or "YES":
+                result = 1L;
+                return true;
+            case "FALSE" or "NO":
+                result = 0L;
+                return true;
+            default:
+                result = 0L;
+                return false;
+        }
+    }
 
     #endregion
 }
