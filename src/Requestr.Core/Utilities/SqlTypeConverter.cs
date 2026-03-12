@@ -188,7 +188,10 @@ public static class SqlTypeConverter
 
             "datetimeoffset"
                 => DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dto)
-                    ? dto : (object)value,
+                    ? dto
+                    : double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var oaDateOffset)
+                        ? new DateTimeOffset(DateTime.FromOADate(oaDateOffset))
+                        : (object)value,
 
             "time"
                 => TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out var ts) ? ts : (object)value,
@@ -276,6 +279,7 @@ public static class SqlTypeConverter
     private static object? ConvertToDateTimeOffset(JsonElement element) => element.ValueKind switch
     {
         JsonValueKind.String => DateTimeOffset.TryParse(element.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dto) ? dto : (object?)element.GetString(),
+        JsonValueKind.Number => new DateTimeOffset(DateTime.FromOADate(element.GetDouble())),
         _ => element.ToString()
     };
 

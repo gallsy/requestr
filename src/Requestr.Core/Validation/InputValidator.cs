@@ -116,6 +116,7 @@ public static class InputValidator
             case "datetime":
             case "datetime2":
             case "datetime-local":
+            case "datetimeoffset":
                 if (!IsValidDateValue(input))
                 {
                     result.IsValid = false;
