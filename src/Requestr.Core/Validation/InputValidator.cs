@@ -1,7 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Text.RegularExpressions;
-using System.Web;
 using Requestr.Core.Models;
 
 namespace Requestr.Core.Validation;
@@ -117,6 +116,7 @@ public static class InputValidator
             case "datetime":
             case "datetime2":
             case "datetime-local":
+            case "datetimeoffset":
                 if (!IsValidDateValue(input))
                 {
                     result.IsValid = false;
@@ -154,12 +154,13 @@ public static class InputValidator
         if (string.IsNullOrEmpty(input))
             return string.Empty;
 
-        // For text fields that might contain user content, apply HTML encoding
+        // For text fields, strip dangerous patterns but preserve the original characters.
+        // Data is stored in SQL — Blazor handles HTML encoding at render time.
         var sanitized = field.DataType?.ToLower() switch
         {
             "text" or "textarea" or "ntext" or "varchar" or "nvarchar" => SanitizeText(input),
-            "html" => SanitizeHtml(input), // For rich text fields if implemented
-            _ => HttpUtility.HtmlEncode(input) // Default encoding for all other types
+            "html" => SanitizeHtml(input),
+            _ => SanitizeText(input)
         };
 
         return sanitized;
@@ -231,13 +232,12 @@ public static class InputValidator
 
     private static string SanitizeText(string input)
     {
-        // HTML encode to prevent XSS
-        var sanitized = HttpUtility.HtmlEncode(input);
-        
-        // Remove or escape dangerous characters that might have survived encoding
-        sanitized = sanitized.Replace("&#60;script", "&amp;#60;script") // Double encode script tags
-                            .Replace("javascript:", "java-script:")      // Break javascript protocol
-                            .Replace("vbscript:", "vb-script:");         // Break vbscript protocol
+        // Strip dangerous protocol prefixes but preserve the original characters.
+        // HTML encoding is NOT applied here — data is stored in SQL, and Blazor
+        // automatically HTML-encodes when rendering with @.
+        var sanitized = input.Replace("javascript:", "")
+                            .Replace("vbscript:", "")
+                            .Replace("data:text/html", "");
 
         return sanitized;
     }
@@ -246,8 +246,8 @@ public static class InputValidator
     {
         // For future implementation of rich text fields
         // This would use a library like HtmlSanitizer to allow safe HTML while removing dangerous elements
-        // For now, just encode everything
-        return HttpUtility.HtmlEncode(input);
+        // For now, strip dangerous protocols only
+        return SanitizeText(input);
     }
 
     /// <summary>
