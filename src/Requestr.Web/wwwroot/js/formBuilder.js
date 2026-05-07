@@ -144,3 +144,58 @@ if (document.readyState === 'loading') {
 } else {
     window.formBuilderInterop.initDragDrop();
 }
+
+// Resize helpers for form field column resizing
+(function() {
+    var _resizeDotNetRef = null;
+
+    window.addGlobalResizeListeners = function(dotNetReference) {
+        _resizeDotNetRef = dotNetReference;
+
+        document.addEventListener('mousemove', _handleResizeMove, true);
+        document.addEventListener('mouseup', _handleResizeUp, true);
+        document.addEventListener('dragstart', _preventDragDuringResize, true);
+
+        document.body.style.userSelect = 'none';
+        document.body.style.webkitUserSelect = 'none';
+        document.body.style.mozUserSelect = 'none';
+        document.body.style.msUserSelect = 'none';
+    };
+
+    window.removeGlobalResizeListeners = function() {
+        document.removeEventListener('mousemove', _handleResizeMove, true);
+        document.removeEventListener('mouseup', _handleResizeUp, true);
+        document.removeEventListener('dragstart', _preventDragDuringResize, true);
+
+        document.body.style.userSelect = '';
+        document.body.style.webkitUserSelect = '';
+        document.body.style.mozUserSelect = '';
+        document.body.style.msUserSelect = '';
+
+        _resizeDotNetRef = null;
+    };
+
+    function _preventDragDuringResize(e) {
+        if (_resizeDotNetRef) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+    }
+
+    function _handleResizeMove(e) {
+        if (_resizeDotNetRef) {
+            e.preventDefault();
+            e.stopPropagation();
+            _resizeDotNetRef.invokeMethodAsync('OnResizeMove', e.clientX);
+        }
+    }
+
+    function _handleResizeUp(e) {
+        if (_resizeDotNetRef) {
+            e.preventDefault();
+            e.stopPropagation();
+            _resizeDotNetRef.invokeMethodAsync('OnResizeEnd');
+        }
+    }
+})();

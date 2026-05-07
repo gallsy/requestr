@@ -277,6 +277,11 @@ public class DataService : IDataService
 
     public async Task<bool> DeleteDataAsync(string databaseName, string tableName, string schema, Dictionary<string, object?> whereConditions)
     {
+        if (whereConditions == null || whereConditions.Count == 0)
+        {
+            throw new ArgumentException("Where conditions cannot be empty for delete operations");
+        }
+
         if (!_connectionStrings.ContainsKey(databaseName))
         {
             throw new ArgumentException($"Database connection '{databaseName}' not found");
