@@ -199,6 +199,96 @@ public class FormRequestQueryService : IFormRequestQueryService
         }
     }
 
+    public async Task<(List<FormRequest> Requests, int TotalCount)> GetForWorkflowApprovalPagedAsync(
+        string userId, List<string> userRoles, int page = 1, int pageSize = 10,
+        int? formFilter = null, string? statusFilter = null, string sortOrder = "newest")
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+
+            var isAdmin = userRoles.Contains("Admin");
+
+            var statusCondition = !string.IsNullOrEmpty(statusFilter) ? "AND wsi.Status = @FilterStatus" : "";
+            var formCondition = formFilter.HasValue ? "AND fr.FormDefinitionId = @FormFilter" : "";
+            var orderBy = sortOrder == "oldest" ? "fr.RequestedAt ASC" : "fr.RequestedAt DESC";
+
+            var baseSql = $@"
+                FROM FormRequests fr
+                INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+                INNER JOIN WorkflowInstances wi ON fr.WorkflowInstanceId = wi.Id
+                INNER JOIN WorkflowStepInstances wsi ON wi.Id = wsi.WorkflowInstanceId
+                INNER JOIN WorkflowSteps ws ON wsi.StepId = ws.StepId AND wi.WorkflowDefinitionId = ws.WorkflowDefinitionId
+                LEFT JOIN Users uReq ON uReq.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.RequestedBy)
+                LEFT JOIN Users uApp ON uApp.UserObjectId = TRY_CONVERT(uniqueidentifier, fr.ApprovedBy)
+                WHERE ws.StepType = @ApprovalStepType
+                  AND wsi.Status IN (@PendingStatus, @InProgressStatus, @CompletedStatus)
+                  {statusCondition}
+                  {formCondition}
+                  AND (@IsAdmin = 1 
+                       OR (ws.AssignedRoles IS NOT NULL 
+                           AND ws.AssignedRoles != '[]' 
+                           AND JSON_QUERY(ws.AssignedRoles, '$') IS NOT NULL 
+                           AND EXISTS (
+                               SELECT 1 FROM OPENJSON(ws.AssignedRoles) AS roles
+                               WHERE roles.value IN @UserRoles
+                           )))";
+
+            var countSql = $"SELECT COUNT(DISTINCT fr.Id) {baseSql}";
+
+            var dataSql = $@"
+                SELECT DISTINCT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
+                    fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, 
+                    COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName, 
+                    fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) as ApprovedByName, 
+                    fr.ApprovedAt, fr.RejectionReason, fr.Comments,
+                    fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
+                    fd.Name as FormName, fd.Description as FormDescription
+                {baseSql}
+                ORDER BY {orderBy}
+                OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY";
+
+            var parameters = new DynamicParameters();
+            parameters.Add("ApprovalStepType", (int)WorkflowStepType.Approval);
+            parameters.Add("PendingStatus", (int)WorkflowStepInstanceStatus.Pending);
+            parameters.Add("InProgressStatus", (int)WorkflowStepInstanceStatus.InProgress);
+            parameters.Add("CompletedStatus", (int)WorkflowStepInstanceStatus.Completed);
+            parameters.Add("UserRoles", userRoles);
+            parameters.Add("IsAdmin", isAdmin ? 1 : 0);
+            parameters.Add("Offset", (page - 1) * pageSize);
+            parameters.Add("PageSize", pageSize);
+
+            if (!string.IsNullOrEmpty(statusFilter) && Enum.TryParse<WorkflowStepInstanceStatus>(statusFilter, out var parsedStatus))
+            {
+                parameters.Add("FilterStatus", (int)parsedStatus);
+            }
+
+            if (formFilter.HasValue)
+            {
+                parameters.Add("FormFilter", formFilter.Value);
+            }
+
+            var totalCount = await connection.QuerySingleAsync<int>(countSql, parameters);
+
+            var requests = await connection.QueryAsync(dataSql, parameters);
+            var result = new List<FormRequest>();
+
+            foreach (var row in requests)
+            {
+                var request = MapToFormRequest(row);
+                request.WorkflowInstanceId = (int?)((IDictionary<string, object>)row)["WorkflowInstanceId"];
+                result.Add(request);
+            }
+
+            return (result, totalCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting paged form requests for workflow approval for user {UserId}", userId);
+            throw;
+        }
+    }
+
     public async Task<List<FormRequest>> GetWithCompletedWorkflowsNotAppliedAsync()
     {
         try

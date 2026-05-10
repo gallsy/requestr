@@ -9,6 +9,7 @@
 @using BlazorBootstrap
 @inject IFormRequestQueryService FormRequestQueryService
 @inject IFormRequestApprovalService FormRequestApprovalService
+@inject IFormDefinitionService FormDefinitionService
 @inject IWorkflowInstanceService WorkflowInstanceService
 @inject IWorkflowExecutionService WorkflowExecutionService
 @inject IWorkflowDefinitionQueryService WorkflowDefinitionQueryService
@@ -43,13 +44,9 @@
                             <label class="form-label">Form</label>
                             <select class="form-select form-select-sm" @bind="SelectedFormFilter" @bind:after="ApplyFilters">
                                 <option value="">All Forms</option>
-                                @if (AllRequests?.Any() == true)
+                                @foreach (var form in _availableForms)
                                 {
-                                    @foreach (var form in AllRequests.Where(r => r.FormDefinition != null)
-                                        .Select(r => r.FormDefinition!).DistinctBy(f => f.Id))
-                                    {
-                                        <option value="@form.Id">@form.Name</option>
-                                    }
+                                    <option value="@form.Id">@form.Name</option>
                                 }
                             </select>
                         </div>
@@ -76,11 +73,11 @@
                                 <small class="text-muted">
                                     @if (FilteredTasks.Any())
                                     {
-                                        <text>Showing @FilteredTasks.Count of @AllTasks.Count approval tasks</text>
+                                        <text>Showing @(((_currentPage - 1) * _pageSize) + 1)–@(Math.Min(_currentPage * _pageSize, _totalCount)) of @_totalCount approval tasks</text>
                                     }
-                                    else if (AllTasks.Any())
+                                    else if (_totalCount > 0)
                                     {
-                                        <text>No tasks match your current filters (@AllTasks.Count total)</text>
+                                        <text>No tasks match your current filters (@_totalCount total)</text>
                                     }
                                     else
                                     {
@@ -175,6 +172,49 @@
                                 </tbody>
                             </table>
                         </div>
+
+                        <!-- Pagination -->
+                        @if (_totalPages > 1 || _pageSize != 10)
+                        {
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mt-3">
+                                <div class="d-flex align-items-center gap-2">
+                                    <label class="mb-0 text-muted">Show</label>
+                                    <select class="form-select form-select-sm" style="width: auto;" @onchange="OnPageSizeChanged">
+                                        <option value="10" selected="@(_pageSize == 10)">10</option>
+                                        <option value="25" selected="@(_pageSize == 25)">25</option>
+                                        <option value="50" selected="@(_pageSize == 50)">50</option>
+                                        <option value="100" selected="@(_pageSize == 100)">100</option>
+                                    </select>
+                                    <label class="mb-0 text-muted">per page</label>
+                                </div>
+                                @if (_totalPages > 1)
+                                {
+                                    <ul class="pagination mb-0">
+                                        <li class="page-item @(_currentPage == 1 ? "disabled" : "")">
+                                            <button class="page-link" @onclick="() => ChangePage(1)">First</button>
+                                        </li>
+                                        <li class="page-item @(_currentPage == 1 ? "disabled" : "")">
+                                            <button class="page-link" @onclick="() => ChangePage(_currentPage - 1)">Previous</button>
+                                        </li>
+
+                                        @for (int i = Math.Max(1, _currentPage - 2); i <= Math.Min(_totalPages, _currentPage + 2); i++)
+                                        {
+                                            var pageNum = i;
+                                            <li class="page-item @(_currentPage == pageNum ? "active" : "")">
+                                                <button class="page-link" @onclick="() => ChangePage(pageNum)">@pageNum</button>
+                                            </li>
+                                        }
+
+                                        <li class="page-item @(_currentPage == _totalPages ? "disabled" : "")">
+                                            <button class="page-link" @onclick="() => ChangePage(_currentPage + 1)">Next</button>
+                                        </li>
+                                        <li class="page-item @(_currentPage == _totalPages ? "disabled" : "")">
+                                            <button class="page-link" @onclick="() => ChangePage(_totalPages)">Last</button>
+                                        </li>
+                                    </ul>
+                                }
+                            </div>
+                        }
                     }
                 </div>
             </div>
@@ -188,6 +228,11 @@
     private List<ApprovalTask> FilteredTasks = new();
     private bool IsLoading = true;
     private bool _showAdvancedFilters = true;
+    private int _currentPage = 1;
+    private int _pageSize = 10;
+    private int _totalCount = 0;
+    private int _totalPages = 0;
+    private List<FormDefinition> _availableForms = new();
     private string SelectedFormFilter = "";
     private string SelectedStatusFilter = "InProgress";
     private string SortOrder = "newest";
@@ -204,6 +249,7 @@
     protected override async Task OnInitializedAsync()
     {
         await GetUserInfo();
+        _availableForms = await FormDefinitionService.GetActiveAsync();
         await LoadData();
     }
 
@@ -234,26 +280,21 @@
             {
                 var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
                 
-                // Log the user details and roles for debugging
-                Logger.LogInformation("WorkflowApprovals: Loading data for user {UserName} (ID: {UserId})", User.Identity.Name, userId);
-                Logger.LogInformation("WorkflowApprovals: User has {RoleCount} roles: {Roles}", UserRoles.Count, string.Join(", ", UserRoles));
-                
-                // Log all claims for debugging
-                Logger.LogDebug("WorkflowApprovals: All user claims:");
-                foreach (var claim in User.Claims)
-                {
-                    Logger.LogDebug("  {ClaimType}: {ClaimValue}", claim.Type, claim.Value);
-                }
+                Logger.LogInformation("WorkflowApprovals: Loading page {Page} (size {PageSize}) for user {UserName}", _currentPage, _pageSize, User.Identity.Name);
 
-                AllRequests = await FormRequestQueryService.GetForWorkflowApprovalAsync(userId, UserRoles);
-                
-                Logger.LogInformation("WorkflowApprovals: Received {RequestCount} requests from service", AllRequests?.Count ?? 0);
+                int? formFilter = !string.IsNullOrEmpty(SelectedFormFilter) && int.TryParse(SelectedFormFilter, out var fid) ? fid : null;
+
+                var (requests, totalCount) = await FormRequestQueryService.GetForWorkflowApprovalPagedAsync(
+                    userId, UserRoles, _currentPage, _pageSize, formFilter, SelectedStatusFilter, SortOrder);
+
+                AllRequests = requests;
+                _totalCount = totalCount;
+                _totalPages = (int)Math.Ceiling((double)totalCount / _pageSize);
 
                 // Build flat list of approval tasks (one per active step per request)
                 AllTasks.Clear();
-                if (AllRequests?.Any() == true)
+                if (AllRequests.Any())
                 {
-                    Logger.LogInformation("WorkflowApprovals: Loading workflow steps for {RequestCount} requests", AllRequests.Count);
                     foreach (var request in AllRequests)
                     {
                         try
@@ -261,7 +302,6 @@
                             var currentSteps = await FormRequestApprovalService.GetCurrentWorkflowStepsAsync(request.Id);
                             if (currentSteps.Count > 0)
                             {
-                                // Get workflow definition for step names
                                 WorkflowDefinition? workflowDef = null;
                                 if (request.WorkflowInstanceId.HasValue)
                                 {
@@ -273,19 +313,15 @@
                                 foreach (var step in currentSteps)
                                 {
                                     var stepDef = workflowDef?.Steps.FirstOrDefault(s => s.StepId == step.StepId);
-                                    // Only include Approval steps
                                     if (stepDef?.StepType == WorkflowStepType.Approval || stepDef == null)
                                     {
                                         var stepName = stepDef?.Name ?? step.StepId;
                                         AllTasks.Add(new ApprovalTask(request, step, stepName));
-                                        Logger.LogInformation("WorkflowApprovals: Request {RequestId} - Step: {StepId} ({StepName})", 
-                                            request.Id, step.StepId, stepName);
                                     }
                                 }
                             }
                             else
                             {
-                                // Fallback: no active steps, still show the request
                                 var singleStep = await FormRequestApprovalService.GetCurrentWorkflowStepAsync(request.Id);
                                 AllTasks.Add(new ApprovalTask(request, singleStep!, singleStep?.StepId ?? "Unknown"));
                             }
@@ -297,10 +333,7 @@
                     }
                 }
 
-                Logger.LogInformation("WorkflowApprovals: Built {TaskCount} approval tasks from {RequestCount} requests", 
-                    AllTasks.Count, AllRequests?.Count ?? 0);
-
-                await ApplyFilters();
+                FilteredTasks = AllTasks;
             }
         }
         catch (Exception ex)
@@ -314,32 +347,10 @@
         }
     }
 
-    private Task ApplyFilters()
+    private async Task ApplyFilters()
     {
-        var filtered = AllTasks.AsEnumerable();
-
-        // Filter by form
-        if (!string.IsNullOrEmpty(SelectedFormFilter) && int.TryParse(SelectedFormFilter, out var formId))
-        {
-            filtered = filtered.Where(t => t.Request.FormDefinitionId == formId);
-        }
-
-        // Filter by workflow step status
-        if (!string.IsNullOrEmpty(SelectedStatusFilter))
-        {
-            filtered = filtered.Where(t => t.Step?.Status.ToString() == SelectedStatusFilter);
-        }
-
-        // Sort
-        filtered = SortOrder switch
-        {
-            "oldest" => filtered.OrderBy(t => t.Request.RequestedAt),
-            _ => filtered.OrderByDescending(t => t.Request.RequestedAt)
-        };
-
-        FilteredTasks = filtered.ToList();
-        StateHasChanged();
-        return Task.CompletedTask;
+        _currentPage = 1;
+        await LoadData();
     }
 
     private void ViewApprovalTask(ApprovalTask task)
@@ -387,5 +398,22 @@
     private void ToggleAdvancedFilters()
     {
         _showAdvancedFilters = !_showAdvancedFilters;
+    }
+
+    private async Task ChangePage(int page)
+    {
+        if (page < 1 || page > _totalPages || page == _currentPage) return;
+        _currentPage = page;
+        await LoadData();
+    }
+
+    private async Task OnPageSizeChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var newSize))
+        {
+            _pageSize = newSize;
+            _currentPage = 1;
+            await LoadData();
+        }
     }
 }

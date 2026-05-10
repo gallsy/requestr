@@ -41,6 +41,14 @@ public interface IFormRequestQueryService
     /// Gets form requests for workflow approval based on user roles.
     /// </summary>
     Task<List<FormRequest>> GetForWorkflowApprovalAsync(string userId, List<string> userRoles);
+
+    /// <summary>
+    /// Gets a paginated list of form requests for workflow approval.
+    /// Returns the total count and a page of results including step/workflow metadata.
+    /// </summary>
+    Task<(List<FormRequest> Requests, int TotalCount)> GetForWorkflowApprovalPagedAsync(
+        string userId, List<string> userRoles, int page = 1, int pageSize = 10,
+        int? formFilter = null, string? statusFilter = null, string sortOrder = "newest");
     
     /// <summary>
     /// Gets form requests with completed workflows that haven't been applied yet.

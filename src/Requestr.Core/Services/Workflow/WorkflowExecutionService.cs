@@ -963,8 +963,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             var formDefinition = await _formDefinitionService.GetFormDefinitionAsync(formDefinitionId);
             var fields = formDefinition?.Fields ?? new List<FormField>();
 
-            var fieldValues = ParseFieldValues(requestData.FieldValues, fields);
-            var originalValues = ParseFieldValues(requestData.OriginalValues, fields);
+            var fieldValues = (Dictionary<string, object?>)ParseFieldValues(requestData.FieldValues, fields);
+            var originalValues = (Dictionary<string, object?>)ParseFieldValues(requestData.OriginalValues, fields);
             var requestType = (RequestType)requestData.RequestType;
 
             // Inject computed values (e.g. current datetime, user info, GUID)
