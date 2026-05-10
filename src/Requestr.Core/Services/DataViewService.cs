@@ -82,18 +82,26 @@ public class DataViewService : IDataViewService
             var whereConditions = new List<string>();
             var parameters = new DynamicParameters();
 
-            // Add search functionality
+            // Add search functionality — each word is an independent term (AND logic),
+            // while quoted phrases are treated as a single term.
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
-                var searchConditions = new List<string>();
-                foreach (var field in visibleFields.Where(f => f.DataType == "string" || f.DataType == "text"))
+                var searchableFields = visibleFields
+                    .Where(f => f.DataType == "string" || f.DataType == "text")
+                    .ToList();
+
+                if (searchableFields.Any())
                 {
-                    searchConditions.Add($"[{field.Name}] LIKE @SearchTerm");
-                }
-                if (searchConditions.Any())
-                {
-                    whereConditions.Add($"({string.Join(" OR ", searchConditions)})");
-                    parameters.Add("SearchTerm", $"%{searchTerm}%");
+                    var terms = ParseSearchTerms(searchTerm);
+                    for (int i = 0; i < terms.Count; i++)
+                    {
+                        var paramName = $"SearchTerm{i}";
+                        var termConditions = searchableFields
+                            .Select(f => $"[{f.Name}] LIKE @{paramName}")
+                            .ToList();
+                        whereConditions.Add($"({string.Join(" OR ", termConditions)})");
+                        parameters.Add(paramName, $"%{terms[i]}%");
+                    }
                 }
             }
 
@@ -296,5 +304,47 @@ public class DataViewService : IDataViewService
             return _defaultConnectionString; // Fall back to default connection
         }
         return connectionString;
+    }
+
+    /// <summary>
+    /// Splits a search string into individual terms. Words separated by spaces are
+    /// treated as independent terms (AND). Phrases enclosed in double quotes are
+    /// kept as a single term.
+    /// </summary>
+    private static List<string> ParseSearchTerms(string input)
+    {
+        var terms = new List<string>();
+        var span = input.AsSpan().Trim();
+        int i = 0;
+
+        while (i < span.Length)
+        {
+            // Skip whitespace
+            while (i < span.Length && char.IsWhiteSpace(span[i])) i++;
+            if (i >= span.Length) break;
+
+            if (span[i] == '"')
+            {
+                // Quoted phrase — find closing quote
+                i++; // skip opening quote
+                int start = i;
+                while (i < span.Length && span[i] != '"') i++;
+                var phrase = span[start..i].Trim();
+                if (phrase.Length > 0)
+                    terms.Add(phrase.ToString());
+                if (i < span.Length) i++; // skip closing quote
+            }
+            else
+            {
+                // Unquoted word — read until whitespace or quote
+                int start = i;
+                while (i < span.Length && !char.IsWhiteSpace(span[i]) && span[i] != '"') i++;
+                var word = span[start..i].Trim();
+                if (word.Length > 0)
+                    terms.Add(word.ToString());
+            }
+        }
+
+        return terms;
     }
 }
