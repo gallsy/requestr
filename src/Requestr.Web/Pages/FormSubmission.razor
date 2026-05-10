@@ -423,7 +423,50 @@ else
     private bool _canUpdateRequests = false;
     private bool _canDeleteRequests = false;
 
+    // Track previous parameters to detect navigation within same component
+    private int _previousFormId;
+    private int? _previousRequestId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_previousFormId == FormId && _previousRequestId == RequestId)
+            return;
+
+        var formChanged = _previousFormId != FormId;
+        _previousFormId = FormId;
+        _previousRequestId = RequestId;
+
+        // If this isn't the initial load (OnInitializedAsync handles that), reload
+        if (!_isLoading)
+        {
+            if (formChanged)
+            {
+                // Different form entirely — full reload
+                _isLoading = true;
+                StateHasChanged();
+                await LoadForm();
+            }
+            else if (RequestId.HasValue)
+            {
+                // Same form but switched to edit mode — reload request values
+                _isLoading = true;
+                StateHasChanged();
+                await ReInitializeFieldValues();
+                await LoadExistingRequest();
+                _isLoading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
     protected override async Task OnInitializedAsync()
+    {
+        _previousFormId = FormId;
+        _previousRequestId = RequestId;
+        await LoadForm();
+    }
+
+    private async Task LoadForm()
     {
         try
         {
@@ -529,6 +572,37 @@ else
     }
 
     // Legacy LoadExistingRecords removed; Data View provides recordId when needed
+
+    private Task ReInitializeFieldValues()
+    {
+        _fieldValues.Clear();
+        _checkboxValues.Clear();
+        _errorMessage = "";
+        _successMessage = "";
+        _validationErrors.Clear();
+
+        if (_formDefinition == null) return Task.CompletedTask;
+
+        foreach (var field in _formDefinition.Fields)
+        {
+            var dataType = field.DataType?.ToLower() ?? "text";
+            var controlType = FieldRenderUtils.DetermineControlType(field);
+
+            if (controlType == "checkbox" || dataType == "bit")
+            {
+                if (!string.IsNullOrEmpty(field.DefaultValue))
+                    _checkboxValues[field.Name] = field.DefaultValue.ToLower() == "true" || field.DefaultValue == "1";
+                else
+                    _checkboxValues[field.Name] = false;
+            }
+            else
+            {
+                _fieldValues[field.Name] = field.DefaultValue ?? "";
+            }
+        }
+
+        return Task.CompletedTask;
+    }
 
     private async Task LoadExistingRecord()
     {
@@ -899,6 +973,15 @@ else
                     _selectedRecordId,
                     _formDefinition.Schema);
                 formRequest.OriginalValues = originalData ?? new Dictionary<string, object?>();
+            }
+            else if (RequestId.HasValue)
+            {
+                // Editing an existing request — preserve its saved OriginalValues
+                var existingRequest = await FormRequestQueryService.GetByIdAsync(RequestId.Value);
+                if (existingRequest != null)
+                {
+                    formRequest.OriginalValues = existingRequest.OriginalValues;
+                }
             }
 
             FormRequest? createdRequest = null;
