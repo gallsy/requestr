@@ -78,4 +78,15 @@ public interface IFormRequestQueryService
     /// Gets pending requests (Pending or Approved status) for a specific form definition.
     /// </summary>
     Task<List<FormRequest>> GetPendingByFormDefinitionAsync(int formDefinitionId);
+
+    /// <summary>
+    /// Gets a paginated, server-side filtered list of all requests (individual + bulk) 
+    /// accessible to the user. Returns lightweight DTOs without heavy JSON blobs.
+    /// </summary>
+    Task<(List<UnifiedRequestListItem> Items, int TotalCount)> GetAccessibleRequestsPagedAsync(
+        string userId, List<string> userRoles, int page = 1, int pageSize = 10,
+        string? statusFilter = null, string? operationTypeFilter = null,
+        string? formFilter = null, string? requestTypeFilter = null,
+        string? sourceFilter = null, string? dateRangeFilter = null,
+        string? requestedByFilter = null, string sortOrder = "newest");
 }

@@ -574,4 +574,204 @@ public class FormRequestQueryService : IFormRequestQueryService
             OriginalValues = JsonSerializer.Deserialize<Dictionary<string, object?>>((string)(row.OriginalValuesJson ?? "{}")) ?? new Dictionary<string, object?>()
         };
     }
+
+    public async Task<(List<UnifiedRequestListItem> Items, int TotalCount)> GetAccessibleRequestsPagedAsync(
+        string userId, List<string> userRoles, int page = 1, int pageSize = 10,
+        string? statusFilter = null, string? operationTypeFilter = null,
+        string? formFilter = null, string? requestTypeFilter = null,
+        string? sourceFilter = null, string? dateRangeFilter = null,
+        string? requestedByFilter = null, string sortOrder = "newest")
+    {
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+
+            var isAdmin = userRoles.Contains("Admin");
+            var parameters = new DynamicParameters();
+            parameters.Add("UserId", userId);
+            parameters.Add("Offset", (page - 1) * pageSize);
+            parameters.Add("PageSize", pageSize);
+
+            // Build access control WHERE clause
+            string individualAccessWhere;
+            string bulkAccessWhere;
+
+            if (isAdmin)
+            {
+                individualAccessWhere = "1=1";
+                bulkAccessWhere = "1=1";
+            }
+            else
+            {
+                parameters.Add("UserRolesJson", JsonSerializer.Serialize(userRoles));
+                parameters.Add("ApprovalStepType", (int)WorkflowStepType.Approval);
+
+                individualAccessWhere = @"
+                    (fr.RequestedBy = @UserId
+                     OR (fr.WorkflowInstanceId IS NOT NULL AND EXISTS (
+                         SELECT 1 FROM WorkflowSteps ws
+                         INNER JOIN WorkflowInstances wi ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId
+                         WHERE wi.Id = fr.WorkflowInstanceId
+                         AND ws.StepType = @ApprovalStepType
+                         AND ws.AssignedRoles IS NOT NULL AND ws.AssignedRoles != '[]'
+                         AND EXISTS (
+                             SELECT 1 FROM OPENJSON(ws.AssignedRoles) AS roles
+                             WHERE roles.value IN (SELECT value FROM OPENJSON(@UserRolesJson))
+                         )
+                     )))";
+
+                bulkAccessWhere = @"
+                    (bfr.RequestedBy = @UserId
+                     OR (bfr.WorkflowInstanceId IS NOT NULL AND EXISTS (
+                         SELECT 1 FROM WorkflowSteps ws
+                         INNER JOIN WorkflowInstances wi ON ws.WorkflowDefinitionId = wi.WorkflowDefinitionId
+                         WHERE wi.Id = bfr.WorkflowInstanceId
+                         AND ws.StepType = @ApprovalStepType
+                         AND ws.AssignedRoles IS NOT NULL AND ws.AssignedRoles != '[]'
+                         AND EXISTS (
+                             SELECT 1 FROM OPENJSON(ws.AssignedRoles) AS roles
+                             WHERE roles.value IN (SELECT value FROM OPENJSON(@UserRolesJson))
+                         )
+                     )))";
+            }
+
+            // Build shared filter conditions
+            var filterConditions = new List<string>();
+
+            if (!string.IsNullOrEmpty(statusFilter) && Enum.TryParse<RequestStatus>(statusFilter, out var status))
+            {
+                parameters.Add("StatusFilter", (int)status);
+                filterConditions.Add("Status = @StatusFilter");
+            }
+
+            if (!string.IsNullOrEmpty(operationTypeFilter) && Enum.TryParse<RequestType>(operationTypeFilter, out var opType))
+            {
+                parameters.Add("OperationTypeFilter", (int)opType);
+                filterConditions.Add("RequestType = @OperationTypeFilter");
+            }
+
+            if (!string.IsNullOrEmpty(formFilter))
+            {
+                parameters.Add("FormFilter", formFilter);
+                filterConditions.Add("FormName = @FormFilter");
+            }
+
+            if (!string.IsNullOrEmpty(requestedByFilter) && isAdmin)
+            {
+                parameters.Add("RequestedByFilter", $"%{requestedByFilter}%");
+                filterConditions.Add("RequestedByName LIKE @RequestedByFilter");
+            }
+
+            if (!string.IsNullOrEmpty(sourceFilter) && !isAdmin)
+            {
+                if (sourceFilter == "MyRequests")
+                    filterConditions.Add("RequestedBy = @UserId");
+                else if (sourceFilter == "ForApproval")
+                    filterConditions.Add("RequestedBy != @UserId");
+            }
+
+            // Date range filter
+            if (!string.IsNullOrEmpty(dateRangeFilter))
+            {
+                var (startDate, endDate) = GetDateRange(dateRangeFilter);
+                if (startDate.HasValue)
+                {
+                    parameters.Add("DateStart", startDate.Value);
+                    parameters.Add("DateEnd", endDate!.Value);
+                    filterConditions.Add("RequestedAt >= @DateStart AND RequestedAt < @DateEnd");
+                }
+            }
+
+            var sharedFilter = filterConditions.Any()
+                ? "AND " + string.Join(" AND ", filterConditions)
+                : "";
+
+            // Build UNION query for individual + bulk requests
+            var individualSelect = $@"
+                SELECT fr.Id, CAST(0 AS BIT) AS IsBulk, fd.Name AS FormName, fr.FormDefinitionId,
+                       fr.RequestType, fr.Status, fr.RequestedBy,
+                       COALESCE(uReq.DisplayName, fr.RequestedBy) AS RequestedByName,
+                       fr.RequestedAt, NULL AS BulkRowCount
+                FROM FormRequests fr
+                INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
+                LEFT JOIN Users uReq ON TRY_CONVERT(uniqueidentifier, fr.RequestedBy) = uReq.UserObjectId
+                WHERE fr.BulkFormRequestId IS NULL
+                AND ({individualAccessWhere})
+                {sharedFilter}";
+
+            var bulkSelect = $@"
+                SELECT bfr.Id, CAST(1 AS BIT) AS IsBulk, fd.Name AS FormName, bfr.FormDefinitionId,
+                       bfr.RequestType, bfr.Status, bfr.RequestedBy,
+                       COALESCE(uReq.DisplayName, bfr.RequestedBy) AS RequestedByName,
+                       bfr.RequestedAt, bfr.SelectedRows AS BulkRowCount
+                FROM BulkFormRequests bfr
+                INNER JOIN FormDefinitions fd ON bfr.FormDefinitionId = fd.Id
+                LEFT JOIN Users uReq ON TRY_CONVERT(uniqueidentifier, bfr.RequestedBy) = uReq.UserObjectId
+                WHERE ({bulkAccessWhere})
+                {sharedFilter}";
+
+            // Apply request type filter (Individual vs Bulk)
+            string unionQuery;
+            if (requestTypeFilter == "Individual")
+            {
+                unionQuery = individualSelect;
+            }
+            else if (requestTypeFilter == "Bulk")
+            {
+                unionQuery = bulkSelect;
+            }
+            else
+            {
+                unionQuery = $"{individualSelect} UNION ALL {bulkSelect}";
+            }
+
+            var orderBy = sortOrder == "oldest" ? "RequestedAt ASC, Id ASC" : "RequestedAt DESC, Id DESC";
+
+            var countSql = $"SELECT COUNT(*) FROM ({unionQuery}) AS combined";
+            var dataSql = $@"
+                SELECT * FROM ({unionQuery}) AS combined
+                ORDER BY {orderBy}
+                OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY";
+
+            var totalCount = await connection.QuerySingleAsync<int>(countSql, parameters);
+
+            var rows = await connection.QueryAsync(dataSql, parameters);
+            var items = rows.Select(row => new UnifiedRequestListItem
+            {
+                Id = (int)row.Id,
+                IsBulk = (bool)row.IsBulk,
+                FormName = (string)row.FormName,
+                FormDefinitionId = (int)row.FormDefinitionId,
+                RequestType = (RequestType)(int)row.RequestType,
+                Status = (RequestStatus)(int)row.Status,
+                RequestedBy = (string)row.RequestedBy,
+                RequestedByName = (string)row.RequestedByName,
+                RequestedAt = (DateTime)row.RequestedAt,
+                BulkRowCount = (int?)row.BulkRowCount
+            }).ToList();
+
+            return (items, totalCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting paged accessible requests for user {UserId}", userId);
+            throw;
+        }
+    }
+
+    private static (DateTime? Start, DateTime? End) GetDateRange(string dateRangeFilter)
+    {
+        var now = DateTime.UtcNow;
+        return dateRangeFilter switch
+        {
+            "Today" => (now.Date, now.Date.AddDays(1)),
+            "Yesterday" => (now.Date.AddDays(-1), now.Date),
+            "ThisWeek" => (now.Date.AddDays(-(int)now.DayOfWeek), now.Date.AddDays(7 - (int)now.DayOfWeek)),
+            "LastWeek" => (now.Date.AddDays(-(int)now.DayOfWeek - 7), now.Date.AddDays(-(int)now.DayOfWeek)),
+            "ThisMonth" => (new DateTime(now.Year, now.Month, 1), new DateTime(now.Year, now.Month, 1).AddMonths(1)),
+            "LastMonth" => (new DateTime(now.Year, now.Month, 1).AddMonths(-1), new DateTime(now.Year, now.Month, 1)),
+            "Last3Months" => (new DateTime(now.Year, now.Month, 1).AddMonths(-3), now),
+            _ => (null, null)
+        };
+    }
 }
