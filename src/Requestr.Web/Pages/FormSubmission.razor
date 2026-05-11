@@ -433,6 +433,7 @@ else
             return;
 
         var formChanged = _previousFormId != FormId;
+        var requestIdCleared = _previousRequestId.HasValue && !RequestId.HasValue;
         _previousFormId = FormId;
         _previousRequestId = RequestId;
 
@@ -453,6 +454,35 @@ else
                 StateHasChanged();
                 await ReInitializeFieldValues();
                 await LoadExistingRequest();
+                _isLoading = false;
+                StateHasChanged();
+            }
+            else if (requestIdCleared)
+            {
+                // Navigated back from edit mode to create mode — reset to defaults
+                _isLoading = true;
+                StateHasChanged();
+                await ReInitializeFieldValues();
+                _requestType = RequestType.Insert;
+                _selectedRecordId = "";
+                _comments = "";
+
+                // Re-apply querystring-derived state (recordId, requestType, prefill)
+                if (!string.IsNullOrWhiteSpace(RequestTypeQuery))
+                {
+                    var rt = RequestTypeQuery.Trim().ToLowerInvariant();
+                    if (rt == "update" && _canUpdateRequests) _requestType = RequestType.Update;
+                    else if (rt == "delete" && _canDeleteRequests) _requestType = RequestType.Delete;
+                }
+                if (!string.IsNullOrWhiteSpace(RecordIdQuery))
+                {
+                    _selectedRecordId = RecordIdQuery;
+                }
+                if (!string.IsNullOrWhiteSpace(_selectedRecordId) && _requestType != RequestType.Insert)
+                {
+                    await LoadExistingRecord();
+                }
+                ApplyPrefillParameters();
                 _isLoading = false;
                 StateHasChanged();
             }
