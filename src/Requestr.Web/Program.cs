@@ -30,7 +30,7 @@ if (builder.Environment.IsProduction())
 }
 
 // Add Application Insights (if connection string is available)
-if (!string.IsNullOrEmpty(builder.Configuration.GetConnectionString("APPLICATIONINSIGHTS_CONNECTION_STRING")))
+if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
 {
     builder.Services.AddApplicationInsightsTelemetry();
 }

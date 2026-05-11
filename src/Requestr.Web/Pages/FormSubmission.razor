@@ -207,6 +207,10 @@ else
                                                         {
                                                             <small class="form-text text-muted">@field.ValidationMessage</small>
                                                         }
+                                                        @if (_validationErrors.ContainsKey(field.Name))
+                                                        {
+                                                            <div class="text-danger small mt-1"><i class="bi bi-exclamation-circle me-1"></i>@_validationErrors[field.Name]</div>
+                                                        }
                                                     </div>
                                                 }
                                             }
@@ -318,6 +322,10 @@ else
                                             {
                                                 <small class="form-text text-muted">@field.ValidationMessage</small>
                                             }
+                                            @if (_validationErrors.ContainsKey(field.Name))
+                                            {
+                                                <div class="text-danger small mt-1"><i class="bi bi-exclamation-circle me-1"></i>@_validationErrors[field.Name]</div>
+                                            }
                                         </div>
                                     }
                                 </div>
@@ -408,13 +416,87 @@ else
     private string _successMessage = "";
     private bool _isLoading = true;
     private bool _isSubmitting = false;
+    private Dictionary<string, string> _validationErrors = new();
     
     // Permission flags
     private bool _canCreateRequests = false;
     private bool _canUpdateRequests = false;
     private bool _canDeleteRequests = false;
 
+    // Track previous parameters to detect navigation within same component
+    private int _previousFormId;
+    private int? _previousRequestId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_previousFormId == FormId && _previousRequestId == RequestId)
+            return;
+
+        var formChanged = _previousFormId != FormId;
+        var requestIdCleared = _previousRequestId.HasValue && !RequestId.HasValue;
+        _previousFormId = FormId;
+        _previousRequestId = RequestId;
+
+        // If this isn't the initial load (OnInitializedAsync handles that), reload
+        if (!_isLoading)
+        {
+            if (formChanged)
+            {
+                // Different form entirely — full reload
+                _isLoading = true;
+                StateHasChanged();
+                await LoadForm();
+            }
+            else if (RequestId.HasValue)
+            {
+                // Same form but switched to edit mode — reload request values
+                _isLoading = true;
+                StateHasChanged();
+                await ReInitializeFieldValues();
+                await LoadExistingRequest();
+                _isLoading = false;
+                StateHasChanged();
+            }
+            else if (requestIdCleared)
+            {
+                // Navigated back from edit mode to create mode — reset to defaults
+                _isLoading = true;
+                StateHasChanged();
+                await ReInitializeFieldValues();
+                _requestType = RequestType.Insert;
+                _selectedRecordId = "";
+                _comments = "";
+
+                // Re-apply querystring-derived state (recordId, requestType, prefill)
+                if (!string.IsNullOrWhiteSpace(RequestTypeQuery))
+                {
+                    var rt = RequestTypeQuery.Trim().ToLowerInvariant();
+                    if (rt == "update" && _canUpdateRequests) _requestType = RequestType.Update;
+                    else if (rt == "delete" && _canDeleteRequests) _requestType = RequestType.Delete;
+                }
+                if (!string.IsNullOrWhiteSpace(RecordIdQuery))
+                {
+                    _selectedRecordId = RecordIdQuery;
+                }
+                if (!string.IsNullOrWhiteSpace(_selectedRecordId) && _requestType != RequestType.Insert)
+                {
+                    await LoadExistingRecord();
+                }
+                ApplyPrefillParameters();
+                _isLoading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
     protected override async Task OnInitializedAsync()
+    {
+        _previousFormId = FormId;
+        _previousRequestId = RequestId;
+        await LoadForm();
+    }
+
+    private async Task LoadForm()
     {
         try
         {
@@ -520,6 +602,37 @@ else
     }
 
     // Legacy LoadExistingRecords removed; Data View provides recordId when needed
+
+    private Task ReInitializeFieldValues()
+    {
+        _fieldValues.Clear();
+        _checkboxValues.Clear();
+        _errorMessage = "";
+        _successMessage = "";
+        _validationErrors.Clear();
+
+        if (_formDefinition == null) return Task.CompletedTask;
+
+        foreach (var field in _formDefinition.Fields)
+        {
+            var dataType = field.DataType?.ToLower() ?? "text";
+            var controlType = FieldRenderUtils.DetermineControlType(field);
+
+            if (controlType == "checkbox" || dataType == "bit")
+            {
+                if (!string.IsNullOrEmpty(field.DefaultValue))
+                    _checkboxValues[field.Name] = field.DefaultValue.ToLower() == "true" || field.DefaultValue == "1";
+                else
+                    _checkboxValues[field.Name] = false;
+            }
+            else
+            {
+                _fieldValues[field.Name] = field.DefaultValue ?? "";
+            }
+        }
+
+        return Task.CompletedTask;
+    }
 
     private async Task LoadExistingRecord()
     {
@@ -795,6 +908,26 @@ else
                 return;
             }
 
+            // Validate required fields
+            _validationErrors.Clear();
+            var visibleFields = _formDefinition.Fields
+                .Where(f => f.IsVisible && !ShouldHideFieldOnCreate(f) && !IsFieldDisabled(f))
+                .ToList();
+            foreach (var field in visibleFields)
+            {
+                if (!field.IsRequired) continue;
+                var controlType = FieldRenderUtils.DetermineControlType(field);
+                if (controlType == "checkbox") continue; // checkboxes always have a value
+                if (_fieldValues.TryGetValue(field.Name, out var val) && !string.IsNullOrWhiteSpace(val)) continue;
+                _validationErrors[field.Name] = $"{field.DisplayName} is required.";
+            }
+            if (_validationErrors.Any())
+            {
+                var fieldList = string.Join(", ", _validationErrors.Values);
+                _errorMessage = $"Please fix the following errors: {fieldList}";
+                return;
+            }
+
             // Require a selected record for update/delete modes when not editing an existing request
             if (_requestType != RequestType.Insert && string.IsNullOrWhiteSpace(_selectedRecordId) && !RequestId.HasValue)
             {
@@ -871,6 +1004,15 @@ else
                     _formDefinition.Schema);
                 formRequest.OriginalValues = originalData ?? new Dictionary<string, object?>();
             }
+            else if (RequestId.HasValue)
+            {
+                // Editing an existing request — preserve its saved OriginalValues
+                var existingRequest = await FormRequestQueryService.GetByIdAsync(RequestId.Value);
+                if (existingRequest != null)
+                {
+                    formRequest.OriginalValues = existingRequest.OriginalValues;
+                }
+            }
 
             FormRequest? createdRequest = null;
             if (RequestId.HasValue)
@@ -905,7 +1047,11 @@ else
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error submitting request for form {FormId}", FormId);
-            _errorMessage = "An unexpected error occurred while submitting the request. Please try again.";
+            _errorMessage = ex.Message.Contains("validation", StringComparison.OrdinalIgnoreCase)
+                || ex.Message.Contains("required", StringComparison.OrdinalIgnoreCase)
+                || ex.Message.Contains("constraint", StringComparison.OrdinalIgnoreCase)
+                ? $"Submission failed: {ex.Message}"
+                : "An unexpected error occurred while submitting the request. Please try again.";
         }
         finally
         {

@@ -28,55 +28,54 @@
                        Dismissable="true">
             @errorMessage
         </StandardAlert>
-            }
+    }
 
-            @if (workflows == null)
+    @if (workflows == null)
+    {
+        <LoadingSpinner Message="Loading workflows..." />
+    }
+    else if (!workflows.Any())
+    {
+        <EmptyState Title="No workflows yet" 
+                    Description="Create your first workflow to get started with approval processes.">
+            <Action>
+                <Button Color="ButtonColor.Primary" @onclick="ShowCreateWorkflowModal">
+                    <Icon Name="IconName.Plus" class="me-2" />
+                    Create Workflow
+                </Button>
+            </Action>
+        </EmptyState>
+    }
+    else
+    {
+        <div class="row">
+            @foreach (var workflow in workflows)
             {
-                <LoadingSpinner Message="Loading workflows..." />
-            }
-            else if (!workflows.Any())
-            {
-                <EmptyState Title="No workflows yet" 
-                            Description="Create your first workflow to get started with approval processes.">
-                    <Action>
-                        <Button Color="ButtonColor.Primary" @onclick="ShowCreateWorkflowModal">
-                            <Icon Name="IconName.Plus" class="me-2" />
-                            Create Workflow
-                        </Button>
-                    </Action>
-                </EmptyState>
-            }
-            else
-            {
-                <div class="row">
-                    @foreach (var workflow in workflows)
-                    {
-                        <div class="col-md-6 col-lg-4 mb-4">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-start mb-3">
-                                        <h5 class="card-title">@workflow.Name</h5>
-                                    </div>
-                                    <h6 class="card-subtitle mb-2 text-muted">
-                                        Version @workflow.Version
-                                    </h6>
-                                    <p class="card-text">@workflow.Description</p>
-                                    <small class="text-muted">Version @workflow.Version</small>
-                                </div>
-                                <div class="card-footer">
-                                    <div class="d-grid">
-                                        <button class="btn btn-primary btn-sm" @onclick="() => DesignWorkflow(workflow.Id)">
-                                            <i class="bi bi-diagram-2 me-2"></i>Designer
-                                        </button>
-                                    </div>
-                                </div>
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <h5 class="card-title">@workflow.Name</h5>
+                            </div>
+                            <h6 class="card-subtitle mb-2 text-muted">
+                                Version @workflow.Version
+                            </h6>
+                            <p class="card-text">@workflow.Description</p>
+                            <small class="text-muted">Version @workflow.Version</small>
+                        </div>
+                        <div class="card-footer">
+                            <div class="d-grid">
+                                <button class="btn btn-primary btn-sm" @onclick="() => DesignWorkflow(workflow.Id)">
+                                    <i class="bi bi-diagram-2 me-2"></i>Designer
+                                </button>
                             </div>
                         </div>
-                    }
+                    </div>
                 </div>
             }
         </div>
     }
+</div>
 
 <!-- Create Workflow Modal -->
 <Modal @ref="createWorkflowModal" Title="Create New Workflow">

@@ -963,8 +963,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             var formDefinition = await _formDefinitionService.GetFormDefinitionAsync(formDefinitionId);
             var fields = formDefinition?.Fields ?? new List<FormField>();
 
-            var fieldValues = ParseFieldValues(requestData.FieldValues, fields);
-            var originalValues = ParseFieldValues(requestData.OriginalValues, fields);
+            var fieldValues = (Dictionary<string, object?>)ParseFieldValues(requestData.FieldValues, fields);
+            var originalValues = (Dictionary<string, object?>)ParseFieldValues(requestData.OriginalValues, fields);
             var requestType = (RequestType)requestData.RequestType;
 
             // Inject computed values (e.g. current datetime, user info, GUID)
@@ -991,8 +991,9 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                     var whereConditions = new Dictionary<string, object?>();
                     foreach (var pk in primaryKeyColumns)
                     {
-                        if (originalValues.ContainsKey(pk))
-                            whereConditions[pk] = originalValues[pk];
+                        var matchingKey = originalValues.Keys.FirstOrDefault(k => string.Equals(k, pk, StringComparison.OrdinalIgnoreCase));
+                        if (matchingKey != null)
+                            whereConditions[pk] = originalValues[matchingKey];
                     }
 
                     result = await _dataService.UpdateDataAsync(
@@ -1012,8 +1013,9 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                     var deleteConditions = new Dictionary<string, object?>();
                     foreach (var pk in deletePkColumns)
                     {
-                        if (originalValues.ContainsKey(pk))
-                            deleteConditions[pk] = originalValues[pk];
+                        var matchingKey = originalValues.Keys.FirstOrDefault(k => string.Equals(k, pk, StringComparison.OrdinalIgnoreCase));
+                        if (matchingKey != null)
+                            deleteConditions[pk] = originalValues[matchingKey];
                     }
 
                     result = await _dataService.DeleteDataAsync(
@@ -1063,9 +1065,12 @@ public class WorkflowExecutionService : IWorkflowExecutionService
 
             // Get bulk request and form definition details
             const string getBulkRequestSql = @"
-                SELECT bfr.RequestType, bfr.FormDefinitionId, fd.DatabaseConnectionName, fd.TableName, fd.[Schema]
+                SELECT bfr.RequestType, bfr.FormDefinitionId, bfr.RequestedBy,
+                       COALESCE(uReq.DisplayName, bfr.RequestedBy) as RequestedByName,
+                       fd.DatabaseConnectionName, fd.TableName, fd.[Schema]
                 FROM BulkFormRequests bfr
                 INNER JOIN FormDefinitions fd ON bfr.FormDefinitionId = fd.Id
+                LEFT JOIN Users uReq ON uReq.UserObjectId = TRY_CONVERT(uniqueidentifier, bfr.RequestedBy)
                 WHERE bfr.Id = @BulkRequestId";
 
             var bulkRequestData = await connection.QuerySingleOrDefaultAsync(getBulkRequestSql, new { BulkRequestId = bulkFormRequestId });
@@ -1084,6 +1089,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             string dbConnectionName = (string)bulkRequestData.DatabaseConnectionName;
             string tableName = (string)bulkRequestData.TableName;
             string schema = (string)bulkRequestData.Schema;
+            string? requestedBy = bulkRequestData.RequestedBy?.ToString();
+            string? requestedByName = bulkRequestData.RequestedByName?.ToString();
 
             // Get all approved bulk request items
             const string getItemsSql = @"
@@ -1121,6 +1128,9 @@ public class WorkflowExecutionService : IWorkflowExecutionService
 
                     fieldValues = SqlTypeConverter.ConvertDictionary(fieldValues, bulkFields);
                     originalValues = SqlTypeConverter.ConvertDictionary(originalValues, bulkFields);
+
+                    // Inject computed values (e.g. current datetime, user info, GUID)
+                    await InjectComputedValuesAsync(fieldValues, bulkFields, requestType, requestedBy, requestedByName);
 
                     bool itemSuccess = false;
                     string processingResult = "";
@@ -1190,17 +1200,20 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                             break;
                     }
 
-                    // Update item status
+                    // Update item status (and persist computed values back so they're visible in the UI)
                     const string updateItemSql = @"
                         UPDATE BulkFormRequestItems
-                        SET Status = @Status, ProcessingResult = @ProcessingResult
+                        SET Status = @Status, ProcessingResult = @ProcessingResult,
+                            FieldValues = CASE WHEN @UpdateFieldValues = 1 THEN @FieldValues ELSE FieldValues END
                         WHERE Id = @ItemId";
 
                     await connection.ExecuteAsync(updateItemSql, new
                     {
                         ItemId = item.Id,
                         Status = itemSuccess ? (int)RequestStatus.Applied : (int)RequestStatus.Failed,
-                        ProcessingResult = processingResult
+                        ProcessingResult = processingResult,
+                        UpdateFieldValues = itemSuccess ? 1 : 0,
+                        FieldValues = itemSuccess ? JsonSerializer.Serialize(fieldValues) : null
                     });
 
                     if (itemSuccess)

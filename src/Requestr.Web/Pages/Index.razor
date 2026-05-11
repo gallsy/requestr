@@ -237,14 +237,9 @@
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             if (authState.User.Identity?.IsAuthenticated == true)
             {
-                CurrentUserId = authState.User.FindFirst("sub")?.Value ?? 
-                               authState.User.FindFirst("oid")?.Value ?? 
-                               authState.User.Identity.Name;
+                CurrentUserId = UserIdentityHelper.GetUserId(authState.User);
 
-                UserRoles = authState.User.Claims
-                    .Where(c => c.Type == "roles" || c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role")
-                    .Select(c => c.Value)
-                    .ToList();
+                UserRoles = ClaimsHelper.GetUserRoles(authState.User);
 
                 await LoadDataAsync();
             }

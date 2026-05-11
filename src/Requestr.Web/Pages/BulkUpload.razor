@@ -108,6 +108,9 @@ else
                                     <div class="form-text">
                                         Upload an Excel file (.xlsx) with column headers matching the form fields. Download the template for the correct format. Maximum file size: 10MB.
                                     </div>
+                                    <div class="form-text mt-1">
+                                        <strong>Blank cells</strong> will use the column's default value. To explicitly set a value to NULL, type <code>NULL</code>.
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -492,10 +495,8 @@ else
         try
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var userId = authState.User.FindFirst("sub")?.Value ?? 
-                        authState.User.FindFirst("oid")?.Value ?? 
-                        authState.User.Identity?.Name ?? "";
-            var userName = authState.User.Identity?.Name ?? "";
+            var userId = UserIdentityHelper.GetUserId(authState.User);
+            var userName = UserIdentityHelper.GetDisplayName(authState.User);
 
             // For Update/Delete operations, we need to get primary key columns to lookup original values
             List<string> primaryKeyColumns = new();
