@@ -89,7 +89,7 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
     ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
     // Trust Azure App Service proxy
     KnownProxies = { },
-    KnownNetworks = { }
+    KnownIPNetworks = { }
 });
 
 // Configure the HTTP request pipeline

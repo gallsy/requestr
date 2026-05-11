@@ -154,3 +154,21 @@ public class WorkflowApprovalTask
     public string StepName { get; set; } = string.Empty;
     public FormRequest Request { get; set; } = null!;
 }
+
+/// <summary>
+/// Lightweight row for the unified /requests list page.
+/// Represents either an individual FormRequest or a BulkFormRequest — no heavy JSON blobs.
+/// </summary>
+public class UnifiedRequestListItem
+{
+    public int Id { get; set; }
+    public bool IsBulk { get; set; }
+    public string FormName { get; set; } = string.Empty;
+    public int FormDefinitionId { get; set; }
+    public RequestType RequestType { get; set; }
+    public RequestStatus Status { get; set; }
+    public string RequestedBy { get; set; } = string.Empty;
+    public string RequestedByName { get; set; } = string.Empty;
+    public DateTime RequestedAt { get; set; }
+    public int? BulkRowCount { get; set; } // Only for bulk requests
+}

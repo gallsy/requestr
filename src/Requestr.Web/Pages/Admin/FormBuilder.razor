@@ -1299,13 +1299,9 @@
             }
             
             // Compare nullability - but only flag if DB became more restrictive (nullable -> not nullable)
-            // A field marked as required should stay required, but if DB allows null now, that's usually fine
-            if (field.IsRequired && dbColumn.IsNullable)
-            {
-                // Form says required but DB now allows nulls - this is a mild inconsistency, not an error
-                // changes.Add($"Database now allows NULL but form marks field as required");
-            }
-            else if (!field.IsRequired && !dbColumn.IsNullable && !dbColumn.IsIdentity)
+            // Skip fields that are hidden or have a computed value — they don't need user input
+            var hasComputedValue = field.ComputedValueType.HasValue && field.ComputedValueType != ComputedValueType.None;
+            if (!field.IsRequired && !dbColumn.IsNullable && !dbColumn.IsIdentity && field.IsVisible && !hasComputedValue)
             {
                 // Form says optional but DB now requires a value - this is a problem
                 changes.Add($"Database column is now NOT NULL but form allows empty values");
@@ -1428,6 +1424,14 @@
                 {
                     changes.Add($"MaxLength: {field.MaxLength} → {dbColumn.MaxLength}");
                     field.MaxLength = dbColumn.MaxLength;
+                }
+                
+                // Resync IsRequired if DB column is NOT NULL (and not identity/hidden/computed)
+                var hasComputedValue = field.ComputedValueType.HasValue && field.ComputedValueType != ComputedValueType.None;
+                if (!field.IsRequired && !dbColumn.IsNullable && !dbColumn.IsIdentity && field.IsVisible && !hasComputedValue)
+                {
+                    changes.Add($"IsRequired: false → true (column is NOT NULL)");
+                    field.IsRequired = true;
                 }
                 
                 if (changes.Any())

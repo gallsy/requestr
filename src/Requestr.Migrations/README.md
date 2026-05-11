@@ -66,7 +66,7 @@ dotnet build
 dotnet run
 
 # Or run the built executable directly
-./bin/Debug/net8.0/Requestr.Migrations
+./bin/Debug/net10.0/Requestr.Migrations
 ```
 
 ### Using in CI/CD Pipeline
