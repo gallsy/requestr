@@ -305,6 +305,27 @@ public class BulkFormRequestService : IBulkFormRequestService
                     continue;
                 }
 
+                // Handle blank cells: omit from parsed data so DB default applies.
+                // Use "NULL" (case-insensitive) to explicitly set a value to NULL.
+                // If TreatBlankAsNull is set on the field, blank means explicit NULL.
+                if (string.IsNullOrWhiteSpace(cellValue))
+                {
+                    if (field.TreatBlankAsNull)
+                    {
+                        // Explicitly store NULL
+                        result.ParsedData[field.Name] = null;
+                    }
+                    // Otherwise omit — DB default or no change on update
+                    continue;
+                }
+
+                // Check for explicit NULL sentinel
+                if (string.Equals(cellValue.Trim(), "NULL", StringComparison.OrdinalIgnoreCase))
+                {
+                    result.ParsedData[field.Name] = null;
+                    continue;
+                }
+
                 // Convert and validate data type
                 var convertedValue = await ConvertAndValidateFieldValueAsync(cellValue, field, result);
                 if (convertedValue != null || !field.IsRequired)
