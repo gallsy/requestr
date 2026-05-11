@@ -281,6 +281,10 @@ textarea {
 }
 
 /* Ensure dark mode text color overrides Bootstrap defaults */
+[data-theme="dark"] .badge.bg-light {
+    color: var(--text-color) !important;
+}
+
 [data-theme="dark"] .form-control,
 [data-theme="dark"] .form-select,
 [data-theme="dark"] textarea,
