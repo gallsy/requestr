@@ -319,18 +319,14 @@
 
             var (items, totalCount) = await GetPageAsync(_currentPage);
             _totalCount = totalCount;
-            _totalPages = (int)Math.Ceiling((double)totalCount / _pageSize);
+            _totalPages = Math.Max(1, (int)Math.Ceiling((double)totalCount / _pageSize));
 
             if (totalCount > 0 && _currentPage > _totalPages)
             {
                 _currentPage = _totalPages;
                 (items, totalCount) = await GetPageAsync(_currentPage);
                 _totalCount = totalCount;
-                _totalPages = (int)Math.Ceiling((double)totalCount / _pageSize);
-            }
-            else if (_currentPage > _totalPages)
-            {
-                _currentPage = Math.Max(1, _totalPages);
+                _totalPages = Math.Max(1, (int)Math.Ceiling((double)totalCount / _pageSize));
             }
 
             _pagedItems = items;
