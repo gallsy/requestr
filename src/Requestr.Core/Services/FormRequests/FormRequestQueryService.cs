@@ -12,6 +12,7 @@ namespace Requestr.Core.Services.FormRequests;
 /// </summary>
 public class FormRequestQueryService : IFormRequestQueryService
 {
+    private const int MaxPageSize = 100;
     private readonly IFormRequestRepository _formRequestRepository;
     private readonly IFormRequestHistoryService _historyService;
     private readonly IDbConnectionFactory _connectionFactory;
@@ -588,7 +589,7 @@ public class FormRequestQueryService : IFormRequestQueryService
 
             var isAdmin = userRoles.Contains("Admin");
             var safePage = Math.Max(1, page);
-            var safePageSize = Math.Clamp(pageSize, 1, 100);
+            var safePageSize = Math.Clamp(pageSize, 1, MaxPageSize);
             var parameters = new DynamicParameters();
             parameters.Add("UserId", userId);
             parameters.Add("Offset", (safePage - 1) * safePageSize);

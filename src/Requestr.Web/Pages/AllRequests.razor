@@ -317,20 +317,20 @@
                     requestedByFilter: string.IsNullOrEmpty(RequestedByFilter) ? null : RequestedByFilter,
                     sortOrder: "newest");
 
+            void UpdatePaginationTotals(int count)
+            {
+                _totalCount = count;
+                _totalPages = Math.Max(1, (int)Math.Ceiling((double)count / _pageSize));
+            }
+
             var (items, totalCount) = await GetPageAsync(_currentPage);
-            _totalCount = totalCount;
-            _totalPages = (int)Math.Ceiling((double)totalCount / _pageSize);
+            UpdatePaginationTotals(totalCount);
 
             if (totalCount > 0 && _currentPage > _totalPages)
             {
                 _currentPage = _totalPages;
                 (items, totalCount) = await GetPageAsync(_currentPage);
-                _totalCount = totalCount;
-                _totalPages = (int)Math.Ceiling((double)totalCount / _pageSize);
-            }
-            else if (_currentPage > _totalPages)
-            {
-                _currentPage = Math.Max(1, _totalPages);
+                UpdatePaginationTotals(totalCount);
             }
 
             _pagedItems = items;
