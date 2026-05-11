@@ -1,4 +1,5 @@
 using Requestr.Core.Models;
+using Requestr.Core.Models.DTOs;
 
 namespace Requestr.Core.Services.FormRequests;
 
@@ -43,10 +44,11 @@ public interface IFormRequestQueryService
     Task<List<FormRequest>> GetForWorkflowApprovalAsync(string userId, List<string> userRoles);
 
     /// <summary>
-    /// Gets a paginated list of form requests for workflow approval.
-    /// Returns the total count and a page of results including step/workflow metadata.
+    /// Gets a paginated list of workflow approval tasks (one entry per step instance) for a user.
+    /// Counts and pages by step instances so that pagination is consistent with what is displayed,
+    /// including parallel-workflow scenarios where a single request may have multiple active steps.
     /// </summary>
-    Task<(List<FormRequest> Requests, int TotalCount)> GetForWorkflowApprovalPagedAsync(
+    Task<(List<WorkflowApprovalTask> Tasks, int TotalCount)> GetForWorkflowApprovalPagedAsync(
         string userId, List<string> userRoles, int page = 1, int pageSize = 10,
         int? formFilter = null, string? statusFilter = null, string sortOrder = "newest");
     

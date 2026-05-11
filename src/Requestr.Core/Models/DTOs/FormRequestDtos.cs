@@ -140,3 +140,17 @@ public class ApprovalDecisionDto
     [MaxLength(1000, ErrorMessage = "Comments cannot exceed 1000 characters")]
     public string? Comments { get; set; }
 }
+
+/// <summary>
+/// Represents a single workflow approval task: one step instance paired with its form request.
+/// The paged approval query returns one row per step instance so that pagination counts and
+/// page sizes are consistent with what is displayed (including parallel-step scenarios).
+/// </summary>
+public class WorkflowApprovalTask
+{
+    public int StepInstanceId { get; set; }
+    public string StepId { get; set; } = string.Empty;
+    public WorkflowStepInstanceStatus StepStatus { get; set; }
+    public string StepName { get; set; } = string.Empty;
+    public FormRequest Request { get; set; } = null!;
+}

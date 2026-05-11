@@ -1,6 +1,7 @@
 using Dapper;
 using Microsoft.Extensions.Logging;
 using Requestr.Core.Models;
+using Requestr.Core.Models.DTOs;
 using Requestr.Core.Repositories;
 using System.Text.Json;
 
@@ -199,7 +200,7 @@ public class FormRequestQueryService : IFormRequestQueryService
         }
     }
 
-    public async Task<(List<FormRequest> Requests, int TotalCount)> GetForWorkflowApprovalPagedAsync(
+    public async Task<(List<WorkflowApprovalTask> Tasks, int TotalCount)> GetForWorkflowApprovalPagedAsync(
         string userId, List<string> userRoles, int page = 1, int pageSize = 10,
         int? formFilter = null, string? statusFilter = null, string sortOrder = "newest")
     {
@@ -211,8 +212,11 @@ public class FormRequestQueryService : IFormRequestQueryService
 
             var statusCondition = !string.IsNullOrEmpty(statusFilter) ? "AND wsi.Status = @FilterStatus" : "";
             var formCondition = formFilter.HasValue ? "AND fr.FormDefinitionId = @FormFilter" : "";
-            var orderBy = sortOrder == "oldest" ? "fr.RequestedAt ASC" : "fr.RequestedAt DESC";
+            // Secondary sort by wsi.Id ensures stable pagination when requests share the same RequestedAt value
+            var orderBy = sortOrder == "oldest" ? "fr.RequestedAt ASC, wsi.Id ASC" : "fr.RequestedAt DESC, wsi.Id ASC";
 
+            // One row per step instance (not per request) so that counts/page sizes are accurate
+            // even when parallel workflows produce multiple active steps for the same request.
             var baseSql = $@"
                 FROM FormRequests fr
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
@@ -234,10 +238,12 @@ public class FormRequestQueryService : IFormRequestQueryService
                                WHERE roles.value IN @UserRoles
                            )))";
 
-            var countSql = $"SELECT COUNT(DISTINCT fr.Id) {baseSql}";
+            // Count by step instances (not DISTINCT requests) for accurate pagination
+            var countSql = $"SELECT COUNT(*) {baseSql}";
 
             var dataSql = $@"
-                SELECT DISTINCT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
+                SELECT wsi.Id as StepInstanceId, wsi.StepId, wsi.Status as StepInstanceStatus, ws.Name as StepName,
+                    fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
                     fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, 
                     COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName, 
                     fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) as ApprovedByName, 
@@ -270,21 +276,29 @@ public class FormRequestQueryService : IFormRequestQueryService
 
             var totalCount = await connection.QuerySingleAsync<int>(countSql, parameters);
 
-            var requests = await connection.QueryAsync(dataSql, parameters);
-            var result = new List<FormRequest>();
+            var rows = await connection.QueryAsync(dataSql, parameters);
+            var result = new List<WorkflowApprovalTask>();
 
-            foreach (var row in requests)
+            foreach (var row in rows)
             {
                 var request = MapToFormRequest(row);
                 request.WorkflowInstanceId = (int?)((IDictionary<string, object>)row)["WorkflowInstanceId"];
-                result.Add(request);
+
+                result.Add(new WorkflowApprovalTask
+                {
+                    StepInstanceId = (int)row.StepInstanceId,
+                    StepId = (string)row.StepId,
+                    StepStatus = (WorkflowStepInstanceStatus)(int)row.StepInstanceStatus,
+                    StepName = (string)row.StepName,
+                    Request = request
+                });
             }
 
             return (result, totalCount);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting paged form requests for workflow approval for user {UserId}", userId);
+            _logger.LogError(ex, "Error getting paged workflow approval tasks for user {UserId}", userId);
             throw;
         }
     }
