@@ -303,21 +303,37 @@
 
         try
         {
-            var (items, totalCount) = await FormRequestQueryService.GetAccessibleRequestsPagedAsync(
-                CurrentUserId, UserRoles, _currentPage, _pageSize,
-                statusFilter: string.IsNullOrEmpty(SelectedStatusFilter) ? null : SelectedStatusFilter,
-                operationTypeFilter: string.IsNullOrEmpty(SelectedOperationTypeFilter) ? null : SelectedOperationTypeFilter,
-                formFilter: string.IsNullOrEmpty(SelectedFormFilter) ? null : SelectedFormFilter,
-                requestTypeFilter: string.IsNullOrEmpty(SelectedRequestTypeFilter) ? null : SelectedRequestTypeFilter,
-                sourceFilter: string.IsNullOrEmpty(SelectedSourceFilter) ? null : SelectedSourceFilter,
-                dateRangeFilter: string.IsNullOrEmpty(SelectedDateRangeFilter) ? null : SelectedDateRangeFilter,
-                requestedByFilter: string.IsNullOrEmpty(RequestedByFilter) ? null : RequestedByFilter,
-                sortOrder: "newest");
+            _currentPage = Math.Max(1, _currentPage);
 
-            _pagedItems = items;
+            async Task<(List<UnifiedRequestListItem> Items, int TotalCount)> GetPageAsync(int page) =>
+                await FormRequestQueryService.GetAccessibleRequestsPagedAsync(
+                    CurrentUserId, UserRoles, page, _pageSize,
+                    statusFilter: string.IsNullOrEmpty(SelectedStatusFilter) ? null : SelectedStatusFilter,
+                    operationTypeFilter: string.IsNullOrEmpty(SelectedOperationTypeFilter) ? null : SelectedOperationTypeFilter,
+                    formFilter: string.IsNullOrEmpty(SelectedFormFilter) ? null : SelectedFormFilter,
+                    requestTypeFilter: string.IsNullOrEmpty(SelectedRequestTypeFilter) ? null : SelectedRequestTypeFilter,
+                    sourceFilter: string.IsNullOrEmpty(SelectedSourceFilter) ? null : SelectedSourceFilter,
+                    dateRangeFilter: string.IsNullOrEmpty(SelectedDateRangeFilter) ? null : SelectedDateRangeFilter,
+                    requestedByFilter: string.IsNullOrEmpty(RequestedByFilter) ? null : RequestedByFilter,
+                    sortOrder: "newest");
+
+            var (items, totalCount) = await GetPageAsync(_currentPage);
             _totalCount = totalCount;
             _totalPages = (int)Math.Ceiling((double)totalCount / _pageSize);
-            if (_currentPage > _totalPages) _currentPage = Math.Max(1, _totalPages);
+
+            if (totalCount > 0 && _currentPage > _totalPages)
+            {
+                _currentPage = _totalPages;
+                (items, totalCount) = await GetPageAsync(_currentPage);
+                _totalCount = totalCount;
+                _totalPages = (int)Math.Ceiling((double)totalCount / _pageSize);
+            }
+            else if (_currentPage > _totalPages)
+            {
+                _currentPage = Math.Max(1, _totalPages);
+            }
+
+            _pagedItems = items;
         }
         catch (Exception ex)
         {

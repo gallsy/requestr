@@ -587,10 +587,12 @@ public class FormRequestQueryService : IFormRequestQueryService
             using var connection = await _connectionFactory.CreateConnectionAsync();
 
             var isAdmin = userRoles.Contains("Admin");
+            var safePage = Math.Max(1, page);
+            var safePageSize = Math.Clamp(pageSize, 1, 100);
             var parameters = new DynamicParameters();
             parameters.Add("UserId", userId);
-            parameters.Add("Offset", (page - 1) * pageSize);
-            parameters.Add("PageSize", pageSize);
+            parameters.Add("Offset", (safePage - 1) * safePageSize);
+            parameters.Add("PageSize", safePageSize);
 
             // Build access control WHERE clause
             string individualAccessWhere;
