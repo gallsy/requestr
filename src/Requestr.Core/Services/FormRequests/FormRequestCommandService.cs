@@ -237,6 +237,14 @@ public class FormRequestCommandService : IFormRequestCommandService
                     }
                 }
             }
+            // Preserve non-visible field values (e.g. IDs, timestamps) without sanitization
+            foreach (var field in formDefinition.Fields.Where(f => !f.IsVisible))
+            {
+                if (formRequest.FieldValues.ContainsKey(field.Name))
+                {
+                    sanitizedFieldValues[field.Name] = formRequest.FieldValues[field.Name];
+                }
+            }
             formRequest.FieldValues = sanitizedFieldValues;
             formRequest.Comments = _inputValidationService.SanitizeComments(formRequest.Comments);
 
