@@ -5,7 +5,7 @@ namespace Requestr.Core.Interfaces;
 
 public interface IDataViewService
 {
-    Task<DataViewResult> GetDataAsync(int formDefinitionId, int page = 1, int pageSize = 50, string? searchTerm = null, Dictionary<string, object?>? filters = null);
+    Task<DataViewResult> GetDataAsync(int formDefinitionId, int page = 1, int pageSize = 50, string? searchTerm = null, Dictionary<string, object?>? filters = null, string? sortColumn = null, string sortDirection = "ASC");
     Task<List<Dictionary<string, object?>>> GetSelectedRecordsAsync(int formDefinitionId, List<string> recordIds);
     Task<BulkFormRequest> CreateBulkUpdateRequestAsync(int formDefinitionId, List<Dictionary<string, object?>> records, Dictionary<string, object?> updates, string userId, string userName, string? comments = null);
     Task<BulkFormRequest> CreateBulkDeleteRequestAsync(int formDefinitionId, List<Dictionary<string, object?>> records, string userId, string userName, string? comments = null);

@@ -1151,6 +1151,15 @@ button.nav-link.active {
     position: relative;
 }
 
+.resizable-header.sortable-header {
+    cursor: pointer;
+    user-select: none;
+}
+
+.resizable-header.sortable-header:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
 .resizable-header .resize-handle {
     position: absolute;
     right: 0;
