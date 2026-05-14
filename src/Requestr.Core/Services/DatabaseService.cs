@@ -269,16 +269,35 @@ public class DatabaseService : IDatabaseService
                 CASE WHEN COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') = 1 THEN 1 ELSE 0 END as IsIdentity,
                 CASE WHEN COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsComputed') = 1 THEN 1 ELSE 0 END as IsComputed,
                 CASE WHEN c.DATA_TYPE IN ('timestamp','rowversion') THEN 1 ELSE 0 END as IsRowVersion,
+                CASE WHEN uq.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END as IsUnique,
                 c.COLUMN_DEFAULT as DefaultValue
             FROM INFORMATION_SCHEMA.COLUMNS c
             LEFT JOIN (
-                SELECT ku.TABLE_NAME, ku.COLUMN_NAME
+                SELECT ku.TABLE_SCHEMA, ku.TABLE_NAME, ku.COLUMN_NAME
                 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
                 INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
                     ON tc.CONSTRAINT_TYPE = 'PRIMARY KEY' 
                     AND tc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+                    AND tc.TABLE_SCHEMA = ku.TABLE_SCHEMA
                     AND tc.TABLE_NAME = ku.TABLE_NAME
-            ) pk ON c.TABLE_NAME = pk.TABLE_NAME AND c.COLUMN_NAME = pk.COLUMN_NAME
+            ) pk ON c.TABLE_SCHEMA = pk.TABLE_SCHEMA AND c.TABLE_NAME = pk.TABLE_NAME AND c.COLUMN_NAME = pk.COLUMN_NAME
+            LEFT JOIN (
+                SELECT ku.TABLE_SCHEMA, ku.TABLE_NAME, ku.COLUMN_NAME
+                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+                INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+                    ON tc.CONSTRAINT_TYPE = 'UNIQUE' 
+                    AND tc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+                    AND tc.TABLE_SCHEMA = ku.TABLE_SCHEMA
+                    AND tc.TABLE_NAME = ku.TABLE_NAME
+                -- Only include single-column unique constraints
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku2
+                    WHERE ku2.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+                      AND ku2.TABLE_SCHEMA = tc.TABLE_SCHEMA
+                      AND ku2.TABLE_NAME = tc.TABLE_NAME
+                      AND ku2.COLUMN_NAME != ku.COLUMN_NAME
+                )
+            ) uq ON c.TABLE_SCHEMA = uq.TABLE_SCHEMA AND c.TABLE_NAME = uq.TABLE_NAME AND c.COLUMN_NAME = uq.COLUMN_NAME
             WHERE c.TABLE_NAME = @tableName
                 AND c.TABLE_SCHEMA = @schema
             ORDER BY c.ORDINAL_POSITION";

@@ -64,6 +64,7 @@ public class FormField : BaseEntity
     public int MaxLength { get; set; }
     public bool IsRequired { get; set; }
     public bool IsReadOnly { get; set; }
+    public bool IsUnique { get; set; }
     public bool IsVisible { get; set; } = true;
     public bool IsVisibleInDataView { get; set; } = true;
     public string? DefaultValue { get; set; }

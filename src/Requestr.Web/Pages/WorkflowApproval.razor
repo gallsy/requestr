@@ -18,6 +18,7 @@
 @inject IBulkFormRequestService BulkFormRequestService
 @inject IDataService DataService
 @inject IConflictDetectionService ConflictDetectionService
+@inject IUniquenessValidationService UniquenessValidationService
 @inject IDatabaseService DatabaseService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
@@ -909,6 +910,18 @@ else
                 {
                     _hasConflicts = true;
                     _conflictMessages.AddRange(conflictResult.ConflictMessages);
+                }
+            }
+
+            // Check uniqueness constraints (advisory warning for approvers)
+            if (_formRequest != null && !IsBulkRequest)
+            {
+                var uniquenessViolations = await UniquenessValidationService.ValidateAsync(
+                    _formRequest.FormDefinitionId, _formRequest.FieldValues, _formRequest.RequestType, _formRequest.OriginalValues);
+                if (uniquenessViolations.Any())
+                {
+                    _hasConflicts = true;
+                    _conflictMessages.AddRange(uniquenessViolations.Select(v => $"⚠️ Unique constraint: {v}"));
                 }
             }
         }

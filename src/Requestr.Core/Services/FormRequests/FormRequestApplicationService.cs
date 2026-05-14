@@ -233,6 +233,11 @@ public class FormRequestApplicationService : IFormRequestApplicationService
                 return ApplicationResult.Failed($"Failed to apply {formRequest.RequestType} operation");
             }
         }
+        catch (SqlException sqlEx) when (sqlEx.Number == 2601 || sqlEx.Number == 2627)
+        {
+            _logger.LogWarning(sqlEx, "Unique constraint violation applying form request {Id}", formRequest.Id);
+            return ApplicationResult.Failed($"A unique constraint was violated: a record with the same value already exists. Please check the request values and try again.");
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error applying changes for form request {Id}", formRequest.Id);

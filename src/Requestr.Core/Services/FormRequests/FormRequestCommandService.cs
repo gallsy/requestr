@@ -21,6 +21,7 @@ public class FormRequestCommandService : IFormRequestCommandService
     private readonly IWorkflowInstanceService _workflowInstanceService;
     private readonly IWorkflowExecutionService _workflowExecutionService;
     private readonly IInputValidationService _inputValidationService;
+    private readonly IUniquenessValidationService _uniquenessValidationService;
     private readonly IFormRequestApplicationService _applicationService;
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<FormRequestCommandService> _logger;
@@ -33,6 +34,7 @@ public class FormRequestCommandService : IFormRequestCommandService
         IWorkflowInstanceService workflowInstanceService,
         IWorkflowExecutionService workflowExecutionService,
         IInputValidationService inputValidationService,
+        IUniquenessValidationService uniquenessValidationService,
         IFormRequestApplicationService applicationService,
         IDbConnectionFactory connectionFactory,
         ILogger<FormRequestCommandService> logger)
@@ -44,6 +46,7 @@ public class FormRequestCommandService : IFormRequestCommandService
         _workflowInstanceService = workflowInstanceService;
         _workflowExecutionService = workflowExecutionService;
         _inputValidationService = inputValidationService;
+        _uniquenessValidationService = uniquenessValidationService;
         _applicationService = applicationService;
         _connectionFactory = connectionFactory;
         _logger = logger;
@@ -69,6 +72,14 @@ public class FormRequestCommandService : IFormRequestCommandService
             if (!validationResult.IsValid)
             {
                 throw new InvalidOperationException($"Form validation failed: {string.Join(", ", validationResult.Errors)}");
+            }
+
+            // Validate uniqueness constraints
+            var uniquenessViolations = await _uniquenessValidationService.ValidateAsync(
+                formRequest.FormDefinitionId, formRequest.FieldValues, formRequest.RequestType, formRequest.OriginalValues);
+            if (uniquenessViolations.Any())
+            {
+                throw new InvalidOperationException($"Uniqueness validation failed: {string.Join(", ", uniquenessViolations)}");
             }
 
             // Sanitize comments
@@ -198,6 +209,14 @@ public class FormRequestCommandService : IFormRequestCommandService
                 _logger.LogWarning("Form request update validation failed for request {RequestId}: {Errors}", 
                     formRequest.Id, string.Join(", ", validationResult.Errors));
                 throw new ValidationException($"Form update validation failed: {string.Join(", ", validationResult.Errors)}");
+            }
+
+            // Validate uniqueness constraints
+            var uniquenessViolations = await _uniquenessValidationService.ValidateAsync(
+                formRequest.FormDefinitionId, formRequest.FieldValues, formRequest.RequestType, formRequest.OriginalValues);
+            if (uniquenessViolations.Any())
+            {
+                throw new ValidationException($"Uniqueness validation failed: {string.Join(", ", uniquenessViolations)}");
             }
             
             // Sanitize field values and comments
