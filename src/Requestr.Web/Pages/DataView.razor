@@ -161,9 +161,13 @@ else
                                             </th>
                                             @foreach (var column in _dataResult.Columns)
                                             {
-                                                <th class="resizable-header" data-column="@column" style="@GetColumnWidthStyle(column)">
+                                                <th class="resizable-header sortable-header" data-column="@column" style="@GetColumnWidthStyle(column)" @onclick="() => SortByColumn(column)">
                                                     <span>@column</span>
-                                                    <span class="resize-handle" @onmousedown="(e) => BeginResize(e, column)"></span>
+                                                    @if (_sortColumn == column)
+                                                    {
+                                                        <Icon Name="@(_sortDirection == "ASC" ? IconName.SortAlphaDown : IconName.SortAlphaDownAlt)" Class="ms-1" />
+                                                    }
+                                                    <span class="resize-handle" @onmousedown="(e) => BeginResize(e, column)" @onclick:stopPropagation="true"></span>
                                                 </th>
                                             }
                                         </tr>
@@ -601,6 +605,8 @@ else
     private string _successMessage = string.Empty;
     private string _searchTerm = string.Empty;
     private int _pageSize = 10;
+    private string? _sortColumn;
+    private string _sortDirection = "ASC";
 
     private FormDefinition? _formDefinition;
     private DataViewResult? _dataResult;
@@ -779,7 +785,7 @@ else
         try
         {
             Logger.LogInformation("Loading data for form {FormDefinitionId}", FormDefinitionId);
-            _dataResult = await DataViewService.GetDataAsync(FormDefinitionId, 1, _pageSize, _searchTerm);
+            _dataResult = await DataViewService.GetDataAsync(FormDefinitionId, 1, _pageSize, _searchTerm, sortColumn: _sortColumn, sortDirection: _sortDirection);
             ClearSelection();
             
             if (_dataResult == null)
@@ -876,7 +882,7 @@ else
         
         try
         {
-            _dataResult = await DataViewService.GetDataAsync(FormDefinitionId, page, _pageSize, _searchTerm);
+            _dataResult = await DataViewService.GetDataAsync(FormDefinitionId, page, _pageSize, _searchTerm, sortColumn: _sortColumn, sortDirection: _sortDirection);
             ClearSelection();
         }
         catch (Exception ex)
@@ -884,6 +890,21 @@ else
             Logger.LogError(ex, "Error loading page for form {FormDefinitionId}", FormDefinitionId);
             _errorMessage = "An unexpected error occurred while loading the page. Please try again.";
         }
+    }
+
+    private async Task SortByColumn(string column)
+    {
+        if (_sortColumn == column)
+        {
+            _sortDirection = _sortDirection == "ASC" ? "DESC" : "ASC";
+        }
+        else
+        {
+            _sortColumn = column;
+            _sortDirection = "ASC";
+        }
+
+        await ChangePage(1);
     }
 
     private string GetRecordId(Dictionary<string, object?> record)

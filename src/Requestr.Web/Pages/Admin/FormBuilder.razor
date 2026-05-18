@@ -1434,6 +1434,13 @@
                     field.IsRequired = true;
                 }
                 
+                // Resync IsUnique if DB column has a unique constraint
+                if (!field.IsUnique && dbColumn.IsUnique)
+                {
+                    changes.Add($"IsUnique: false → true (column has UNIQUE constraint)");
+                    field.IsUnique = true;
+                }
+                
                 if (changes.Any())
                 {
                     resyncedFields.Add($"{field.Name} ({string.Join(", ", changes)})");
@@ -1559,6 +1566,7 @@
                     MaxLength = _draggedColumn.MaxLength,
                     IsRequired = !_draggedColumn.IsNullable && !_draggedColumn.IsIdentity,
                     IsReadOnly = _draggedColumn.IsIdentity || _draggedColumn.IsPrimaryKey,
+                    IsUnique = _draggedColumn.IsUnique,
                     IsVisible = true,
                     IsVisibleInDataView = true,
                     DefaultValue = GetDefaultValueForSqlType(_draggedColumn.DataType, _draggedColumn.IsNullable, _draggedColumn.DefaultValue),
@@ -2268,6 +2276,7 @@
                     MaxLength = _draggedColumn.MaxLength,
                     IsRequired = !_draggedColumn.IsNullable && !_draggedColumn.IsIdentity,
                     IsReadOnly = _draggedColumn.IsIdentity || _draggedColumn.IsPrimaryKey,
+                    IsUnique = _draggedColumn.IsUnique,
                     IsVisible = true,
                     IsVisibleInDataView = true,
                     DefaultValue = GetDefaultValueForSqlType(_draggedColumn.DataType, _draggedColumn.IsNullable, _draggedColumn.DefaultValue),
@@ -2620,6 +2629,7 @@
             MaxLength = column.MaxLength,
             IsRequired = !column.IsNullable && !column.IsIdentity,
             IsReadOnly = column.IsIdentity || column.IsPrimaryKey,
+            IsUnique = column.IsUnique,
             IsVisible = true,
             IsVisibleInDataView = true,
             DefaultValue = GetDefaultValueForSqlType(column.DataType, column.IsNullable, column.DefaultValue),

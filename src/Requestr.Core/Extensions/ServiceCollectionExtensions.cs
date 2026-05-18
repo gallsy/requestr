@@ -75,6 +75,9 @@ public static class ServiceCollectionExtensions
         // Input Validation Services
         services.AddScoped<Services.IInputValidationService, Services.InputValidationService>();
         
+        // Uniqueness Validation Services
+        services.AddScoped<IUniquenessValidationService, Services.UniquenessValidationService>();
+        
     // User Services
     services.AddScoped<IUserService, UserService>();
         

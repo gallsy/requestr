@@ -972,21 +972,44 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                 requestData.RequestedBy?.ToString(), requestData.RequestedByName?.ToString());
 
             bool result;
+            string databaseConnectionName = (string)requestData.DatabaseConnectionName;
+            string tableName = (string)requestData.TableName;
+            string schema = (string)requestData.Schema;
+
             switch (requestType)
             {
                 case RequestType.Insert:
-                    result = await _dataService.InsertDataAsync(
-                        requestData.DatabaseConnectionName,
-                        requestData.TableName,
-                        requestData.Schema,
+                    var insertResult = await _dataService.InsertDataWithIdAsync(
+                        databaseConnectionName,
+                        tableName,
+                        schema,
                         fieldValues);
+                    result = insertResult.Success;
+
+                    // Write the generated identity value back into field values so it's visible on the request
+                    if (result && insertResult.InsertedId != null && !string.IsNullOrEmpty(insertResult.IdentityColumn))
+                    {
+                        object idValue = insertResult.InsertedId;
+                        if (idValue is IDictionary<string, object> dict)
+                        {
+                            idValue = dict.Values.FirstOrDefault() ?? idValue;
+                        }
+                        if (idValue is IConvertible)
+                        {
+                            idValue = Convert.ToInt64(idValue);
+                        }
+                        fieldValues[insertResult.IdentityColumn] = idValue;
+                        _logger.LogInformation(
+                            "Identity writeback for workflow request: column={Column}, value={Value}",
+                            insertResult.IdentityColumn, idValue);
+                    }
                     break;
 
                 case RequestType.Update:
                     var primaryKeyColumns = await _dataService.GetPrimaryKeyColumnsAsync(
-                        requestData.DatabaseConnectionName,
-                        requestData.TableName,
-                        requestData.Schema);
+                        databaseConnectionName,
+                        tableName,
+                        schema);
 
                     var whereConditions = new Dictionary<string, object?>();
                     foreach (var pk in primaryKeyColumns)
@@ -997,18 +1020,18 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                     }
 
                     result = await _dataService.UpdateDataAsync(
-                        requestData.DatabaseConnectionName,
-                        requestData.TableName,
-                        requestData.Schema,
+                        databaseConnectionName,
+                        tableName,
+                        schema,
                         fieldValues,
                         whereConditions);
                     break;
 
                 case RequestType.Delete:
                     var deletePkColumns = await _dataService.GetPrimaryKeyColumnsAsync(
-                        requestData.DatabaseConnectionName,
-                        requestData.TableName,
-                        requestData.Schema);
+                        databaseConnectionName,
+                        tableName,
+                        schema);
 
                     var deleteConditions = new Dictionary<string, object?>();
                     foreach (var pk in deletePkColumns)
@@ -1019,9 +1042,9 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                     }
 
                     result = await _dataService.DeleteDataAsync(
-                        requestData.DatabaseConnectionName,
-                        requestData.TableName,
-                        requestData.Schema,
+                        databaseConnectionName,
+                        tableName,
+                        schema,
                         deleteConditions);
                     break;
 

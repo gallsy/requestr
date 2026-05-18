@@ -18,7 +18,7 @@ public interface IDatabaseService
 public interface IDataService
 {
     Task<bool> InsertDataAsync(string databaseName, string tableName, string schema, Dictionary<string, object?> data);
-    Task<(bool Success, object? InsertedId)> InsertDataWithIdAsync(string databaseName, string tableName, string schema, Dictionary<string, object?> data);
+    Task<(bool Success, object? InsertedId, string? IdentityColumn)> InsertDataWithIdAsync(string databaseName, string tableName, string schema, Dictionary<string, object?> data);
     Task<bool> UpdateDataAsync(string databaseName, string tableName, string schema, Dictionary<string, object?> data, Dictionary<string, object?> whereConditions);
     Task<bool> DeleteDataAsync(string databaseName, string tableName, string schema, Dictionary<string, object?> whereConditions);
     Task<List<Dictionary<string, object?>>> QueryDataAsync(string databaseName, string tableName, string schema, Dictionary<string, object?>? whereConditions = null);

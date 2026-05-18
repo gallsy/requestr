@@ -52,7 +52,7 @@ public class DataViewService : IDataViewService
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
     }
 
-    public async Task<DataViewResult> GetDataAsync(int formDefinitionId, int page = 1, int pageSize = 50, string? searchTerm = null, Dictionary<string, object?>? filters = null)
+    public async Task<DataViewResult> GetDataAsync(int formDefinitionId, int page = 1, int pageSize = 50, string? searchTerm = null, Dictionary<string, object?>? filters = null, string? sortColumn = null, string sortDirection = "ASC")
     {
         var formDefinition = await _formDefinitionService.GetFormDefinitionAsync(formDefinitionId);
         if (formDefinition == null)
@@ -132,13 +132,21 @@ public class DataViewService : IDataViewService
             // Get paginated data
             var offset = (page - 1) * pageSize;
             var columnsList = string.Join(", ", result.Columns.Select(c => $"[{c}]"));
-            var orderByColumn = result.PrimaryKeyColumns.FirstOrDefault() ?? result.Columns.FirstOrDefault() ?? "1";
+            var defaultOrderByColumn = result.PrimaryKeyColumns.FirstOrDefault() ?? result.Columns.FirstOrDefault() ?? "1";
+
+            // Validate sort column against available columns to prevent SQL injection
+            var orderByColumn = defaultOrderByColumn;
+            if (!string.IsNullOrEmpty(sortColumn) && result.Columns.Contains(sortColumn))
+            {
+                orderByColumn = sortColumn;
+            }
+            var direction = string.Equals(sortDirection, "DESC", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
 
             var dataSql = $@"
                 SELECT {columnsList}
                 FROM [{formDefinition.Schema}].[{formDefinition.TableName}]
                 {whereClause}
-                ORDER BY [{orderByColumn}]
+                ORDER BY [{orderByColumn}] {direction}
                 OFFSET @Offset ROWS
                 FETCH NEXT @PageSize ROWS ONLY";
 

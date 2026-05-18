@@ -39,5 +39,6 @@ public class ColumnInfo
     public bool IsIdentity { get; set; }
     public bool IsComputed { get; set; }
     public bool IsRowVersion { get; set; }
+    public bool IsUnique { get; set; }
     public string? DefaultValue { get; set; }
 }

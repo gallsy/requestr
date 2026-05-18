@@ -21,6 +21,7 @@ public class FormRequestCommandService : IFormRequestCommandService
     private readonly IWorkflowInstanceService _workflowInstanceService;
     private readonly IWorkflowExecutionService _workflowExecutionService;
     private readonly IInputValidationService _inputValidationService;
+    private readonly IUniquenessValidationService _uniquenessValidationService;
     private readonly IFormRequestApplicationService _applicationService;
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<FormRequestCommandService> _logger;
@@ -33,6 +34,7 @@ public class FormRequestCommandService : IFormRequestCommandService
         IWorkflowInstanceService workflowInstanceService,
         IWorkflowExecutionService workflowExecutionService,
         IInputValidationService inputValidationService,
+        IUniquenessValidationService uniquenessValidationService,
         IFormRequestApplicationService applicationService,
         IDbConnectionFactory connectionFactory,
         ILogger<FormRequestCommandService> logger)
@@ -44,6 +46,7 @@ public class FormRequestCommandService : IFormRequestCommandService
         _workflowInstanceService = workflowInstanceService;
         _workflowExecutionService = workflowExecutionService;
         _inputValidationService = inputValidationService;
+        _uniquenessValidationService = uniquenessValidationService;
         _applicationService = applicationService;
         _connectionFactory = connectionFactory;
         _logger = logger;
@@ -69,6 +72,14 @@ public class FormRequestCommandService : IFormRequestCommandService
             if (!validationResult.IsValid)
             {
                 throw new InvalidOperationException($"Form validation failed: {string.Join(", ", validationResult.Errors)}");
+            }
+
+            // Validate uniqueness constraints
+            var uniquenessViolations = await _uniquenessValidationService.ValidateAsync(
+                formRequest.FormDefinitionId, formRequest.FieldValues, formRequest.RequestType, formRequest.OriginalValues);
+            if (uniquenessViolations.Any())
+            {
+                throw new InvalidOperationException($"Uniqueness validation failed: {string.Join(", ", uniquenessViolations)}");
             }
 
             // Sanitize comments
@@ -199,6 +210,14 @@ public class FormRequestCommandService : IFormRequestCommandService
                     formRequest.Id, string.Join(", ", validationResult.Errors));
                 throw new ValidationException($"Form update validation failed: {string.Join(", ", validationResult.Errors)}");
             }
+
+            // Validate uniqueness constraints (exclude self to avoid false positives)
+            var uniquenessViolations = await _uniquenessValidationService.ValidateAsync(
+                formRequest.FormDefinitionId, formRequest.FieldValues, formRequest.RequestType, formRequest.OriginalValues, excludeRequestId: formRequest.Id);
+            if (uniquenessViolations.Any())
+            {
+                throw new ValidationException($"Uniqueness validation failed: {string.Join(", ", uniquenessViolations)}");
+            }
             
             // Sanitize field values and comments
             var sanitizedFieldValues = new Dictionary<string, object?>();
@@ -218,6 +237,31 @@ public class FormRequestCommandService : IFormRequestCommandService
                     }
                 }
             }
+            // Preserve non-visible field values (e.g. IDs, timestamps) without sanitization
+            foreach (var field in formDefinition.Fields.Where(f => !f.IsVisible))
+            {
+                if (formRequest.FieldValues.ContainsKey(field.Name))
+                {
+                    sanitizedFieldValues[field.Name] = formRequest.FieldValues[field.Name];
+                }
+            }
+
+            // Preserve computed fields from the existing request that belong to a different apply mode
+            // (e.g. InsertOnly fields like CreatedAt shouldn't be overwritten when editing an Update request)
+            foreach (var field in formDefinition.Fields.Where(f => f.ComputedValueType != null && f.ComputedValueType != ComputedValueType.None))
+            {
+                bool isFromOtherMode = formRequest.RequestType switch
+                {
+                    RequestType.Insert => field.ComputedValueApplyMode is ComputedValueApplyMode.UpdateOnly,
+                    RequestType.Update => field.ComputedValueApplyMode is ComputedValueApplyMode.InsertOnly,
+                    _ => false
+                };
+                if (isFromOtherMode && currentRequest.FieldValues.ContainsKey(field.Name))
+                {
+                    sanitizedFieldValues[field.Name] = currentRequest.FieldValues[field.Name];
+                }
+            }
+
             formRequest.FieldValues = sanitizedFieldValues;
             formRequest.Comments = _inputValidationService.SanitizeComments(formRequest.Comments);
 
