@@ -917,7 +917,7 @@ else
             if (_formRequest != null && !IsBulkRequest)
             {
                 var uniquenessViolations = await UniquenessValidationService.ValidateAsync(
-                    _formRequest.FormDefinitionId, _formRequest.FieldValues, _formRequest.RequestType, _formRequest.OriginalValues);
+                    _formRequest.FormDefinitionId, _formRequest.FieldValues, _formRequest.RequestType, _formRequest.OriginalValues, excludeRequestId: _formRequest.Id);
                 if (uniquenessViolations.Any())
                 {
                     _hasConflicts = true;

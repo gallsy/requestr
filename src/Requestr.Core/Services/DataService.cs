@@ -38,7 +38,7 @@ public class DataService : IDataService
         return result.Success;
     }
 
-    public async Task<(bool Success, object? InsertedId)> InsertDataWithIdAsync(string databaseName, string tableName, string schema, Dictionary<string, object?> data)
+    public async Task<(bool Success, object? InsertedId, string? IdentityColumn)> InsertDataWithIdAsync(string databaseName, string tableName, string schema, Dictionary<string, object?> data)
     {
         if (!_connectionStrings.ContainsKey(databaseName))
         {
@@ -142,7 +142,7 @@ public class DataService : IDataService
             _logger.LogInformation("Inserted data into {Schema}.{TableName} in database {DatabaseName}. Success: {Success}, InsertedId: {InsertedId}", 
                 schema, tableName, databaseName, success, insertedId);
             
-            return (success, insertedId);
+            return (success, insertedId, identityColumn);
         }
         catch (Exception ex)
         {

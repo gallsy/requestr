@@ -173,6 +173,28 @@ public class FormRequestApplicationService : IFormRequestApplicationService
                     );
                     success = insertResult.Success;
                     recordKey = insertResult.InsertedId;
+
+                    // Write the generated identity value back into field values so it's visible on the request
+                    if (success && insertResult.InsertedId != null && !string.IsNullOrEmpty(insertResult.IdentityColumn))
+                    {
+                        // Extract the primitive value - Dapper may return it as a DapperRow or wrapped object
+                        object idValue = insertResult.InsertedId;
+                        if (idValue is IDictionary<string, object> dict)
+                        {
+                            idValue = dict.Values.FirstOrDefault() ?? idValue;
+                        }
+
+                        // Ensure the value is a JSON-serializable primitive (not a Dapper internal type)
+                        if (idValue is IConvertible)
+                        {
+                            idValue = Convert.ToInt64(idValue);
+                        }
+
+                        convertedFieldValues[insertResult.IdentityColumn] = idValue;
+                        _logger.LogInformation(
+                            "Identity writeback for request {Id}: column={Column}, value={Value}, type={Type}",
+                            formRequest.Id, insertResult.IdentityColumn, idValue, idValue.GetType().Name);
+                    }
                     break;
 
                 case RequestType.Update:
@@ -219,11 +241,16 @@ public class FormRequestApplicationService : IFormRequestApplicationService
                 // Save computed values back to the FormRequest so they're visible in the UI
                 try
                 {
+                    _logger.LogInformation(
+                        "Saving field values back to request {Id}. Keys: [{Keys}]",
+                        formRequest.Id, string.Join(", ", convertedFieldValues.Keys));
                     await _formRequestRepository.UpdateFieldValuesAsync(formRequest.Id, convertedFieldValues);
+                    _logger.LogInformation("Successfully saved field values back to request {Id}", formRequest.Id);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to save computed field values back to form request {Id}", formRequest.Id);
+                    _logger.LogError(ex, "Failed to save field values back to form request {Id}. Keys: [{Keys}]",
+                        formRequest.Id, string.Join(", ", convertedFieldValues.Keys));
                 }
 
                 return ApplicationResult.Succeeded(recordKey?.ToString());

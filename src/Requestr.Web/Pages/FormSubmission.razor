@@ -728,6 +728,13 @@ else
             {
                 _requestType = request.RequestType;
                 _comments = request.Comments ?? "";
+
+                // For Update/Delete edits, derive a display ID from original values
+                if (_requestType != RequestType.Insert && request.OriginalValues?.Any() == true)
+                {
+                    var pkValue = request.OriginalValues.Values.FirstOrDefault();
+                    _selectedRecordId = pkValue?.ToString() ?? "(existing record)";
+                }
                 
                 foreach (var fieldValue in request.FieldValues)
                 {
@@ -949,6 +956,12 @@ else
             foreach (var kv in _fieldValues)
             {
                 var fld = _formDefinition.Fields.FirstOrDefault(f => f.Name == kv.Key);
+                
+                // Skip identity/computed/rowversion fields on Insert (e.g. duplicated records carry the original ID)
+                // Also skip computed fields that will be regenerated at apply time for any request type
+                if (fld != null && ShouldHideFieldOnCreate(fld))
+                    continue;
+
                 var value = kv.Value;
                 
                 // Normalize datetime values to proper SQL format
@@ -995,16 +1008,7 @@ else
             };
 
             // For UPDATE/DELETE, also capture original values
-            if (_requestType != RequestType.Insert && !string.IsNullOrEmpty(_selectedRecordId))
-            {
-                var originalData = await DataService.GetRecordByIdAsync(
-                    _formDefinition.DatabaseConnectionName,
-                    _formDefinition.TableName,
-                    _selectedRecordId,
-                    _formDefinition.Schema);
-                formRequest.OriginalValues = originalData ?? new Dictionary<string, object?>();
-            }
-            else if (RequestId.HasValue)
+            if (RequestId.HasValue)
             {
                 // Editing an existing request — preserve its saved OriginalValues
                 var existingRequest = await FormRequestQueryService.GetByIdAsync(RequestId.Value);
@@ -1012,6 +1016,15 @@ else
                 {
                     formRequest.OriginalValues = existingRequest.OriginalValues;
                 }
+            }
+            else if (_requestType != RequestType.Insert && !string.IsNullOrEmpty(_selectedRecordId))
+            {
+                var originalData = await DataService.GetRecordByIdAsync(
+                    _formDefinition.DatabaseConnectionName,
+                    _formDefinition.TableName,
+                    _selectedRecordId,
+                    _formDefinition.Schema);
+                formRequest.OriginalValues = originalData ?? new Dictionary<string, object?>();
             }
 
             FormRequest? createdRequest = null;
@@ -1198,6 +1211,27 @@ else
         // In Delete mode, prevent editing any field. Otherwise, respect field-level read-only.
         if (_requestType == RequestType.Delete)
             return true;
+        // Computed fields from another mode are read-only (e.g. CreatedAt on Update)
+        if (IsComputedFieldFromOtherMode(field))
+            return true;
         return field.IsReadOnly;
+    }
+
+    /// <summary>
+    /// Returns true if the field is a computed field that was set for a different request type
+    /// (e.g. InsertOnly computed fields on an Update request, or UpdateOnly computed fields on an Insert request).
+    /// These should not be re-submitted because they were computed at a different stage.
+    /// </summary>
+    private bool IsComputedFieldFromOtherMode(FormField field)
+    {
+        if (field.ComputedValueType == null || field.ComputedValueType == ComputedValueType.None)
+            return false;
+
+        return _requestType switch
+        {
+            RequestType.Insert => field.ComputedValueApplyMode is ComputedValueApplyMode.UpdateOnly,
+            RequestType.Update => field.ComputedValueApplyMode is ComputedValueApplyMode.InsertOnly,
+            _ => false
+        };
     }
 }

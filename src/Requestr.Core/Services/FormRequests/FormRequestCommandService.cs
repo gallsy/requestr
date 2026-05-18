@@ -211,9 +211,9 @@ public class FormRequestCommandService : IFormRequestCommandService
                 throw new ValidationException($"Form update validation failed: {string.Join(", ", validationResult.Errors)}");
             }
 
-            // Validate uniqueness constraints
+            // Validate uniqueness constraints (exclude self to avoid false positives)
             var uniquenessViolations = await _uniquenessValidationService.ValidateAsync(
-                formRequest.FormDefinitionId, formRequest.FieldValues, formRequest.RequestType, formRequest.OriginalValues);
+                formRequest.FormDefinitionId, formRequest.FieldValues, formRequest.RequestType, formRequest.OriginalValues, excludeRequestId: formRequest.Id);
             if (uniquenessViolations.Any())
             {
                 throw new ValidationException($"Uniqueness validation failed: {string.Join(", ", uniquenessViolations)}");
@@ -245,6 +245,23 @@ public class FormRequestCommandService : IFormRequestCommandService
                     sanitizedFieldValues[field.Name] = formRequest.FieldValues[field.Name];
                 }
             }
+
+            // Preserve computed fields from the existing request that belong to a different apply mode
+            // (e.g. InsertOnly fields like CreatedAt shouldn't be overwritten when editing an Update request)
+            foreach (var field in formDefinition.Fields.Where(f => f.ComputedValueType != null && f.ComputedValueType != ComputedValueType.None))
+            {
+                bool isFromOtherMode = formRequest.RequestType switch
+                {
+                    RequestType.Insert => field.ComputedValueApplyMode is ComputedValueApplyMode.UpdateOnly,
+                    RequestType.Update => field.ComputedValueApplyMode is ComputedValueApplyMode.InsertOnly,
+                    _ => false
+                };
+                if (isFromOtherMode && currentRequest.FieldValues.ContainsKey(field.Name))
+                {
+                    sanitizedFieldValues[field.Name] = currentRequest.FieldValues[field.Name];
+                }
+            }
+
             formRequest.FieldValues = sanitizedFieldValues;
             formRequest.Comments = _inputValidationService.SanitizeComments(formRequest.Comments);
 

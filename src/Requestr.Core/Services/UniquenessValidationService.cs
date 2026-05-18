@@ -27,7 +27,7 @@ public class UniquenessValidationService : IUniquenessValidationService
         _logger = logger;
     }
 
-    public async Task<List<string>> ValidateAsync(int formDefinitionId, Dictionary<string, object?> fieldValues, RequestType requestType, Dictionary<string, object?>? originalValues = null)
+    public async Task<List<string>> ValidateAsync(int formDefinitionId, Dictionary<string, object?> fieldValues, RequestType requestType, Dictionary<string, object?>? originalValues = null, int? excludeRequestId = null)
     {
         var violations = new List<string>();
 
@@ -42,6 +42,14 @@ public class UniquenessValidationService : IUniquenessValidationService
         var uniqueFields = formDefinition.Fields.Where(f => f.IsUnique && f.IsVisible).ToList();
         if (!uniqueFields.Any())
             return violations;
+
+        // For inserts, skip read-only fields (identity/PK columns) - their values are auto-generated
+        if (requestType == RequestType.Insert)
+        {
+            uniqueFields = uniqueFields.Where(f => !f.IsReadOnly).ToList();
+            if (!uniqueFields.Any())
+                return violations;
+        }
 
         // Check each unique field
         foreach (var field in uniqueFields)
@@ -68,7 +76,7 @@ public class UniquenessValidationService : IUniquenessValidationService
             }
 
             // Check pending/approved requests for conflicts
-            var existsInPending = await CheckExistsInPendingRequestsAsync(formDefinitionId, field.Name, value!);
+            var existsInPending = await CheckExistsInPendingRequestsAsync(formDefinitionId, field.Name, value!, excludeRequestId);
             if (existsInPending)
             {
                 violations.Add($"Another pending request already uses the value '{value}' for '{field.DisplayName}'.");
@@ -105,7 +113,7 @@ public class UniquenessValidationService : IUniquenessValidationService
         }
     }
 
-    private async Task<bool> CheckExistsInPendingRequestsAsync(int formDefinitionId, string fieldName, object value)
+    private async Task<bool> CheckExistsInPendingRequestsAsync(int formDefinitionId, string fieldName, object value, int? excludeRequestId = null)
     {
         try
         {
@@ -118,6 +126,7 @@ public class UniquenessValidationService : IUniquenessValidationService
                 WHERE FormDefinitionId = @FormDefinitionId
                     AND Status IN (@Pending, @Approved)
                     AND RequestType IN (@Insert, @Update)
+                    AND (@ExcludeId IS NULL OR Id != @ExcludeId)
                     AND JSON_VALUE(FieldValues, @JsonPath) = @Value";
 
             var count = await connection.ExecuteScalarAsync<int>(sql, new
@@ -127,6 +136,7 @@ public class UniquenessValidationService : IUniquenessValidationService
                 Approved = (int)RequestStatus.Approved,
                 Insert = (int)RequestType.Insert,
                 Update = (int)RequestType.Update,
+                ExcludeId = excludeRequestId,
                 JsonPath = $"$.{fieldName}",
                 Value = value.ToString()
             });
