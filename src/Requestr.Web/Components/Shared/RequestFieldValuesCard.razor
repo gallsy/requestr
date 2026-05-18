@@ -105,6 +105,9 @@
     
     /// <summary>Form fields for display name lookup</summary>
     [Parameter] public List<FormField>? FormFields { get; set; }
+
+    /// <summary>Table column metadata for identifying generated fields</summary>
+    [Parameter] public List<ColumnInfo>? TableColumns { get; set; }
     
     /// <summary>Request type affects whether originals are shown</summary>
     [Parameter] public RequestType RequestType { get; set; } = RequestType.Insert;
@@ -252,9 +255,17 @@
         if (RequestType != RequestType.Insert || Status != RequestStatus.Applied)
             return false;
 
+        // Use column metadata if available to check for identity/computed/rowversion
+        if (TableColumns?.Count > 0)
+        {
+            var col = TableColumns.FirstOrDefault(c =>
+                string.Equals(c.Name, fieldName, StringComparison.OrdinalIgnoreCase));
+            return col != null && (col.IsIdentity || col.IsComputed || col.IsRowVersion);
+        }
+
+        // Fallback: field is in FieldValues but has no corresponding visible FormField
         var formField = FormFields?.FirstOrDefault(f =>
             string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase));
-
         return formField?.IsReadOnly == true;
     }
 

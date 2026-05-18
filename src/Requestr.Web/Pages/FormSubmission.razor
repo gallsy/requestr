@@ -729,11 +729,25 @@ else
                 _requestType = request.RequestType;
                 _comments = request.Comments ?? "";
 
-                // For Update/Delete edits, derive a display ID from original values
+                // For Update/Delete edits, derive a display ID from original values using primary key
                 if (_requestType != RequestType.Insert && request.OriginalValues?.Any() == true)
                 {
-                    var pkValue = request.OriginalValues.Values.FirstOrDefault();
-                    _selectedRecordId = pkValue?.ToString() ?? "(existing record)";
+                    string? pkDisplay = null;
+                    if (_tableColumns?.Count > 0)
+                    {
+                        var pkColumns = _tableColumns.Where(c => c.IsPrimaryKey).Select(c => c.Name).ToList();
+                        if (pkColumns.Any())
+                        {
+                            var pkValues = pkColumns
+                                .Where(pk => request.OriginalValues.ContainsKey(pk))
+                                .Select(pk => request.OriginalValues[pk]?.ToString())
+                                .Where(v => !string.IsNullOrEmpty(v));
+                            pkDisplay = string.Join(", ", pkValues);
+                        }
+                    }
+                    _selectedRecordId = !string.IsNullOrEmpty(pkDisplay) 
+                        ? pkDisplay 
+                        : request.OriginalValues.Values.FirstOrDefault()?.ToString() ?? "(existing record)";
                 }
                 
                 foreach (var fieldValue in request.FieldValues)
@@ -960,6 +974,11 @@ else
                 // Skip identity/computed/rowversion fields on Insert (e.g. duplicated records carry the original ID)
                 // Also skip computed fields that will be regenerated at apply time for any request type
                 if (fld != null && ShouldHideFieldOnCreate(fld))
+                    continue;
+
+                // Skip computed fields that were set for a different request type
+                // (e.g. InsertOnly fields like CreatedAt shouldn't be re-submitted when editing an Update request)
+                if (fld != null && IsComputedFieldFromOtherMode(fld))
                     continue;
 
                 var value = kv.Value;

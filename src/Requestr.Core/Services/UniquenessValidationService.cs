@@ -11,17 +11,20 @@ namespace Requestr.Core.Services;
 public class UniquenessValidationService : IUniquenessValidationService
 {
     private readonly IFormDefinitionService _formDefinitionService;
+    private readonly IDatabaseService _databaseService;
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly IConfiguration _configuration;
     private readonly ILogger<UniquenessValidationService> _logger;
 
     public UniquenessValidationService(
         IFormDefinitionService formDefinitionService,
+        IDatabaseService databaseService,
         IDbConnectionFactory connectionFactory,
         IConfiguration configuration,
         ILogger<UniquenessValidationService> logger)
     {
         _formDefinitionService = formDefinitionService;
+        _databaseService = databaseService;
         _connectionFactory = connectionFactory;
         _configuration = configuration;
         _logger = logger;
@@ -43,10 +46,28 @@ public class UniquenessValidationService : IUniquenessValidationService
         if (!uniqueFields.Any())
             return violations;
 
-        // For inserts, skip read-only fields (identity/PK columns) - their values are auto-generated
+        // For inserts, skip database-generated fields (identity/computed/rowversion) — not all read-only fields
         if (requestType == RequestType.Insert)
         {
-            uniqueFields = uniqueFields.Where(f => !f.IsReadOnly).ToList();
+            var generatedColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                var columns = await _databaseService.GetTableColumnsAsync(
+                    formDefinition.DatabaseConnectionName, formDefinition.TableName, formDefinition.Schema);
+                generatedColumns = new HashSet<string>(
+                    columns.Where(c => c.IsIdentity || c.IsComputed || c.IsRowVersion).Select(c => c.Name),
+                    StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not load column metadata for uniqueness check; falling back to IsReadOnly");
+            }
+
+            if (generatedColumns.Count > 0)
+                uniqueFields = uniqueFields.Where(f => !generatedColumns.Contains(f.Name)).ToList();
+            else
+                uniqueFields = uniqueFields.Where(f => !f.IsReadOnly).ToList(); // fallback
+
             if (!uniqueFields.Any())
                 return violations;
         }
@@ -137,7 +158,7 @@ public class UniquenessValidationService : IUniquenessValidationService
                 Insert = (int)RequestType.Insert,
                 Update = (int)RequestType.Update,
                 ExcludeId = excludeRequestId,
-                JsonPath = $"$.{fieldName}",
+                JsonPath = $"$.\"{fieldName}\"",
                 Value = value.ToString()
             });
 

@@ -208,6 +208,7 @@ public class FormDefinitionService : IFormDefinitionService
                         MaxLength = (int)(row.MaxLength ?? 0),
                         IsRequired = (bool)(row.IsRequired ?? false),
                         IsReadOnly = (bool)(row.IsReadOnly ?? false),
+                        IsUnique = Convert.ToBoolean(row.IsUnique ?? false),
                         IsVisible = (bool)(row.IsVisible ?? true),
                         IsVisibleInDataView = (bool)(row.IsVisibleInDataView ?? true),
                         DefaultValue = row.DefaultValue as string,
