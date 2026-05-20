@@ -3,6 +3,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
+using Requestr.Core.Utilities;
 using System.Text;
 
 namespace Requestr.Core.Services;
@@ -79,6 +80,10 @@ public class DataService : IDataService
             var allowedData = data
                 .Where(kvp => !excluded.Contains(kvp.Key))
                 .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+
+            // Coerce string values to proper SQL types (handles JSON-deserialized "True"/"123" etc.)
+            var columnDataTypes = await GetColumnDataTypesAsync(connection, tableName, schema);
+            allowedData = CoerceParameterTypes(allowedData, columnDataTypes);
 
             string sql;
             object? insertedId = null;
@@ -215,12 +220,18 @@ public class DataService : IDataService
                 .Where(kvp => !excluded.Contains(kvp.Key))
                 .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
+            // Coerce string values to proper SQL types (handles JSON-deserialized "True"/"123" etc.)
+            var columnDataTypes = await GetColumnDataTypesAsync(connection, tableName, schema);
+            updatableData = CoerceParameterTypes(updatableData, columnDataTypes);
+
             // First, check if the record exists
             var whereClause = string.Join(" AND ", whereConditions.Keys.Select(k => $"[{k}] = @where_{k}"));
             var checkSql = $"SELECT COUNT(*) FROM [{schema}].[{tableName}] WHERE {whereClause}";
             
+            var coercedWhereConditions = CoerceParameterTypes(
+                whereConditions.ToDictionary(kvp => kvp.Key, kvp => kvp.Value), columnDataTypes);
             var whereParameters = new Dictionary<string, object?>();
-            foreach (var condition in whereConditions)
+            foreach (var condition in coercedWhereConditions)
             {
                 whereParameters[$"where_{condition.Key}"] = condition.Value;
             }
@@ -294,11 +305,16 @@ public class DataService : IDataService
             using var connection = new SqlConnection(connectionString);
             await connection.OpenAsync();
 
-            var whereClause = string.Join(" AND ", whereConditions.Keys.Select(k => $"[{k}] = @{k}"));
+            // Coerce where condition values to proper SQL types
+            var columnDataTypes = await GetColumnDataTypesAsync(connection, tableName, schema);
+            var coercedConditions = CoerceParameterTypes(
+                whereConditions.ToDictionary(kvp => kvp.Key, kvp => kvp.Value), columnDataTypes);
+
+            var whereClause = string.Join(" AND ", coercedConditions.Keys.Select(k => $"[{k}] = @{k}"));
             
             var sql = $"DELETE FROM [{schema}].[{tableName}] WHERE {whereClause}";
             
-            var rowsAffected = await connection.ExecuteAsync(sql, whereConditions);
+            var rowsAffected = await connection.ExecuteAsync(sql, coercedConditions);
             
             _logger.LogInformation("Deleted data from {Schema}.{TableName} in database {DatabaseName}. Rows affected: {RowsAffected}", 
                 schema, tableName, databaseName, rowsAffected);
@@ -568,5 +584,31 @@ public class DataService : IDataService
         }
         
         throw new ArgumentException($"Connection string '{connectionStringName}' not found in configuration.");
+    }
+
+    private static Dictionary<string, object?> CoerceParameterTypes(
+        Dictionary<string, object?> data, 
+        Dictionary<string, string> columnDataTypes)
+    {
+        var result = new Dictionary<string, object?>(data.Count, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var kvp in data)
+        {
+            result[kvp.Key] = columnDataTypes.TryGetValue(kvp.Key, out var dataType)
+                ? SqlTypeConverter.ConvertToSqlType(kvp.Value, dataType)
+                : SqlTypeConverter.UnwrapJsonElement(kvp.Value);
+        }
+
+        return result;
+    }
+
+    private static async Task<Dictionary<string, string>> GetColumnDataTypesAsync(SqlConnection connection, string tableName, string schema)
+    {
+        var sql = @"
+            SELECT COLUMN_NAME, DATA_TYPE
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME = @tableName AND TABLE_SCHEMA = @schema";
+        var rows = await connection.QueryAsync<(string COLUMN_NAME, string DATA_TYPE)>(sql, new { tableName, schema });
+        return rows.ToDictionary(r => r.COLUMN_NAME, r => r.DATA_TYPE, StringComparer.OrdinalIgnoreCase);
     }
 }
