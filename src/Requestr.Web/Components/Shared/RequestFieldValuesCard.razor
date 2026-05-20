@@ -41,7 +41,7 @@
     @if (!IsCollapsed)
     {
         <div class="card-body @(Compact ? "p-0 pt-2" : "")">
-            @if (FieldValues?.Any() == true)
+            @if (FieldValues?.Any() == true || (RequestType == RequestType.Delete && OriginalValues?.Any() == true))
             {
                 <div class="field-values-grid">
                     @{
@@ -161,6 +161,21 @@
             !string.IsNullOrEmpty(f.Key) && 
             (ExcludeFields == null || !ExcludeFields.Contains(f.Key)))
             .ToList();
+
+        // For Delete requests, include OriginalValues fields not already present
+        // so all fields of the deleted record are visible
+        if (RequestType == RequestType.Delete && OriginalValues != null)
+        {
+            foreach (var ov in OriginalValues)
+            {
+                if (!string.IsNullOrEmpty(ov.Key) &&
+                    (ExcludeFields == null || !ExcludeFields.Contains(ov.Key)) &&
+                    !result.Any(r => string.Equals(r.Key, ov.Key, StringComparison.OrdinalIgnoreCase)))
+                {
+                    result.Add(new KeyValuePair<string, object?>(ov.Key, ov.Value));
+                }
+            }
+        }
 
         // Add computed fields that aren't already in FieldValues so they're visible
         if (FormFields != null)

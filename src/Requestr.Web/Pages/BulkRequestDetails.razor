@@ -115,7 +115,7 @@ else
                                             </div>
                                             <div class="d-flex align-items-center gap-2">
                                                 <span class="field-count text-muted small">
-                                                    @item.FieldValues.Count field(s)
+                                                    @(_bulkRequest.RequestType == RequestType.Delete && item.OriginalValues?.Any() == true ? item.OriginalValues.Count : item.FieldValues.Count) field(s)
                                                 </span>
                                                 <i class="bi @(isExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
                                             </div>
@@ -400,7 +400,11 @@ else
 
     private string GetKeyFields(BulkFormRequestItem item)
     {
-        var preview = item.FieldValues.Take(3).Select(f => $"{f.Key}: {TruncateValue(f.Value?.ToString())}");
+        // For Delete, show FieldValues (PKs used to identify the record) as the brief summary
+        var source = item.FieldValues?.Any() == true
+            ? item.FieldValues
+            : item.OriginalValues ?? new Dictionary<string, object?>();
+        var preview = source.Take(3).Select(f => $"{f.Key}: {TruncateValue(f.Value?.ToString())}");
         return string.Join(" | ", preview);
     }
 
