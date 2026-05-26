@@ -1302,10 +1302,26 @@ else
         {
             if (kvp.Value != null)
             {
-                queryParams.Add($"prefill_{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value.ToString() ?? "")}");
+                queryParams.Add($"prefill_{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(FormatPrefillValue(kvp.Value))}");
             }
         }
         
         Navigation.NavigateTo($"/forms/{FormDefinitionId}?{string.Join("&", queryParams)}");
+    }
+
+    private static string FormatPrefillValue(object value)
+    {
+        // Use culture-invariant ISO 8601 formatting for date/time values so the receiving
+        // form (and downstream SqlTypeConverter) can parse them regardless of system culture.
+        return value switch
+        {
+            DateTime dt => dt.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+            DateTimeOffset dto => dto.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+            DateOnly d => d.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            TimeOnly t => t.ToString("HH:mm:ss.fffffff", System.Globalization.CultureInfo.InvariantCulture),
+            TimeSpan ts => ts.ToString("c", System.Globalization.CultureInfo.InvariantCulture),
+            IFormattable f => f.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
+            _ => value.ToString() ?? string.Empty
+        };
     }
 }

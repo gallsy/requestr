@@ -151,10 +151,26 @@ public class DataService : IDataService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error inserting data into {Schema}.{TableName} in database {DatabaseName}. Columns provided: {Columns}", 
-                schema, tableName, databaseName, string.Join(", ", data.Keys));
+            _logger.LogError(ex, "Error inserting data into {Schema}.{TableName} in database {DatabaseName}. Values: {Values}", 
+                schema, tableName, databaseName, FormatValuesForLog(data));
             throw;
         }
+    }
+
+    private static string FormatValuesForLog(Dictionary<string, object?> data)
+    {
+        return string.Join(", ", data.Select(kvp =>
+        {
+            var value = kvp.Value;
+            var typeName = value?.GetType().Name ?? "null";
+            var rendered = value switch
+            {
+                null => "null",
+                string s => $"\"{s}\"",
+                _ => value.ToString() ?? "null"
+            };
+            return $"{kvp.Key}({typeName})={rendered}";
+        }));
     }
 
     public async Task<bool> UpdateDataAsync(string databaseName, string tableName, string schema, Dictionary<string, object?> data, Dictionary<string, object?> whereConditions)
