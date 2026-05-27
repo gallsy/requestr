@@ -414,7 +414,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
 
     /// <inheritdoc />
     public async Task<WebhookActionResult> TriggerWebhookStepAsync(
-        int workflowInstanceId, string stepId, string action, string userId, List<string> userRoles)
+        int workflowInstanceId, string stepId, string action, string userId, string userDisplayName, List<string> userRoles)
     {
         try
         {
@@ -454,7 +454,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                     if (stepInstance.Status != WorkflowStepInstanceStatus.InProgress)
                         return new WebhookActionResult { Success = false, Message = "Webhook step is not in a fireable state" };
 
-                    return await FireWebhookStepAsync(instance, step, webhookConfig, userId);
+                    return await FireWebhookStepAsync(instance, step, webhookConfig, userId, userDisplayName);
 
                 case "retry":
                     if (stepInstance.Status != WorkflowStepInstanceStatus.Failed)
@@ -470,7 +470,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                         await _stepInstanceRepository.UpdateToInProgressAsync(workflowInstanceId, stepId, connection, null!);
                     }
 
-                    return await FireWebhookStepAsync(instance, step, webhookConfig, userId);
+                    return await FireWebhookStepAsync(instance, step, webhookConfig, userId, userDisplayName);
 
                 case "skip":
                     if (stepInstance.Status != WorkflowStepInstanceStatus.InProgress &&
@@ -494,7 +494,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     }
 
     private async Task<WebhookActionResult> FireWebhookStepAsync(
-        WorkflowInstance instance, WorkflowStep step, WebhookStepConfiguration webhookConfig, string userId)
+        WorkflowInstance instance, WorkflowStep step, WebhookStepConfiguration webhookConfig, string userId, string userDisplayName)
     {
         // Load form request for variable substitution
         var formRequest = await _formRequestRepository.GetByIdAsync(instance.FormRequestId);
@@ -511,15 +511,31 @@ public class WorkflowExecutionService : IWorkflowExecutionService
 
         var result = await _webhookExecutionService.ExecuteAsync(webhookConfig, formRequest, formDefinition);
 
+        var displayName = !string.IsNullOrEmpty(userDisplayName) ? userDisplayName : userId;
         var comment = result.Success
-            ? $"Webhook fired by {userId}: HTTP {result.StatusCode}"
-            : $"Webhook fired by {userId}: failed — {result.ErrorMessage}";
+            ? $"Webhook fired by {displayName}: HTTP {result.StatusCode}"
+            : $"Webhook fired by {displayName}: failed — {result.ErrorMessage}";
 
-        if (result.Success || !webhookConfig.AllowRetry)
+        if (result.Success)
         {
-            // Complete the step (success or non-retryable failure)
-            var stepAction = result.Success ? WorkflowStepAction.Completed : WorkflowStepAction.Completed;
-            await CompleteStepAsync(instance.Id, step.StepId, userId, userId, stepAction, comment, null);
+            await CompleteStepAsync(instance.Id, step.StepId, userId, userId, WorkflowStepAction.Completed, comment, null);
+        }
+        else if (!webhookConfig.AllowRetry)
+        {
+            // Non-retryable failure: mark as Failed so users can see it failed
+            using var connection = (SqlConnection)_connectionFactory.CreateConnection();
+            await connection.OpenAsync();
+            await connection.ExecuteAsync(
+                @"UPDATE WorkflowStepInstances 
+                  SET Status = @Status, Comments = @Comments 
+                  WHERE WorkflowInstanceId = @WorkflowInstanceId AND StepId = @StepId",
+                new
+                {
+                    Status = (int)WorkflowStepInstanceStatus.Failed,
+                    Comments = comment,
+                    WorkflowInstanceId = instance.Id,
+                    StepId = step.StepId
+                });
         }
         else
         {

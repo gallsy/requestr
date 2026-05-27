@@ -540,18 +540,21 @@ else
 
     private async Task HandleWebhookActionAsync((int WorkflowInstanceId, string StepId, string Action) args)
     {
+        var entry = _unifiedTimeline.FirstOrDefault(e => e.WebhookAction?.StepId == args.StepId);
         try
         {
-            // Find the entry and mark as executing
-            var entry = _unifiedTimeline.FirstOrDefault(e => e.WebhookAction?.StepId == args.StepId);
+            // Mark as executing
             if (entry?.WebhookAction != null)
             {
                 entry.WebhookAction.IsExecuting = true;
                 StateHasChanged();
             }
 
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var displayName = authState.User.Identity?.Name ?? _currentUserId;
+
             var result = await WorkflowExecutionService.TriggerWebhookStepAsync(
-                args.WorkflowInstanceId, args.StepId, args.Action, _currentUserId, _userRoles);
+                args.WorkflowInstanceId, args.StepId, args.Action, _currentUserId, displayName, _userRoles);
 
             if (!result.Success)
             {
@@ -566,6 +569,14 @@ else
         {
             Logger.LogError(ex, "Error handling webhook action {Action} for step {StepId}", args.Action, args.StepId);
             _errorMessage = "An error occurred while processing the webhook action.";
+        }
+        finally
+        {
+            if (entry?.WebhookAction != null)
+            {
+                entry.WebhookAction.IsExecuting = false;
+            }
+            StateHasChanged();
         }
     }
 
