@@ -126,5 +126,5 @@ public interface IWorkflowExecutionService
     /// <param name="userRoles">The user's roles (for authorisation).</param>
     /// <returns>Result of the webhook action.</returns>
     Task<WebhookActionResult> TriggerWebhookStepAsync(
-        int workflowInstanceId, string stepId, string action, string userId, List<string> userRoles);
+        int workflowInstanceId, string stepId, string action, string userId, string userDisplayName, List<string> userRoles);
 }
