@@ -439,7 +439,7 @@
                                             </div>
                                         </div>
                                         <div class="@(selectedStep.StepType == WorkflowStepType.Webhook ? "col-md-8" : "col-md-6")">
-                                            @if (selectedStep.StepType == WorkflowStepType.Approval)
+                                            @if (selectedStep.StepType == WorkflowStepType.Approval || selectedStep.StepType == WorkflowStepType.Webhook)
                                             {
                                                 <div class="mb-3">
                                                     <label class="form-label">Assigned Roles</label>
@@ -464,6 +464,10 @@
                                                         <input type="text" class="form-control" placeholder="Role name (e.g., DataAdmin, ReferenceDataApprover)" @bind="newRoleName" />
                                                         <button class="btn btn-outline-primary" @onclick="AddRoleToStep">Add</button>
                                                     </div>
+                                                    @if (selectedStep.StepType == WorkflowStepType.Webhook)
+                                                    {
+                                                        <small class="form-text text-muted">Users with these roles can trigger or skip the webhook from the request timeline.</small>
+                                                    }
                                                 </div>
                                                 
                                                 <div class="mb-3">
@@ -637,6 +641,28 @@
                                                                     Fail workflow step on HTTP error (4xx/5xx)
                                                                 </label>
                                                             </div>
+                                                        </div>
+                                                        <div class="mb-3">
+                                                            <div class="form-check">
+                                                                <input class="form-check-input" type="checkbox" 
+                                                                       @bind="selectedStep.Configuration.Webhook!.RequiresApproval" 
+                                                                       id="requiresApproval">
+                                                                <label class="form-check-label" for="requiresApproval">
+                                                                    Require manual approval before firing
+                                                                </label>
+                                                            </div>
+                                                            <small class="form-text text-muted">When enabled, an authorised user must trigger the webhook from the request timeline. When disabled, the webhook fires automatically.</small>
+                                                        </div>
+                                                        <div class="mb-3">
+                                                            <div class="form-check">
+                                                                <input class="form-check-input" type="checkbox" 
+                                                                       @bind="selectedStep.Configuration.Webhook!.AllowRetry" 
+                                                                       id="allowRetry">
+                                                                <label class="form-check-label" for="allowRetry">
+                                                                    Allow retry on failure
+                                                                </label>
+                                                            </div>
+                                                            <small class="form-text text-muted">If disabled, the webhook cannot be re-fired after failure (use for costly operations).</small>
                                                         </div>
                                                     </div>
                                                     <div class="col-md-6">

@@ -15,6 +15,7 @@
 @inject IConflictDetectionService ConflictDetectionService
 @inject IWorkflowInstanceService WorkflowInstanceService
 @inject IWorkflowProgressService WorkflowProgressService
+@inject IWorkflowExecutionService WorkflowExecutionService
 @inject ILogger<RequestDetails> Logger
 @inject NavigationManager Navigation
 @inject IDatabaseService DatabaseService
@@ -134,7 +135,8 @@ else
         <!-- Right column: Activity Timeline -->
         <div class="col-12 col-xl-5">
             <ActivityTimeline WorkflowProgress="@_workflowProgress"
-                             Entries="@_unifiedTimeline" />
+                             Entries="@_unifiedTimeline"
+                             OnWebhookAction="HandleWebhookActionAsync" />
         </div>
     </div>
 }
@@ -529,6 +531,41 @@ else
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Failed to load workflow progress for RequestId {RequestId}", RequestId);
+        }
+    }
+
+    // ==========================================
+    // Webhook Actions
+    // ==========================================
+
+    private async Task HandleWebhookActionAsync((int WorkflowInstanceId, string StepId, string Action) args)
+    {
+        try
+        {
+            // Find the entry and mark as executing
+            var entry = _unifiedTimeline.FirstOrDefault(e => e.WebhookAction?.StepId == args.StepId);
+            if (entry?.WebhookAction != null)
+            {
+                entry.WebhookAction.IsExecuting = true;
+                StateHasChanged();
+            }
+
+            var result = await WorkflowExecutionService.TriggerWebhookStepAsync(
+                args.WorkflowInstanceId, args.StepId, args.Action, _currentUserId, _userRoles);
+
+            if (!result.Success)
+            {
+                _errorMessage = result.Message;
+            }
+
+            // Reload workflow progress to reflect updated state
+            await LoadWorkflowProgressAsync();
+            BuildUnifiedTimeline();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error handling webhook action {Action} for step {StepId}", args.Action, args.StepId);
+            _errorMessage = "An error occurred while processing the webhook action.";
         }
     }
 

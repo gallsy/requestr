@@ -160,6 +160,19 @@ public class WebhookStepConfiguration : IStepConfiguration
 
     /// <summary>If true, the workflow step fails when the webhook returns a 4xx/5xx status code.</summary>
     public bool FailOnError { get; set; } = true;
+
+    /// <summary>
+    /// If true, the webhook requires manual approval (Fire action) before executing.
+    /// If false, the webhook fires automatically when the step is reached.
+    /// For post-End webhooks, the step's AssignedRoles on the WorkflowStep control who can trigger it.
+    /// </summary>
+    public bool RequiresApproval { get; set; } = true;
+
+    /// <summary>
+    /// If true, a failed webhook can be re-fired by an authorised user.
+    /// If false, the webhook is one-shot — once fired (success or failure) it cannot be triggered again.
+    /// </summary>
+    public bool AllowRetry { get; set; } = true;
 }
 
 /// <summary>

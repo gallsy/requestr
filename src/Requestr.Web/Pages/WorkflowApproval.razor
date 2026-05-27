@@ -563,9 +563,10 @@ else
                 // Reload data to show updated status
                 await LoadWorkflowDataAsync();
                 
-                // Redirect after a brief delay
-                await Task.Delay(2000);
-                Navigation.NavigateTo("/");
+                // Redirect to request details so user can see the updated timeline
+                // (including any post-End webhook actions available)
+                await Task.Delay(1000);
+                Navigation.NavigateTo($"/requests/{_formRequest!.Id}");
             }
             else
             {

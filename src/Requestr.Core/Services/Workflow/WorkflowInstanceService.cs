@@ -261,7 +261,8 @@ public class WorkflowInstanceService : IWorkflowInstanceService
                 if (nextStep?.StepType == WorkflowStepType.End)
                 {
                     activatedStepIds.RemoveAll(id => id.Equals(nextStepId, StringComparison.OrdinalIgnoreCase));
-                    await AutoCompleteEndStepAsync(connection, transaction, workflowInstanceId, nextStepId);
+                    var webhookStepIds = await AutoCompleteEndStepAsync(connection, transaction, workflowInstanceId, nextStepId, definition);
+                    activatedStepIds.AddRange(webhookStepIds);
                 }
                 else if (nextStep?.StepType == WorkflowStepType.Webhook)
                 {
@@ -284,11 +285,12 @@ public class WorkflowInstanceService : IWorkflowInstanceService
         _logger.LogDebug("Auto-completed start step {StepId} for workflow {InstanceId}", stepId, workflowInstanceId);
     }
 
-    private async Task AutoCompleteEndStepAsync(
+    private async Task<List<string>> AutoCompleteEndStepAsync(
         IDbConnection connection,
         IDbTransaction transaction,
         int workflowInstanceId,
-        string stepId)
+        string stepId,
+        WorkflowDefinition definition)
     {
         await _stepInstanceRepository.UpdateToCompletedAsync(
             workflowInstanceId,
@@ -302,7 +304,30 @@ public class WorkflowInstanceService : IWorkflowInstanceService
 
         await _instanceRepository.UpdateToCompletedAsync(workflowInstanceId, "System", connection, transaction);
 
+        // Find and activate post-End webhook successors
+        var webhookStepIds = new List<string>();
+        var endSuccessorIds = GetNextStepIds(definition, stepId);
+        foreach (var successorId in endSuccessorIds)
+        {
+            var successorStep = definition.Steps.FirstOrDefault(s => s.StepId.Equals(successorId, StringComparison.OrdinalIgnoreCase));
+            if (successorStep?.StepType == WorkflowStepType.Webhook)
+            {
+                await _stepInstanceRepository.UpdateToInProgressAsync(workflowInstanceId, successorId, connection, transaction);
+                webhookStepIds.Add(successorId);
+                _logger.LogInformation("Post-End webhook step {StepId} activated for workflow {InstanceId}", successorId, workflowInstanceId);
+            }
+        }
+
+        // Update CurrentStepId to include the webhook step IDs
+        if (webhookStepIds.Count > 0)
+        {
+            var currentStepIdValue = string.Join(",", webhookStepIds);
+            await _instanceRepository.UpdateCurrentStepAsync(workflowInstanceId, currentStepIdValue, connection, transaction);
+        }
+
         _logger.LogInformation("Workflow {InstanceId} completed at End step {StepId}", workflowInstanceId, stepId);
+
+        return webhookStepIds;
     }
 
     /// <summary>
