@@ -83,6 +83,39 @@
                                         <small><strong>Comments:</strong> @entry.Comments</small>
                                     </div>
                                 }
+                                @if (entry.WebhookAction != null)
+                                {
+                                    <div class="mt-2 d-flex gap-2 flex-wrap">
+                                        @if (entry.WebhookAction.AvailableActions.Contains("fire"))
+                                        {
+                                            <button class="btn btn-sm btn-primary" 
+                                                    disabled="@entry.WebhookAction.IsExecuting"
+                                                    @onclick="@(() => HandleWebhookClick(entry.WebhookAction, "fire"))">
+                                                <i class="bi bi-send me-1"></i>Fire
+                                            </button>
+                                        }
+                                        @if (entry.WebhookAction.AvailableActions.Contains("retry"))
+                                        {
+                                            <button class="btn btn-sm btn-warning" 
+                                                    disabled="@entry.WebhookAction.IsExecuting"
+                                                    @onclick="@(() => HandleWebhookClick(entry.WebhookAction, "retry"))">
+                                                <i class="bi bi-arrow-clockwise me-1"></i>Retry
+                                            </button>
+                                        }
+                                        @if (entry.WebhookAction.AvailableActions.Contains("skip"))
+                                        {
+                                            <button class="btn btn-sm btn-outline-secondary" 
+                                                    disabled="@entry.WebhookAction.IsExecuting"
+                                                    @onclick="@(() => HandleWebhookClick(entry.WebhookAction, "skip"))">
+                                                <i class="bi bi-skip-forward me-1"></i>Skip
+                                            </button>
+                                        }
+                                        @if (entry.WebhookAction.IsExecuting)
+                                        {
+                                            <span class="spinner-border spinner-border-sm text-primary align-self-center"></span>
+                                        }
+                                    </div>
+                                }
                                 @if (entry.FieldChangesJson != null)
                                 {
                                     <div class="mt-2">
@@ -140,6 +173,14 @@
     /// <summary>Pre-built, sorted list of timeline entries</summary>
     [Parameter] public List<TimelineEntry>? Entries { get; set; }
 
+    /// <summary>Callback for webhook actions (fire/skip/retry). Parameter is (WorkflowInstanceId, StepId, Action).</summary>
+    [Parameter] public EventCallback<(int WorkflowInstanceId, string StepId, string Action)> OnWebhookAction { get; set; }
+
+    private Task HandleWebhookClick(WebhookAction webhookAction, string action)
+    {
+        return OnWebhookAction.InvokeAsync((webhookAction.WorkflowInstanceId, webhookAction.StepId, action));
+    }
+
     private string GetWorkflowProgressColor()
     {
         if (WorkflowProgress == null) return "secondary";
@@ -172,6 +213,23 @@
         public int SortPriority { get; set; }
         /// <summary>Used for deduplication — a unique key per logical event</summary>
         public string DeduplicationKey { get; set; } = string.Empty;
+
+        // Webhook action support
+        /// <summary>If set, this entry represents an actionable webhook step.</summary>
+        public WebhookAction? WebhookAction { get; set; }
+    }
+
+    /// <summary>
+    /// Describes an actionable webhook step on the timeline.
+    /// </summary>
+    public class WebhookAction
+    {
+        public int WorkflowInstanceId { get; set; }
+        public string StepId { get; set; } = string.Empty;
+        /// <summary>Available actions: "fire", "skip", "retry"</summary>
+        public List<string> AvailableActions { get; set; } = new();
+        /// <summary>True if the webhook is currently executing (disable buttons).</summary>
+        public bool IsExecuting { get; set; }
     }
 
     // ==========================================
@@ -305,6 +363,57 @@
                         LinkUrl = (step.StepType == WorkflowStepType.Approval && progress.WorkflowInstanceId > 0)
                             ? $"/workflow/{progress.WorkflowInstanceId}/step/{step.StepId}" : null,
                         DeduplicationKey = key
+                    });
+                }
+            }
+            else if (step.Status == WorkflowStepInstanceStatus.InProgress && step.StepType == WorkflowStepType.Webhook)
+            {
+                // Webhook step awaiting action (Fire/Skip)
+                var key = $"step-webhook-{step.StepId}";
+                if (seenKeys.Add(key))
+                {
+                    entries.Add(new TimelineEntry
+                    {
+                        Timestamp = step.StartedAt ?? DateTime.UtcNow,
+                        Title = $"{step.StepName} — Ready to fire",
+                        Icon = "bi-broadcast",
+                        MarkerColor = "bg-info",
+                        AssignedRoles = step.AssignedRoles?.Any() == true ? step.AssignedRoles : null,
+                        Duration = step.StartedAt.HasValue
+                            ? FormatDuration(DateTime.UtcNow - step.StartedAt.Value) : null,
+                        SortPriority = 20,
+                        DeduplicationKey = key,
+                        WebhookAction = new WebhookAction
+                        {
+                            WorkflowInstanceId = progress.WorkflowInstanceId,
+                            StepId = step.StepId,
+                            AvailableActions = new List<string> { "fire", "skip" }
+                        }
+                    });
+                }
+            }
+            else if (step.Status == WorkflowStepInstanceStatus.Failed && step.StepType == WorkflowStepType.Webhook)
+            {
+                // Failed webhook step — show retry/skip
+                var key = $"step-webhook-failed-{step.StepId}";
+                if (seenKeys.Add(key))
+                {
+                    entries.Add(new TimelineEntry
+                    {
+                        Timestamp = step.StartedAt ?? DateTime.UtcNow,
+                        Title = $"{step.StepName} — Failed",
+                        Icon = "bi-exclamation-triangle",
+                        MarkerColor = "bg-warning",
+                        Comments = step.Comments,
+                        AssignedRoles = step.AssignedRoles?.Any() == true ? step.AssignedRoles : null,
+                        SortPriority = 20,
+                        DeduplicationKey = key,
+                        WebhookAction = new WebhookAction
+                        {
+                            WorkflowInstanceId = progress.WorkflowInstanceId,
+                            StepId = step.StepId,
+                            AvailableActions = new List<string> { "retry", "skip" }
+                        }
                     });
                 }
             }

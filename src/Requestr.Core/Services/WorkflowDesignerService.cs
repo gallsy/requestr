@@ -447,6 +447,34 @@ public class WorkflowDesignerService : IWorkflowDesignerService
             }
         }
 
+        // Check webhook steps with RequiresApproval have assigned roles
+        var webhookSteps = workflow.Steps.Where(s => s.StepType == WorkflowStepType.Webhook).ToList();
+        foreach (var step in webhookSteps)
+        {
+            if (step.Configuration?.Webhook?.RequiresApproval == true && !step.AssignedRoles.Any())
+            {
+                errors.Add($"Webhook step '{step.Name}' ({step.StepId}) requires approval but has no assigned roles");
+            }
+        }
+
+        // Validate End step successors — only Webhook steps allowed after End
+        foreach (var endStep in endSteps)
+        {
+            var endSuccessors = workflow.Transitions
+                .Where(t => t.FromStepId == endStep.StepId)
+                .Select(t => workflow.Steps.FirstOrDefault(s => s.StepId == t.ToStepId))
+                .Where(s => s != null)
+                .ToList();
+
+            foreach (var successor in endSuccessors)
+            {
+                if (successor!.StepType != WorkflowStepType.Webhook)
+                {
+                    errors.Add($"End step '{endStep.Name}' can only have Webhook steps as successors, but has '{successor.Name}' ({successor.StepType})");
+                }
+            }
+        }
+
         // Check branch steps have conditions
         var branchSteps = workflow.Steps.Where(s => s.StepType == WorkflowStepType.Branch).ToList();
         foreach (var step in branchSteps)

@@ -165,6 +165,19 @@ public class WorkflowActionResult
     public Dictionary<string, object?> AdditionalData { get; set; } = new();
 }
 
+/// <summary>
+/// Result of a manual webhook step action (Fire/Skip/Retry).
+/// </summary>
+public class WebhookActionResult
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = string.Empty;
+    /// <summary>HTTP status code returned by the webhook (only set on Fire/Retry).</summary>
+    public int? StatusCode { get; set; }
+    /// <summary>Response body from the webhook (only set on Fire/Retry).</summary>
+    public string? ResponseBody { get; set; }
+}
+
 public class WorkflowProgress
 {
     public int FormRequestId { get; set; }

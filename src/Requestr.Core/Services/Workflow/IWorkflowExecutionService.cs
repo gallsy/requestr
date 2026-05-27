@@ -114,4 +114,17 @@ public interface IWorkflowExecutionService
     /// </summary>
     /// <param name="workflowInstanceId">The workflow instance ID.</param>
     Task ProcessPendingWebhookStepAsync(int workflowInstanceId);
+
+    /// <summary>
+    /// Triggers a manual-fire webhook step (Fire/Skip/Retry actions).
+    /// Used for post-End webhook steps that require approval.
+    /// </summary>
+    /// <param name="workflowInstanceId">The workflow instance ID.</param>
+    /// <param name="stepId">The webhook step ID to act on.</param>
+    /// <param name="action">The action: "fire", "skip", or "retry".</param>
+    /// <param name="userId">The user performing the action.</param>
+    /// <param name="userRoles">The user's roles (for authorisation).</param>
+    /// <returns>Result of the webhook action.</returns>
+    Task<WebhookActionResult> TriggerWebhookStepAsync(
+        int workflowInstanceId, string stepId, string action, string userId, List<string> userRoles);
 }
