@@ -664,6 +664,14 @@
                                                             </div>
                                                             <small class="form-text text-muted">If disabled, the webhook cannot be re-fired after failure (use for costly operations).</small>
                                                         </div>
+                                                        <div class="mb-3">
+                                                            <label class="form-label">Bulk Request Behaviour</label>
+                                                            <select class="form-select" @bind="selectedStep.Configuration.Webhook!.BulkRequestBehaviour">
+                                                                <option value="@WebhookBulkRequestBehaviour.Run">Run (fire once for the bulk request)</option>
+                                                                <option value="@WebhookBulkRequestBehaviour.Skip">Skip (auto-skip for bulk requests)</option>
+                                                            </select>
+                                                            <small class="form-text text-muted">Controls whether this webhook fires when the workflow is for a bulk request.</small>
+                                                        </div>
                                                     </div>
                                                     <div class="col-md-6">
                                                         <div class="mb-3">

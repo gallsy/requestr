@@ -505,6 +505,14 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             return new WebhookActionResult { Success = false, Message = "Form request not found" };
         }
 
+        // Check bulk request skip behaviour
+        if (webhookConfig.BulkRequestBehaviour == WebhookBulkRequestBehaviour.Skip && formRequest.BulkFormRequestId.HasValue)
+        {
+            await CompleteStepAsync(instance.Id, step.StepId, userId, userId,
+                WorkflowStepAction.Completed, "Webhook skipped: configured to skip for bulk requests", null);
+            return new WebhookActionResult { Success = true, Message = "Webhook skipped (bulk request)" };
+        }
+
         FormDefinition? formDefinition = null;
         try { formDefinition = await _formDefinitionService.GetByIdAsync(formRequest.FormDefinitionId); }
         catch { /* non-critical */ }
@@ -944,10 +952,24 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         {
             try
             {
+                // Check if this is a bulk request and the webhook should be skipped
+                var instance = await _instanceRepository.GetByIdAsync(step.WorkflowInstanceId);
+                if (instance != null && step.Config.BulkRequestBehaviour == WebhookBulkRequestBehaviour.Skip)
+                {
+                    var formRequest = await _formRequestRepository.GetByIdAsync(instance.FormRequestId);
+                    if (formRequest?.BulkFormRequestId.HasValue == true)
+                    {
+                        _logger.LogInformation("Skipping post-End webhook step {StepId} for workflow {InstanceId}: bulk request behaviour is Skip",
+                            step.StepId, step.WorkflowInstanceId);
+                        await CompleteStepAsync(step.WorkflowInstanceId, step.StepId, "System", "System",
+                            WorkflowStepAction.Completed, "Webhook skipped: configured to skip for bulk requests", null);
+                        continue;
+                    }
+                }
+
                 if (!step.RequiresApproval)
                 {
                     // Auto-fire: execute immediately
-                    var instance = await _instanceRepository.GetByIdAsync(step.WorkflowInstanceId);
                     var webhookInfo = new WebhookPostCommitInfo(
                         WorkflowInstanceId: step.WorkflowInstanceId,
                         StepId: step.StepId,
@@ -1224,6 +1246,22 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                 // Update status to Applied
                 const string updateStatusSql = "UPDATE FormRequests SET Status = @Status WHERE Id = @Id";
                 await connection.ExecuteAsync(updateStatusSql, new { Id = formRequestId, Status = (int)RequestStatus.Applied });
+
+                // Record "Changes Applied" history entry
+                const string insertHistorySql = @"
+                    INSERT INTO FormRequestHistory (FormRequestId, ChangeType, PreviousValues, NewValues, ChangedBy, ChangedAt, Comments)
+                    VALUES (@FormRequestId, @ChangeType, @PreviousValues, @NewValues, @ChangedBy, @ChangedAt, @Comments)";
+                await connection.ExecuteAsync(insertHistorySql, new
+                {
+                    FormRequestId = formRequestId,
+                    ChangeType = (int)FormRequestChangeType.Applied,
+                    PreviousValues = "{\"Status\": \"Approved\"}",
+                    NewValues = "{\"Status\": \"Applied\"}",
+                    ChangedBy = "System",
+                    ChangedAt = DateTime.UtcNow,
+                    Comments = "Data changes applied to target database"
+                });
+
                 _logger.LogInformation("Successfully applied data changes for form request {FormRequestId}", formRequestId);
             }
             else

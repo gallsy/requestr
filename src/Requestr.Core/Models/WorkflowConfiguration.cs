@@ -173,6 +173,11 @@ public class WebhookStepConfiguration : IStepConfiguration
     /// If false, the webhook is one-shot — once fired (success or failure) it cannot be triggered again.
     /// </summary>
     public bool AllowRetry { get; set; } = true;
+
+    /// <summary>
+    /// Controls behaviour when the workflow is for a bulk request.
+    /// </summary>
+    public WebhookBulkRequestBehaviour BulkRequestBehaviour { get; set; } = WebhookBulkRequestBehaviour.Run;
 }
 
 /// <summary>

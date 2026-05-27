@@ -73,6 +73,17 @@ public enum WebhookAuthType
     ManagedIdentity = 1
 }
 
+/// <summary>
+/// Controls how a webhook step behaves when the workflow is for a bulk request.
+/// </summary>
+public enum WebhookBulkRequestBehaviour
+{
+    /// <summary>Run the webhook normally (once for the bulk request).</summary>
+    Run = 0,
+    /// <summary>Automatically skip the webhook step for bulk requests.</summary>
+    Skip = 1
+}
+
 public enum WorkflowInstanceStatus
 {
     InProgress = 0,
