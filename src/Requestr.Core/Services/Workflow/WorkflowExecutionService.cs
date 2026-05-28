@@ -1017,6 +1017,16 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                 return;
             }
 
+            // Check bulk request skip behaviour
+            if (info.Config.BulkRequestBehaviour == WebhookBulkRequestBehaviour.Skip && formRequest.BulkFormRequestId.HasValue)
+            {
+                _logger.LogInformation("Skipping webhook step {StepId} for workflow {InstanceId}: bulk request behaviour is Skip",
+                    info.StepId, info.WorkflowInstanceId);
+                await CompleteStepAsync(info.WorkflowInstanceId, info.StepId, "System", "System",
+                    WorkflowStepAction.Completed, "Webhook skipped: configured to skip for bulk requests", null);
+                return;
+            }
+
             // Load form definition for system variables
             FormDefinition? formDefinition = null;
             try
