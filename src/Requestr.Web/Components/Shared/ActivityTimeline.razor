@@ -381,7 +381,7 @@
                         AssignedRoles = step.AssignedRoles?.Any() == true ? step.AssignedRoles : null,
                         Duration = step.StartedAt.HasValue
                             ? FormatDuration(DateTime.UtcNow - step.StartedAt.Value) : null,
-                        SortPriority = 20,
+                        SortPriority = 35,
                         DeduplicationKey = key,
                         WebhookAction = new WebhookAction
                         {
@@ -406,7 +406,7 @@
                         MarkerColor = "bg-warning",
                         Comments = step.Comments,
                         AssignedRoles = step.AssignedRoles?.Any() == true ? step.AssignedRoles : null,
-                        SortPriority = 20,
+                        SortPriority = 35,
                         DeduplicationKey = key,
                         WebhookAction = new WebhookAction
                         {
