@@ -38,6 +38,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     private record PostCommitActions(
         int? FormRequestIdForNotification = null,
         string? CompletedBy = null,
+        string? CompletedByName = null,
         bool WasApproved = false,
         string? Comments = null,
         int? WorkflowInstanceIdForDataApplication = null,
@@ -193,6 +194,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             // These open their own connections and would deadlock if run inside the transaction.
             if (postCommitActions != null)
             {
+                postCommitActions = postCommitActions with { CompletedByName = completedByName };
                 await ExecutePostCommitActionsAsync(postCommitActions);
             }
 
@@ -898,6 +900,36 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     /// </summary>
     private async Task ExecutePostCommitActionsAsync(PostCommitActions actions)
     {
+        // Write approval/rejection history FIRST so its timestamp precedes data application and webhooks
+        if (actions.FormRequestIdForNotification.HasValue && actions.CompletedBy != null && 
+            (actions.WasApproved || actions.WorkflowInstanceIdForDataApplication == null))
+        {
+            try
+            {
+                using var histConn = (SqlConnection)_connectionFactory.CreateConnection();
+                await histConn.OpenAsync();
+                var changeType = actions.WasApproved ? FormRequestChangeType.Approved : FormRequestChangeType.Rejected;
+                const string insertHistSql = @"
+                    INSERT INTO FormRequestHistory (FormRequestId, ChangeType, PreviousValues, NewValues, ChangedBy, ChangedAt, Comments)
+                    VALUES (@FormRequestId, @ChangeType, @PreviousValues, @NewValues, @ChangedBy, @ChangedAt, @Comments)";
+                await histConn.ExecuteAsync(insertHistSql, new
+                {
+                    FormRequestId = actions.FormRequestIdForNotification.Value,
+                    ChangeType = (int)changeType,
+                    PreviousValues = (string?)null,
+                    NewValues = (string?)null,
+                    ChangedBy = actions.CompletedBy,
+                    ChangedAt = DateTime.UtcNow,
+                    Comments = actions.WasApproved ? "Request approved" : (actions.Comments ?? "Request rejected")
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error writing approval history for request {FormRequestId}",
+                    actions.FormRequestIdForNotification.Value);
+            }
+        }
+
         if (actions.FormRequestIdForNotification.HasValue && actions.CompletedBy != null)
         {
             try
@@ -948,6 +980,20 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     /// </summary>
     private async Task ProcessPostEndWebhookStepsAsync(List<PostEndWebhookStepInfo> webhookSteps)
     {
+        // Update StartedAt for all webhook steps so their timestamps reflect post-commit time
+        // (they were pre-activated during the transaction for atomicity, but timeline ordering
+        // requires their timestamps to be after approval/data-application history entries)
+        using (var conn = (SqlConnection)_connectionFactory.CreateConnection())
+        {
+            await conn.OpenAsync();
+            foreach (var step in webhookSteps)
+            {
+                await conn.ExecuteAsync(
+                    "UPDATE WorkflowStepInstances SET StartedAt = @StartedAt WHERE WorkflowInstanceId = @WorkflowInstanceId AND StepId = @StepId",
+                    new { StartedAt = DateTime.UtcNow, WorkflowInstanceId = step.WorkflowInstanceId, StepId = step.StepId });
+            }
+        }
+
         foreach (var step in webhookSteps)
         {
             try

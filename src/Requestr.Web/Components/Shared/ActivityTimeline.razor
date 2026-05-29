@@ -17,13 +17,20 @@
             <div class="mb-4 pb-3 border-bottom">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="fw-medium">@WorkflowProgress.WorkflowName</span>
-                    <span class="text-muted small">@WorkflowProgress.CompletedStepsCount of @WorkflowProgress.TotalStepsCount steps</span>
+                    <span class="text-muted small">@GetProgressLabel()</span>
                 </div>
                 <div class="progress" style="height: 8px;">
                     <div class="progress-bar bg-@GetWorkflowProgressColor()" 
-                         style="width: @(WorkflowProgress.ProgressPercentage)%"
+                         style="width: @(GetRequiredProgressPercentage())%"
                          role="progressbar">
                     </div>
+                    @if (GetWebhookStepCount() > 0)
+                    {
+                        <div class="progress-bar bg-info progress-bar-striped" 
+                             style="width: @(GetWebhookProgressPercentage())%"
+                             role="progressbar">
+                        </div>
+                    }
                 </div>
                 @if (WorkflowProgress.IsStalled)
                 {
@@ -193,6 +200,47 @@
         };
     }
 
+    private int GetWebhookStepCount()
+    {
+        return WorkflowProgress?.Steps.Count(s => s.StepType == WorkflowStepType.Webhook) ?? 0;
+    }
+
+    private int GetRequiredStepCount()
+    {
+        return (WorkflowProgress?.TotalStepsCount ?? 0) - GetWebhookStepCount();
+    }
+
+    private int GetCompletedRequiredStepCount()
+    {
+        var completedWebhooks = WorkflowProgress?.Steps.Count(s => s.StepType == WorkflowStepType.Webhook && s.CompletedAt.HasValue) ?? 0;
+        return (WorkflowProgress?.CompletedStepsCount ?? 0) - completedWebhooks;
+    }
+
+    private string GetProgressLabel()
+    {
+        var webhookCount = GetWebhookStepCount();
+        var requiredTotal = GetRequiredStepCount();
+        var requiredCompleted = GetCompletedRequiredStepCount();
+
+        return $"{requiredCompleted} of {requiredTotal} steps";
+    }
+
+    private double GetRequiredProgressPercentage()
+    {
+        var totalSteps = WorkflowProgress?.TotalStepsCount ?? 0;
+        if (totalSteps == 0) return 0;
+        var completedRequired = GetCompletedRequiredStepCount();
+        return Math.Round((double)completedRequired / totalSteps * 100, 1);
+    }
+
+    private double GetWebhookProgressPercentage()
+    {
+        var totalSteps = WorkflowProgress?.TotalStepsCount ?? 0;
+        if (totalSteps == 0) return 0;
+        var completedWebhooks = WorkflowProgress?.Steps.Count(s => s.StepType == WorkflowStepType.Webhook && s.CompletedAt.HasValue) ?? 0;
+        return Math.Round((double)completedWebhooks / totalSteps * 100, 1);
+    }
+
     /// <summary>
     /// A single entry in the unified activity timeline.
     /// </summary>
@@ -277,19 +325,19 @@
     public static int GetHistorySortPriority(FormRequestChangeType changeType) => changeType switch
     {
         FormRequestChangeType.Created              => 0,
-        FormRequestChangeType.Updated              => 10,
-        FormRequestChangeType.WorkflowStarted      => 20,
-        FormRequestChangeType.WorkflowStepCompleted => 30,
-        FormRequestChangeType.WorkflowStepApproved => 30,
-        FormRequestChangeType.WorkflowStepRejected => 30,
-        FormRequestChangeType.WorkflowCompleted    => 40,
-        FormRequestChangeType.StatusChanged        => 50,
-        FormRequestChangeType.Approved             => 60,
-        FormRequestChangeType.Rejected             => 60,
-        FormRequestChangeType.Applied              => 70,
-        FormRequestChangeType.Failed               => 70,
-        FormRequestChangeType.Cancelled              => 80,
-        _                                          => 50
+        FormRequestChangeType.Updated              => 50,
+        FormRequestChangeType.WorkflowStarted      => 50,
+        FormRequestChangeType.WorkflowStepCompleted => 100,
+        FormRequestChangeType.WorkflowStepApproved => 100,
+        FormRequestChangeType.WorkflowStepRejected => 100,
+        FormRequestChangeType.WorkflowCompleted    => 200,
+        FormRequestChangeType.StatusChanged        => 200,
+        FormRequestChangeType.Approved             => 200,
+        FormRequestChangeType.Rejected             => 200,
+        FormRequestChangeType.Applied              => 250,
+        FormRequestChangeType.Failed               => 250,
+        FormRequestChangeType.Cancelled            => 400,
+        _                                          => 200
     };
 
     public static bool IsWorkflowHistoryType(FormRequestChangeType changeType) => changeType switch
@@ -319,8 +367,9 @@
         var entries = new List<TimelineEntry>();
         var seenKeys = new HashSet<string>();
 
-        foreach (var step in progress.Steps)
+        for (int i = 0; i < progress.Steps.Count; i++)
         {
+            var step = progress.Steps[i];
             if (step.StepType == WorkflowStepType.Start || step.StepType == WorkflowStepType.End)
                 continue;
 
@@ -359,7 +408,7 @@
                         Duration = step.StartedAt.HasValue
                             ? FormatDuration(step.CompletedAt.Value - step.StartedAt.Value) : null,
                         AssignedRoles = step.AssignedRoles?.Any() == true ? step.AssignedRoles : null,
-                        SortPriority = 30,
+                        SortPriority = step.StepType == WorkflowStepType.Webhook ? 300 + i : 100 + i,
                         LinkUrl = (step.StepType == WorkflowStepType.Approval && progress.WorkflowInstanceId > 0)
                             ? $"/workflow/{progress.WorkflowInstanceId}/step/{step.StepId}" : null,
                         DeduplicationKey = key
@@ -381,7 +430,7 @@
                         AssignedRoles = step.AssignedRoles?.Any() == true ? step.AssignedRoles : null,
                         Duration = step.StartedAt.HasValue
                             ? FormatDuration(DateTime.UtcNow - step.StartedAt.Value) : null,
-                        SortPriority = 35,
+                        SortPriority = 300 + i,
                         DeduplicationKey = key,
                         WebhookAction = new WebhookAction
                         {
@@ -406,7 +455,7 @@
                         MarkerColor = "bg-warning",
                         Comments = step.Comments,
                         AssignedRoles = step.AssignedRoles?.Any() == true ? step.AssignedRoles : null,
-                        SortPriority = 35,
+                        SortPriority = 300 + i,
                         DeduplicationKey = key,
                         WebhookAction = new WebhookAction
                         {
@@ -431,7 +480,7 @@
                         AssignedRoles = step.AssignedRoles?.Any() == true ? step.AssignedRoles : null,
                         Duration = step.StartedAt.HasValue
                             ? FormatDuration(DateTime.UtcNow - step.StartedAt.Value) : null,
-                        SortPriority = 25,
+                        SortPriority = 100 + i,
                         LinkUrl = (step.StepType == WorkflowStepType.Approval && progress.WorkflowInstanceId > 0)
                             ? $"/workflow/{progress.WorkflowInstanceId}/step/{step.StepId}" : null,
                         DeduplicationKey = key
@@ -444,14 +493,12 @@
     }
 
     /// <summary>
-    /// Sorts a list of timeline entries using minute-bucketed timestamps + priority tiebreaker.
+    /// Sorts timeline entries chronologically.
     /// </summary>
     public static List<TimelineEntry> SortEntries(List<TimelineEntry> entries)
     {
         return entries
-            .OrderBy(e => e.Timestamp.Ticks / TimeSpan.TicksPerMinute)
-            .ThenBy(e => e.SortPriority)
-            .ThenBy(e => e.Timestamp)
+            .OrderBy(e => e.Timestamp)
             .ToList();
     }
 }

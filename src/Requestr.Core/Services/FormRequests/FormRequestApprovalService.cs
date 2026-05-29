@@ -373,43 +373,34 @@ public class FormRequestApprovalService : IFormRequestApprovalService
             }
 
             // Record the action in form request history
-            // Use workflow-specific change types for individual step actions so they don't
-            // duplicate the step instance entries shown in the activity timeline.
-            // Only use Approved/Rejected when the entire workflow completes.
-            FormRequestChangeType changeType;
-            if (result.WorkflowCompleted && result.WorkflowApproved)
+            // When the workflow completes, the Approved/Rejected history is written by
+            // ExecutePostCommitActionsAsync (before data application and webhooks) for correct timeline ordering.
+            // Here we only record individual step actions for in-progress workflows.
+            if (!result.WorkflowCompleted)
             {
-                changeType = FormRequestChangeType.Approved;
-            }
-            else if (result.WorkflowCompleted && !result.WorkflowApproved)
-            {
-                changeType = FormRequestChangeType.Rejected;
-            }
-            else
-            {
-                changeType = actionType.ToLower() switch
+                var changeType = actionType.ToLower() switch
                 {
                     "approve" => FormRequestChangeType.WorkflowStepApproved,
                     "reject" => FormRequestChangeType.WorkflowStepRejected,
                     _ => FormRequestChangeType.WorkflowStepCompleted
                 };
-            }
 
-            await _historyService.RecordChangeAsync(
-                formRequestId,
-                changeType,
-                new Dictionary<string, object?> { { "PreviousStep", result.PreviousStepName } },
-                new Dictionary<string, object?> 
-                { 
-                    { "CurrentStep", result.CurrentStepName },
-                    { "ActionType", actionType },
-                    { "Comments", sanitizedComments },
-                    { "FieldUpdates", fieldUpdates }
-                },
-                userId,
-                result.ActorName ?? userId,
-                sanitizedComments
-            );
+                await _historyService.RecordChangeAsync(
+                    formRequestId,
+                    changeType,
+                    new Dictionary<string, object?> { { "PreviousStep", result.PreviousStepName } },
+                    new Dictionary<string, object?> 
+                    { 
+                        { "CurrentStep", result.CurrentStepName },
+                        { "ActionType", actionType },
+                        { "Comments", sanitizedComments },
+                        { "FieldUpdates", fieldUpdates }
+                    },
+                    userId,
+                    result.ActorName ?? userId,
+                    sanitizedComments
+                );
+            }
 
             return true;
         }

@@ -97,6 +97,26 @@ public class FormRequestCommandService : IFormRequestCommandService
             // Create the form request
             var createdRequest = await _formRequestRepository.CreateAsync(formRequest, connection, transaction);
 
+            // Record the creation in history (before workflow start so timestamp ordering is correct)
+            await _historyService.RecordChangeAsync(
+                createdRequest.Id,
+                FormRequestChangeType.Created,
+                null,
+                new Dictionary<string, object?>
+                {
+                    { "RequestType", createdRequest.RequestType },
+                    { "FieldValues", createdRequest.FieldValues },
+                    { "OriginalValues", createdRequest.OriginalValues },
+                    { "Status", (int)createdRequest.Status },
+                    { "Comments", createdRequest.Comments }
+                },
+                createdRequest.RequestedBy,
+                createdRequest.RequestedByName,
+                workflowDefinition != null ? "Request created and workflow started" : "Request created (no workflow)",
+                connection,
+                transaction
+            );
+
             // Start workflow if one exists
             if (workflowDefinition != null)
             {
@@ -115,27 +135,6 @@ public class FormRequestCommandService : IFormRequestCommandService
             {
                 _logger.LogInformation("Form request {RequestId} auto-approved (no workflow)", createdRequest.Id);
             }
-
-            // Record the creation in history
-            await _historyService.RecordChangeAsync(
-                createdRequest.Id,
-                FormRequestChangeType.Created,
-                null,
-                new Dictionary<string, object?>
-                {
-                    { "RequestType", createdRequest.RequestType },
-                    { "FieldValues", createdRequest.FieldValues },
-                    { "OriginalValues", createdRequest.OriginalValues },
-                    { "Status", (int)createdRequest.Status },
-                    { "Comments", createdRequest.Comments },
-                    { "WorkflowInstanceId", createdRequest.WorkflowInstanceId }
-                },
-                createdRequest.RequestedBy,
-                createdRequest.RequestedByName,
-                workflowDefinition != null ? "Request created and workflow started" : "Request created (no workflow)",
-                connection,
-                transaction
-            );
 
             await transaction.CommitAsync();
 
