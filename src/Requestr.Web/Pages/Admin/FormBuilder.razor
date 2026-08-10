@@ -1839,6 +1839,7 @@
                               (type.Contains("nvarchar") && IsLongText(type)):
                 options.Add(("textarea", "Text Area"));
                 options.Add(("text", "Text Input"));
+                options.Add(("searchable-select", "Searchable Dropdown"));
                 break;
 
             case var type when type.Contains("varchar") || type.Contains("nvarchar") || 
@@ -1849,6 +1850,7 @@
                 options.Add(("url", "URL Input"));
                 options.Add(("password", "Password Input"));
                 options.Add(("select", "Dropdown"));
+                options.Add(("searchable-select", "Searchable Dropdown"));
                 options.Add(("radio", "Radio Buttons"));
                 options.Add(("checkbox", "Checkbox"));
                 options.Add(("textarea", "Text Area"));
@@ -1896,7 +1898,7 @@
     {
         return controlType switch
         {
-            "text" or "email" or "tel" or "url" or "password" or "textarea" => true,
+            "text" or "email" or "tel" or "url" or "password" or "textarea" or "searchable-select" => true,
             "number" => true, // Can use min/max validation
             _ => false
         };
@@ -1906,7 +1908,7 @@
     {
         return controlType switch
         {
-            "text" or "email" or "tel" or "url" or "password" or "textarea" => true,
+            "text" or "email" or "tel" or "url" or "password" or "textarea" or "searchable-select" => true,
             _ => false
         };
     }

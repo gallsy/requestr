@@ -166,6 +166,14 @@ else
                                                                 }
                                                             </select>
                                                         }
+                                                        else if (controlType == "searchable-select")
+                                                        {
+                                                            <SearchableSelect @bind-Value="_fieldValues[field.Name]"
+                                                                              Options="@GetDropdownOptions(field.DropdownOptions)"
+                                                                              Disabled="@IsFieldDisabled(field)"
+                                                                              Required="@field.IsRequired"
+                                                                              Placeholder="Type to search options..." />
+                                                        }
                                                         else if (controlType == "date")
                                                         {
                                                             <input type="date" 
@@ -280,6 +288,14 @@ else
                                                         }
                                                     }
                                                 </select>
+                                            }
+                                            else if (controlType == "searchable-select")
+                                            {
+                                                <SearchableSelect @bind-Value="_fieldValues[field.Name]"
+                                                                  Options="@GetDropdownOptions(field.DropdownOptions)"
+                                                                  Disabled="@IsFieldDisabled(field)"
+                                                                  Required="@field.IsRequired"
+                                                                  Placeholder="Type to search options..." />
                                             }
                                             else if (controlType == "date")
                                             {
@@ -893,12 +909,10 @@ else
 
     // Removed local DetermineControlType; using FieldRenderUtils.DetermineControlType(field)
 
-    private List<(string Value, string Text)> GetDropdownOptions(string dropdownOptionsJson)
+    private List<(string Value, string Text)> GetDropdownOptions(string? dropdownOptionsJson)
     {
         return FieldRenderUtils.GetDropdownOptions(dropdownOptionsJson);
     }
-
-    // Removed local DropdownOption; using FieldRenderUtils.DropdownOption
 
     private async Task SubmitForm()
     {
@@ -936,10 +950,21 @@ else
                 .ToList();
             foreach (var field in visibleFields)
             {
-                if (!field.IsRequired) continue;
                 var controlType = FieldRenderUtils.DetermineControlType(field);
+                var hasValue = _fieldValues.TryGetValue(field.Name, out var val) &&
+                    !string.IsNullOrWhiteSpace(val);
+
+                if (controlType == "searchable-select" && hasValue &&
+                    !GetDropdownOptions(field.DropdownOptions).Any(option =>
+                        string.Equals(option.Value, val, StringComparison.Ordinal)))
+                {
+                    _validationErrors[field.Name] = $"{field.DisplayName} must be selected from the available options.";
+                    continue;
+                }
+
+                if (!field.IsRequired) continue;
                 if (controlType == "checkbox") continue; // checkboxes always have a value
-                if (_fieldValues.TryGetValue(field.Name, out var val) && !string.IsNullOrWhiteSpace(val)) continue;
+                if (hasValue) continue;
                 _validationErrors[field.Name] = $"{field.DisplayName} is required.";
             }
             if (_validationErrors.Any())

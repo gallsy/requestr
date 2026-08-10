@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Requestr.Core.Models;
+using Requestr.Core.Utilities;
 
 namespace Requestr.Core.Validation;
 
@@ -56,6 +57,19 @@ public static class InputValidator
             result.IsValid = false;
             result.Errors.Add($"{field.DisplayName} must be no longer than {field.MaxLength} characters.");
             return result;
+        }
+
+        if (string.Equals(field.ControlType, "searchable-select", StringComparison.OrdinalIgnoreCase))
+        {
+            var isConfiguredOption = DropdownOptionParser.Parse(field.DropdownOptions)
+                .Any(option => string.Equals(option.Value, input, StringComparison.Ordinal));
+
+            if (!isConfiguredOption)
+            {
+                result.IsValid = false;
+                result.Errors.Add($"{field.DisplayName} must be selected from the available options.");
+                return result;
+            }
         }
 
         // Data type specific validation

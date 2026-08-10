@@ -67,3 +67,35 @@ window.scrollToElement = (elementId) => {
         element.scrollIntoView({ behavior: 'smooth' });
     }
 };
+
+// Searchable select keyboard handling
+const searchableSelectKeydownHandlers = new WeakMap();
+
+window.requestrSearchableSelect = {
+    initialize: (input) => {
+        if (!input || searchableSelectKeydownHandlers.has(input)) {
+            return;
+        }
+
+        const handler = (event) => {
+            if (event.key === 'Enter') {
+                // Blazor still receives the keydown event and selects the option,
+                // but the browser does not submit the containing form.
+                event.preventDefault();
+            }
+        };
+
+        input.addEventListener('keydown', handler);
+        searchableSelectKeydownHandlers.set(input, handler);
+    },
+
+    dispose: (input) => {
+        const handler = input ? searchableSelectKeydownHandlers.get(input) : null;
+        if (!handler) {
+            return;
+        }
+
+        input.removeEventListener('keydown', handler);
+        searchableSelectKeydownHandlers.delete(input);
+    }
+};

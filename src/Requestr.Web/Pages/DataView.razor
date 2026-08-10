@@ -339,6 +339,15 @@ else
                                         }
                                     </select>
                                 }
+                                else if (controlType == "searchable-select")
+                                {
+                                    <SearchableSelect @bind-Value="_bulkUpdateFields[field.Name]"
+                                                      @bind-Value:after="@(() => SetBulkFieldValue(field, null))"
+                                                      Options="@FieldRenderUtils.GetDropdownOptions(field.DropdownOptions)"
+                                                      Disabled="@(_bulkSetNull.TryGetValue(field.Name, out var searchableSetNull) && searchableSetNull)"
+                                                      Required="@field.IsRequired"
+                                                      Placeholder="Type to search options..." />
+                                }
                                 else if (controlType == "textarea")
                                 {
                                     var maxLen = field.MaxLength > 0 ? field.MaxLength : (int?)null;

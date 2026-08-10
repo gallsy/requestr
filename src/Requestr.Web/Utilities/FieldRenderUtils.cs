@@ -1,5 +1,5 @@
-using System.Text.Json;
 using Requestr.Core.Models;
+using Requestr.Core.Utilities;
 
 namespace Requestr.Web.Utilities;
 
@@ -40,39 +40,7 @@ public static class FieldRenderUtils
 
     public static List<(string Value, string Text)> GetDropdownOptions(string? dropdownOptionsJson)
     {
-        var list = new List<(string Value, string Text)>();
-        if (string.IsNullOrWhiteSpace(dropdownOptionsJson)) return list;
-
-        try
-        {
-            var simpleOptions = JsonSerializer.Deserialize<string[]>(dropdownOptionsJson);
-            if (simpleOptions != null)
-            {
-                return simpleOptions.Select(o => (o, o)).ToList();
-            }
-        }
-        catch
-        {
-            try
-            {
-                var complex = JsonSerializer.Deserialize<List<DropdownOption>>(dropdownOptionsJson);
-                if (complex != null)
-                {
-                    return complex.Select(o => (o.Value, o.Text)).ToList();
-                }
-            }
-            catch
-            {
-                // Fallback: line-separated values
-                if (dropdownOptionsJson.Contains('\n') || dropdownOptionsJson.Contains('\r'))
-                {
-                    var lines = dropdownOptionsJson.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-                    return lines.Select(l => (l.Trim(), l.Trim())).ToList();
-                }
-                return new List<(string, string)> { (dropdownOptionsJson, dropdownOptionsJson) };
-            }
-        }
-        return list;
+        return DropdownOptionParser.Parse(dropdownOptionsJson);
     }
 
     public static object? ConvertStringToTyped(string dataType, string controlType, string value)
@@ -150,9 +118,4 @@ public static class FieldRenderUtils
         return false;
     }
 
-    public class DropdownOption
-    {
-        public string Value { get; set; } = string.Empty;
-        public string Text { get; set; } = string.Empty;
-    }
 }

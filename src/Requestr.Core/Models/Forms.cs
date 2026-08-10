@@ -59,7 +59,7 @@ public class FormField : BaseEntity
     public string Name { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public string DataType { get; set; } = string.Empty;
-    public string ControlType { get; set; } = string.Empty; // input, textarea, checkbox, select, date, datetime, time
+    public string ControlType { get; set; } = string.Empty; // input, textarea, checkbox, select, searchable-select, date, datetime, time
     public string? SqlDataType { get; set; } // Original SQL Server data type (e.g., "nvarchar", "int", "bit") for schema drift detection
     public int MaxLength { get; set; }
     public bool IsRequired { get; set; }
