@@ -68,12 +68,12 @@ window.scrollToElement = (elementId) => {
     }
 };
 
-// Searchable select keyboard handling
-const searchableSelectKeydownHandlers = new WeakMap();
+// Combobox keyboard handling
+const comboboxKeydownHandlers = new WeakMap();
 
-window.requestrSearchableSelect = {
+window.requestrCombobox = {
     initialize: (input) => {
-        if (!input || searchableSelectKeydownHandlers.has(input)) {
+        if (!input || comboboxKeydownHandlers.has(input)) {
             return;
         }
 
@@ -86,16 +86,19 @@ window.requestrSearchableSelect = {
         };
 
         input.addEventListener('keydown', handler);
-        searchableSelectKeydownHandlers.set(input, handler);
+        comboboxKeydownHandlers.set(input, handler);
     },
 
     dispose: (input) => {
-        const handler = input ? searchableSelectKeydownHandlers.get(input) : null;
+        const handler = input ? comboboxKeydownHandlers.get(input) : null;
         if (!handler) {
             return;
         }
 
         input.removeEventListener('keydown', handler);
-        searchableSelectKeydownHandlers.delete(input);
+        comboboxKeydownHandlers.delete(input);
     }
 };
+
+// Backward-compatible name used by the strict searchable dropdown component.
+window.requestrSearchableSelect = window.requestrCombobox;

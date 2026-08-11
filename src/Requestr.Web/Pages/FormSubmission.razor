@@ -174,6 +174,18 @@ else
                                                                               Required="@field.IsRequired"
                                                                               Placeholder="Type to search options..." />
                                                         }
+                                                        else if (controlType == "suggested-text")
+                                                        {
+                                                            <SuggestedTextInput @bind-Value="_fieldValues[field.Name]"
+                                                                                DatabaseConnectionName="@_formDefinition.DatabaseConnectionName"
+                                                                                TableName="@_formDefinition.TableName"
+                                                                                Schema="@_formDefinition.Schema"
+                                                                                ColumnName="@field.Name"
+                                                                                Disabled="@IsFieldDisabled(field)"
+                                                                                Required="@field.IsRequired"
+                                                                                MaxLength="@field.MaxLength"
+                                                                                ValidationRegex="@field.ValidationRegex" />
+                                                        }
                                                         else if (controlType == "date")
                                                         {
                                                             <input type="date" 
@@ -296,6 +308,18 @@ else
                                                                   Disabled="@IsFieldDisabled(field)"
                                                                   Required="@field.IsRequired"
                                                                   Placeholder="Type to search options..." />
+                                            }
+                                            else if (controlType == "suggested-text")
+                                            {
+                                                <SuggestedTextInput @bind-Value="_fieldValues[field.Name]"
+                                                                    DatabaseConnectionName="@_formDefinition.DatabaseConnectionName"
+                                                                    TableName="@_formDefinition.TableName"
+                                                                    Schema="@_formDefinition.Schema"
+                                                                    ColumnName="@field.Name"
+                                                                    Disabled="@IsFieldDisabled(field)"
+                                                                    Required="@field.IsRequired"
+                                                                    MaxLength="@field.MaxLength"
+                                                                    ValidationRegex="@field.ValidationRegex" />
                                             }
                                             else if (controlType == "date")
                                             {

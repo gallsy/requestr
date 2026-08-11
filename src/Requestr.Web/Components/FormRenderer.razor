@@ -115,6 +115,19 @@ else
                                                       Required="@IsFieldRequired(field)"
                                                       Placeholder="Type to search options..." />
                                 }
+                                else if (controlType == "suggested-text")
+                                {
+                                    <SuggestedTextInput Value="@GetFieldStringValue(field.Name)"
+                                                        ValueChanged="@((string? value) => HandleFieldValueChange(field.Name, value))"
+                                                        DatabaseConnectionName="@FormDefinition.DatabaseConnectionName"
+                                                        TableName="@FormDefinition.TableName"
+                                                        Schema="@FormDefinition.Schema"
+                                                        ColumnName="@field.Name"
+                                                        Disabled="@isReadOnly"
+                                                        Required="@IsFieldRequired(field)"
+                                                        MaxLength="@field.MaxLength"
+                                                        ValidationRegex="@field.ValidationRegex" />
+                                }
                                 else if (controlType == "date")
                                 {
                                     <input type="date" 
@@ -240,6 +253,19 @@ else
                                           Disabled="@isReadOnly"
                                           Required="@IsFieldRequired(field)"
                                           Placeholder="Type to search options..." />
+                    }
+                    else if (controlType == "suggested-text")
+                    {
+                        <SuggestedTextInput Value="@GetFieldStringValue(field.Name)"
+                                            ValueChanged="@((string? value) => HandleFieldValueChange(field.Name, value))"
+                                            DatabaseConnectionName="@FormDefinition.DatabaseConnectionName"
+                                            TableName="@FormDefinition.TableName"
+                                            Schema="@FormDefinition.Schema"
+                                            ColumnName="@field.Name"
+                                            Disabled="@isReadOnly"
+                                            Required="@IsFieldRequired(field)"
+                                            MaxLength="@field.MaxLength"
+                                            ValidationRegex="@field.ValidationRegex" />
                     }
                     else
                     {

@@ -348,6 +348,19 @@ else
                                                       Required="@field.IsRequired"
                                                       Placeholder="Type to search options..." />
                                 }
+                                else if (controlType == "suggested-text")
+                                {
+                                    <SuggestedTextInput @bind-Value="_bulkUpdateFields[field.Name]"
+                                                        @bind-Value:after="@(() => SetBulkFieldValue(field, null))"
+                                                        DatabaseConnectionName="@_formDefinition.DatabaseConnectionName"
+                                                        TableName="@_formDefinition.TableName"
+                                                        Schema="@_formDefinition.Schema"
+                                                        ColumnName="@field.Name"
+                                                        Disabled="@(_bulkSetNull.TryGetValue(field.Name, out var suggestedTextSetNull) && suggestedTextSetNull)"
+                                                        Required="@field.IsRequired"
+                                                        MaxLength="@field.MaxLength"
+                                                        ValidationRegex="@field.ValidationRegex" />
+                                }
                                 else if (controlType == "textarea")
                                 {
                                     var maxLen = field.MaxLength > 0 ? field.MaxLength : (int?)null;

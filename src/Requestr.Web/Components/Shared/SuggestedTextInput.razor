@@ -1,0 +1,328 @@
+@implements IAsyncDisposable
+@inject IDataService DataService
+@inject IJSRuntime JSRuntime
+@inject ILogger<SuggestedTextInput> Logger
+
+<div class="position-relative">
+    <div class="input-group">
+        <input @ref="_input"
+               type="text"
+               class="form-control"
+               value="@_text"
+               placeholder="@Placeholder"
+               disabled="@Disabled"
+               required="@Required"
+               maxlength="@MaxLengthAttribute"
+               pattern="@ValidationRegex"
+               autocomplete="off"
+               role="combobox"
+               aria-autocomplete="list"
+               aria-expanded="@_isOpen"
+               aria-controls="@_listboxId"
+               aria-activedescendant="@ActiveSuggestionId"
+               aria-busy="@_isLoading"
+               @onfocus="HandleFocus"
+               @onblur="HandleBlur"
+               @oninput="HandleInputAsync"
+               @onkeydown="HandleKeyDownAsync" />
+
+        @if (!Disabled && !string.IsNullOrEmpty(_text))
+        {
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    aria-label="Clear value"
+                    tabindex="-1"
+                    @onmousedown="PreventInputBlur"
+                    @onmousedown:preventDefault
+                    @onclick="ClearAsync">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        }
+    </div>
+
+    @if (_isOpen && !Disabled)
+    {
+        var visibleSuggestions = GetVisibleSuggestions();
+        @if (_isLoading || visibleSuggestions.Count > 0)
+        {
+            <div id="@_listboxId"
+                 class="dropdown-menu show w-100 overflow-auto shadow-sm"
+                 style="top: 100%; left: 0; max-height: 16rem; z-index: 1050;"
+                 role="listbox">
+                @if (visibleSuggestions.Count > 0)
+                {
+                    @for (var index = 0; index < visibleSuggestions.Count; index++)
+                    {
+                        var suggestion = visibleSuggestions[index];
+                        var suggestionIndex = index;
+                        <button id="@GetSuggestionId(suggestionIndex)"
+                                type="button"
+                                class="dropdown-item @(suggestionIndex == _highlightedIndex ? "active" : null)"
+                                role="option"
+                                aria-selected="@(string.Equals(suggestion, _text, StringComparison.Ordinal))"
+                                @onmousedown="PreventInputBlur"
+                                @onmousedown:preventDefault
+                                @onclick="@(() => SelectSuggestionAsync(suggestion))">
+                            @suggestion
+                        </button>
+                    }
+                }
+                else
+                {
+                    <span class="dropdown-item-text text-muted">
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                        Loading suggestions...
+                    </span>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter, EditorRequired] public string DatabaseConnectionName { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string TableName { get; set; } = string.Empty;
+    [Parameter] public string Schema { get; set; } = "dbo";
+    [Parameter, EditorRequired] public string ColumnName { get; set; } = string.Empty;
+    [Parameter] public string Placeholder { get; set; } = "Type or select an existing value...";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public int MaxLength { get; set; }
+    [Parameter] public string? ValidationRegex { get; set; }
+    [Parameter] public int MaxSuggestions { get; set; } = 50;
+    [Parameter] public int DebounceMilliseconds { get; set; } = 250;
+
+    private readonly string _listboxId = $"suggested-text-{Guid.NewGuid():N}";
+    private ElementReference _input;
+    private CancellationTokenSource? _loadCancellation;
+    private List<string> _suggestions = new();
+    private string _currentValue = string.Empty;
+    private string _text = string.Empty;
+    private bool _initialized;
+    private bool _isOpen;
+    private bool _isFocused;
+    private bool _isLoading;
+    private bool _filterOnInput;
+    private bool _disposed;
+    private int _highlightedIndex = -1;
+
+    private int? MaxLengthAttribute => MaxLength > 0 ? MaxLength : null;
+    private string? ActiveSuggestionId => _highlightedIndex >= 0 ? GetSuggestionId(_highlightedIndex) : null;
+
+    protected override void OnParametersSet()
+    {
+        var externalValue = Value ?? string.Empty;
+        if (!_initialized || !string.Equals(externalValue, _currentValue, StringComparison.Ordinal))
+        {
+            _currentValue = externalValue;
+            _text = externalValue;
+        }
+
+        _initialized = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("requestrCombobox.initialize", _input);
+        }
+    }
+
+    private List<string> GetVisibleSuggestions()
+    {
+        var query = _filterOnInput ? _text.Trim() : string.Empty;
+        return _suggestions
+            .Where(suggestion => string.IsNullOrEmpty(query) ||
+                                 suggestion.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+            .Take(Math.Max(1, MaxSuggestions))
+            .ToList();
+    }
+
+    private void HandleFocus(FocusEventArgs args)
+    {
+        _isFocused = true;
+        _isOpen = true;
+        _filterOnInput = false;
+        _highlightedIndex = -1;
+        QueueSuggestionLoad(string.Empty, debounce: false);
+    }
+
+    private void HandleBlur(FocusEventArgs args)
+    {
+        _isFocused = false;
+        _isOpen = false;
+        _highlightedIndex = -1;
+    }
+
+    private async Task HandleInputAsync(ChangeEventArgs args)
+    {
+        _text = args.Value?.ToString() ?? string.Empty;
+        _currentValue = _text;
+        _isOpen = true;
+        _filterOnInput = true;
+        _highlightedIndex = -1;
+
+        await ValueChanged.InvokeAsync(_currentValue);
+        QueueSuggestionLoad(_text, debounce: true);
+    }
+
+    private async Task SelectSuggestionAsync(string suggestion)
+    {
+        _text = suggestion;
+        _currentValue = suggestion;
+        _filterOnInput = false;
+        _isOpen = false;
+        _highlightedIndex = -1;
+        await ValueChanged.InvokeAsync(suggestion);
+        await _input.FocusAsync();
+    }
+
+    private async Task ClearAsync()
+    {
+        _text = string.Empty;
+        _currentValue = string.Empty;
+        _filterOnInput = false;
+        _isOpen = true;
+        _highlightedIndex = -1;
+        await ValueChanged.InvokeAsync(string.Empty);
+        QueueSuggestionLoad(string.Empty, debounce: false);
+        await _input.FocusAsync();
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            _isOpen = false;
+            _highlightedIndex = -1;
+            return;
+        }
+
+        var visibleSuggestions = GetVisibleSuggestions();
+        if (visibleSuggestions.Count == 0)
+            return;
+
+        if (args.Key == "ArrowDown")
+        {
+            _isOpen = true;
+            _highlightedIndex = Math.Min(_highlightedIndex + 1, visibleSuggestions.Count - 1);
+        }
+        else if (args.Key == "ArrowUp")
+        {
+            _isOpen = true;
+            _highlightedIndex = _highlightedIndex <= 0
+                ? visibleSuggestions.Count - 1
+                : _highlightedIndex - 1;
+        }
+        else if (args.Key == "Home" && _isOpen)
+        {
+            _highlightedIndex = 0;
+        }
+        else if (args.Key == "End" && _isOpen)
+        {
+            _highlightedIndex = visibleSuggestions.Count - 1;
+        }
+        else if (args.Key == "Enter" && _isOpen && _highlightedIndex >= 0)
+        {
+            await SelectSuggestionAsync(visibleSuggestions[_highlightedIndex]);
+        }
+    }
+
+    private void QueueSuggestionLoad(string searchText, bool debounce)
+    {
+        _loadCancellation?.Cancel();
+        _loadCancellation?.Dispose();
+        _loadCancellation = new CancellationTokenSource();
+        _isLoading = true;
+        _ = LoadSuggestionsAsync(searchText, debounce, _loadCancellation);
+    }
+
+    private async Task LoadSuggestionsAsync(
+        string searchText,
+        bool debounce,
+        CancellationTokenSource loadCancellation)
+    {
+        var cancellationToken = loadCancellation.Token;
+
+        try
+        {
+            if (debounce && DebounceMilliseconds > 0)
+            {
+                await Task.Delay(DebounceMilliseconds, cancellationToken);
+            }
+
+            var suggestions = await DataService.GetDistinctColumnValuesAsync(
+                DatabaseConnectionName,
+                TableName,
+                Schema,
+                ColumnName,
+                searchText,
+                MaxSuggestions,
+                cancellationToken);
+
+            await InvokeAsync(() =>
+            {
+                if (!ReferenceEquals(_loadCancellation, loadCancellation) || cancellationToken.IsCancellationRequested)
+                    return;
+
+                _suggestions = suggestions
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(suggestion => suggestion, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                _isLoading = false;
+                _isOpen = _isFocused;
+                _highlightedIndex = -1;
+                StateHasChanged();
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer search superseded this request.
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(
+                ex,
+                "Unable to load suggestions for {Schema}.{TableName}.{ColumnName}",
+                Schema,
+                TableName,
+                ColumnName);
+
+            await InvokeAsync(() =>
+            {
+                if (!ReferenceEquals(_loadCancellation, loadCancellation)) return;
+                _suggestions.Clear();
+                _isLoading = false;
+                _isOpen = _isFocused;
+                StateHasChanged();
+            });
+        }
+    }
+
+    private string GetSuggestionId(int index) => $"{_listboxId}-option-{index}";
+
+    private static void PreventInputBlur(MouseEventArgs args)
+    {
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        _loadCancellation?.Cancel();
+        _loadCancellation?.Dispose();
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("requestrCombobox.dispose", _input);
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser connection has already closed.
+        }
+    }
+}
