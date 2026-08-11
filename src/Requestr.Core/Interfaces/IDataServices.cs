@@ -25,4 +25,12 @@ public interface IDataService
     Task<Dictionary<string, string>> GetRecordSummariesAsync(string connectionStringName, string tableName, string schema = "dbo");
     Task<Dictionary<string, object?>> GetRecordByIdAsync(string connectionStringName, string tableName, string recordId, string schema = "dbo");
     Task<List<string>> GetPrimaryKeyColumnsAsync(string databaseName, string tableName, string schema = "dbo");
+    Task<List<string>> GetDistinctColumnValuesAsync(
+        string databaseName,
+        string tableName,
+        string schema,
+        string columnName,
+        string? searchText = null,
+        int maxResults = 50,
+        CancellationToken cancellationToken = default);
 }

@@ -583,6 +583,92 @@ public class DataService : IDataService
         }
     }
 
+    public async Task<List<string>> GetDistinctColumnValuesAsync(
+        string databaseName,
+        string tableName,
+        string schema,
+        string columnName,
+        string? searchText = null,
+        int maxResults = 50,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(tableName))
+            throw new ArgumentException("Table name is required.", nameof(tableName));
+        if (string.IsNullOrWhiteSpace(schema))
+            throw new ArgumentException("Schema is required.", nameof(schema));
+        if (string.IsNullOrWhiteSpace(columnName))
+            throw new ArgumentException("Column name is required.", nameof(columnName));
+
+        var connectionString = GetConnectionString(databaseName);
+        var resultLimit = Math.Clamp(maxResults, 1, 100);
+        var normalizedSearchText = searchText?.Trim() ?? string.Empty;
+
+        try
+        {
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync(cancellationToken);
+
+            const string columnExistsSql = @"
+                SELECT COUNT(1)
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = @schema
+                  AND TABLE_NAME = @tableName
+                  AND COLUMN_NAME = @columnName";
+
+            var columnExists = await connection.QuerySingleAsync<int>(new CommandDefinition(
+                columnExistsSql,
+                new { schema, tableName, columnName },
+                commandTimeout: 10,
+                cancellationToken: cancellationToken));
+
+            if (columnExists == 0)
+            {
+                throw new ArgumentException(
+                    $"Column '{columnName}' was not found in '{schema}.{tableName}'.",
+                    nameof(columnName));
+            }
+
+            var escapedSchema = QuoteIdentifier(schema);
+            var escapedTable = QuoteIdentifier(tableName);
+            var escapedColumn = QuoteIdentifier(columnName);
+            var sql = $@"
+                SELECT DISTINCT TOP (@resultLimit)
+                    CONVERT(nvarchar(4000), {escapedColumn}) AS [Value]
+                FROM {escapedSchema}.{escapedTable}
+                WHERE {escapedColumn} IS NOT NULL
+                  AND LTRIM(RTRIM(CONVERT(nvarchar(4000), {escapedColumn}))) <> N''
+                  AND (@searchPattern = N'' OR CONVERT(nvarchar(4000), {escapedColumn}) LIKE @searchPattern + N'%' ESCAPE N'~')
+                ORDER BY [Value]";
+
+            var values = await connection.QueryAsync<string>(new CommandDefinition(
+                sql,
+                new
+                {
+                    resultLimit,
+                    searchPattern = EscapeLikePattern(normalizedSearchText)
+                },
+                commandTimeout: 10,
+                cancellationToken: cancellationToken));
+
+            return values.ToList();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Error getting distinct values for {Schema}.{TableName}.{ColumnName} in database {DatabaseName}",
+                schema,
+                tableName,
+                columnName,
+                databaseName);
+            throw;
+        }
+    }
+
     private string GetConnectionString(string connectionStringName)
     {
         // Try to get from ConnectionStrings section first
@@ -601,6 +687,14 @@ public class DataService : IDataService
         
         throw new ArgumentException($"Connection string '{connectionStringName}' not found in configuration.");
     }
+
+    private static string QuoteIdentifier(string identifier) => $"[{identifier.Replace("]", "]]", StringComparison.Ordinal)}]";
+
+    private static string EscapeLikePattern(string value) => value
+        .Replace("~", "~~", StringComparison.Ordinal)
+        .Replace("%", "~%", StringComparison.Ordinal)
+        .Replace("_", "~_", StringComparison.Ordinal)
+        .Replace("[", "~[", StringComparison.Ordinal);
 
     private static Dictionary<string, object?> CoerceParameterTypes(
         Dictionary<string, object?> data, 

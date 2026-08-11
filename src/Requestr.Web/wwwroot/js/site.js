@@ -67,3 +67,38 @@ window.scrollToElement = (elementId) => {
         element.scrollIntoView({ behavior: 'smooth' });
     }
 };
+
+// Combobox keyboard handling
+const comboboxKeydownHandlers = new WeakMap();
+
+window.requestrCombobox = {
+    initialize: (input) => {
+        if (!input || comboboxKeydownHandlers.has(input)) {
+            return;
+        }
+
+        const handler = (event) => {
+            if (event.key === 'Enter') {
+                // Blazor still receives the keydown event and selects the option,
+                // but the browser does not submit the containing form.
+                event.preventDefault();
+            }
+        };
+
+        input.addEventListener('keydown', handler);
+        comboboxKeydownHandlers.set(input, handler);
+    },
+
+    dispose: (input) => {
+        const handler = input ? comboboxKeydownHandlers.get(input) : null;
+        if (!handler) {
+            return;
+        }
+
+        input.removeEventListener('keydown', handler);
+        comboboxKeydownHandlers.delete(input);
+    }
+};
+
+// Backward-compatible name used by the strict searchable dropdown component.
+window.requestrSearchableSelect = window.requestrCombobox;

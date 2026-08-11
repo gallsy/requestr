@@ -106,6 +106,28 @@ else
                                         }
                                     </select>
                                 }
+                                else if (controlType == "searchable-select")
+                                {
+                                    <SearchableSelect Value="@GetFieldStringValue(field.Name)"
+                                                      ValueChanged="@((string? value) => HandleFieldValueChange(field.Name, value))"
+                                                      Options="@GetDropdownOptions(field.DropdownOptions)"
+                                                      Disabled="@isReadOnly"
+                                                      Required="@IsFieldRequired(field)"
+                                                      Placeholder="Type to search options..." />
+                                }
+                                else if (controlType == "suggested-text")
+                                {
+                                    <SuggestedTextInput Value="@GetFieldStringValue(field.Name)"
+                                                        ValueChanged="@((string? value) => HandleFieldValueChange(field.Name, value))"
+                                                        DatabaseConnectionName="@FormDefinition.DatabaseConnectionName"
+                                                        TableName="@FormDefinition.TableName"
+                                                        Schema="@FormDefinition.Schema"
+                                                        ColumnName="@field.Name"
+                                                        Disabled="@isReadOnly"
+                                                        Required="@IsFieldRequired(field)"
+                                                        MaxLength="@field.MaxLength"
+                                                        ValidationRegex="@field.ValidationRegex" />
+                                }
                                 else if (controlType == "date")
                                 {
                                     <input type="date" 
@@ -222,6 +244,28 @@ else
                                 }
                             }
                         </select>
+                    }
+                    else if (controlType == "searchable-select")
+                    {
+                        <SearchableSelect Value="@GetFieldStringValue(field.Name)"
+                                          ValueChanged="@((string? value) => HandleFieldValueChange(field.Name, value))"
+                                          Options="@GetDropdownOptions(field.DropdownOptions)"
+                                          Disabled="@isReadOnly"
+                                          Required="@IsFieldRequired(field)"
+                                          Placeholder="Type to search options..." />
+                    }
+                    else if (controlType == "suggested-text")
+                    {
+                        <SuggestedTextInput Value="@GetFieldStringValue(field.Name)"
+                                            ValueChanged="@((string? value) => HandleFieldValueChange(field.Name, value))"
+                                            DatabaseConnectionName="@FormDefinition.DatabaseConnectionName"
+                                            TableName="@FormDefinition.TableName"
+                                            Schema="@FormDefinition.Schema"
+                                            ColumnName="@field.Name"
+                                            Disabled="@isReadOnly"
+                                            Required="@IsFieldRequired(field)"
+                                            MaxLength="@field.MaxLength"
+                                            ValidationRegex="@field.ValidationRegex" />
                     }
                     else
                     {
@@ -431,7 +475,7 @@ else
         };
     }
 
-    private List<(string Value, string Text)> GetDropdownOptions(string dropdownOptionsJson)
+    private List<(string Value, string Text)> GetDropdownOptions(string? dropdownOptionsJson)
     {
         if (string.IsNullOrEmpty(dropdownOptionsJson))
             return new List<(string Value, string Text)>();

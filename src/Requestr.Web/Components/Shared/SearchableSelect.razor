@@ -1,0 +1,301 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JSRuntime
+
+<div class="position-relative">
+    <div class="input-group">
+        <input @ref="_input"
+               type="text"
+               class="@InputCssClass"
+               value="@_searchText"
+               placeholder="@Placeholder"
+               disabled="@Disabled"
+               autocomplete="off"
+               role="combobox"
+               aria-autocomplete="list"
+               aria-expanded="@_isOpen"
+               aria-controls="@_listboxId"
+               aria-activedescendant="@ActiveOptionId"
+               @onfocus="HandleFocus"
+               @onblur="HandleBlur"
+               @oninput="HandleInputAsync"
+               @onkeydown="HandleKeyDownAsync" />
+
+        @if (!Disabled && !string.IsNullOrEmpty(_searchText))
+        {
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    aria-label="Clear selection"
+                    tabindex="-1"
+                    @onmousedown="PreventInputBlur"
+                    @onmousedown:preventDefault
+                    @onclick="ClearAsync">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        }
+    </div>
+
+    @if (_isOpen && !Disabled)
+    {
+        var filteredOptions = GetFilteredOptions();
+        <div id="@_listboxId"
+             class="dropdown-menu show w-100 overflow-auto shadow-sm"
+               style="top: 100%; left: 0; max-height: 16rem; z-index: 1050;"
+             role="listbox">
+            @if (filteredOptions.Count > 0)
+            {
+                @for (var index = 0; index < filteredOptions.Count; index++)
+                {
+                    var option = filteredOptions[index];
+                    var optionIndex = index;
+                    <button id="@GetOptionId(optionIndex)"
+                            type="button"
+                            class="dropdown-item @(optionIndex == _highlightedIndex ? "active" : null)"
+                            role="option"
+                            aria-selected="@(string.Equals(option.Value, _selectedValue, StringComparison.Ordinal))"
+                            @onmousedown="PreventInputBlur"
+                            @onmousedown:preventDefault
+                            @onclick="@(() => SelectOptionAsync(option))">
+                        @option.Text
+                    </button>
+                }
+            }
+            else
+            {
+                <span class="dropdown-item-text text-muted">@EmptyText</span>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public IReadOnlyList<(string Value, string Text)> Options { get; set; } = Array.Empty<(string, string)>();
+    [Parameter] public string Placeholder { get; set; } = "Type to search...";
+    [Parameter] public string EmptyText { get; set; } = "No matching options found.";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public int MaxSuggestions { get; set; } = 50;
+
+    private readonly string _listboxId = $"searchable-select-{Guid.NewGuid():N}";
+    private List<SearchableSelectOption> _options = new();
+    private ElementReference _input;
+    private string _currentValue = string.Empty;
+    private string _searchText = string.Empty;
+    private string _selectedValue = string.Empty;
+    private bool _initialized;
+    private bool _isOpen;
+    private bool _filterOnInput;
+    private bool _wasInteractedWith;
+    private int _highlightedIndex = -1;
+
+    private string InputCssClass
+    {
+        get
+        {
+            var validationClass = string.Empty;
+            if (_wasInteractedWith)
+            {
+                if (HasValidSelection)
+                    validationClass = " is-valid";
+                else if (Required || !string.IsNullOrWhiteSpace(_searchText))
+                    validationClass = " is-invalid";
+            }
+
+            return $"form-control{validationClass}";
+        }
+    }
+
+    private bool HasValidSelection =>
+        !string.IsNullOrEmpty(_selectedValue) &&
+        _options.Any(option =>
+            string.Equals(option.Value, _selectedValue, StringComparison.Ordinal) &&
+            string.Equals(option.Text, _searchText, StringComparison.Ordinal));
+
+    private string? ActiveOptionId => _highlightedIndex >= 0 ? GetOptionId(_highlightedIndex) : null;
+
+    protected override void OnParametersSet()
+    {
+        _options = Options
+            .Where(option => !string.IsNullOrWhiteSpace(option.Value))
+            .Select(option => new SearchableSelectOption(
+                option.Value,
+                string.IsNullOrWhiteSpace(option.Text) ? option.Value : option.Text))
+            .GroupBy(option => option.Value, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .OrderBy(option => option.Text, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(option => option.Value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var externalValue = Value ?? string.Empty;
+        if (!_initialized || !string.Equals(externalValue, _currentValue, StringComparison.Ordinal))
+        {
+            var matchingOption = _options.FirstOrDefault(option =>
+                string.Equals(option.Value, externalValue, StringComparison.Ordinal));
+
+            _currentValue = externalValue;
+            _selectedValue = matchingOption?.Value ?? string.Empty;
+            _searchText = matchingOption?.Text ?? externalValue;
+            _wasInteractedWith = false;
+        }
+        else if (!string.IsNullOrEmpty(_selectedValue))
+        {
+            // Refresh the label if the configured option text changed.
+            _searchText = ResolveDisplayText(_selectedValue);
+        }
+
+        _initialized = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("requestrSearchableSelect.initialize", _input);
+        }
+    }
+
+    private List<SearchableSelectOption> GetFilteredOptions()
+    {
+        var query = _filterOnInput ? _searchText.Trim() : string.Empty;
+        return _options
+            .Where(option => string.IsNullOrEmpty(query) ||
+                             option.Text.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                             option.Value.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .Take(Math.Max(1, MaxSuggestions))
+            .ToList();
+    }
+
+    private void HandleFocus(FocusEventArgs args)
+    {
+        _isOpen = true;
+        _filterOnInput = false;
+        _highlightedIndex = -1;
+    }
+
+    private void HandleBlur(FocusEventArgs args)
+    {
+        _isOpen = false;
+        _highlightedIndex = -1;
+    }
+
+    private async Task HandleInputAsync(ChangeEventArgs args)
+    {
+        _searchText = args.Value?.ToString() ?? string.Empty;
+        _isOpen = true;
+        _filterOnInput = true;
+        _wasInteractedWith = true;
+        _highlightedIndex = -1;
+
+        var exactOption = _options.FirstOrDefault(option =>
+            string.Equals(option.Text, _searchText, StringComparison.Ordinal));
+
+        if (exactOption != null)
+        {
+            _selectedValue = exactOption.Value;
+            _currentValue = exactOption.Value;
+        }
+        else
+        {
+            _selectedValue = string.Empty;
+            _currentValue = _searchText;
+        }
+
+        await ValueChanged.InvokeAsync(_currentValue);
+    }
+
+    private async Task SelectOptionAsync(SearchableSelectOption option)
+    {
+        _currentValue = option.Value;
+        _selectedValue = option.Value;
+        _searchText = option.Text;
+        _wasInteractedWith = true;
+        _filterOnInput = false;
+        _isOpen = false;
+        _highlightedIndex = -1;
+        await ValueChanged.InvokeAsync(_selectedValue);
+        await _input.FocusAsync();
+    }
+
+    private async Task ClearAsync()
+    {
+        _currentValue = string.Empty;
+        _selectedValue = string.Empty;
+        _searchText = string.Empty;
+        _wasInteractedWith = true;
+        _filterOnInput = false;
+        _isOpen = true;
+        _highlightedIndex = -1;
+        await ValueChanged.InvokeAsync(string.Empty);
+        await _input.FocusAsync();
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            _isOpen = false;
+            _highlightedIndex = -1;
+            return;
+        }
+
+        var filteredOptions = GetFilteredOptions();
+        if (filteredOptions.Count == 0)
+            return;
+
+        if (args.Key == "ArrowDown")
+        {
+            _isOpen = true;
+            _highlightedIndex = Math.Min(_highlightedIndex + 1, filteredOptions.Count - 1);
+        }
+        else if (args.Key == "ArrowUp")
+        {
+            _isOpen = true;
+            _highlightedIndex = _highlightedIndex <= 0 ? filteredOptions.Count - 1 : _highlightedIndex - 1;
+        }
+        else if (args.Key == "Home" && _isOpen)
+        {
+            _highlightedIndex = 0;
+        }
+        else if (args.Key == "End" && _isOpen)
+        {
+            _highlightedIndex = filteredOptions.Count - 1;
+        }
+        else if (args.Key == "Enter" && _isOpen && _highlightedIndex >= 0)
+        {
+            await SelectOptionAsync(filteredOptions[_highlightedIndex]);
+        }
+    }
+
+    private string ResolveDisplayText(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        return _options.FirstOrDefault(option =>
+                   string.Equals(option.Value, value, StringComparison.Ordinal))?.Text
+               ?? value;
+    }
+
+    private string GetOptionId(int index) => $"{_listboxId}-option-{index}";
+
+    private static void PreventInputBlur(MouseEventArgs args)
+    {
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("requestrSearchableSelect.dispose", _input);
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser connection has already closed.
+        }
+    }
+
+    private sealed record SearchableSelectOption(string Value, string Text);
+}

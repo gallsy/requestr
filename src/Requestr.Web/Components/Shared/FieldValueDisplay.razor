@@ -73,6 +73,9 @@
     /// <summary>The control type of the field (e.g. "date", "datetime-local") for display formatting</summary>
     [Parameter] public string? ControlType { get; set; }
 
+    /// <summary>Configured value/text pairs for dropdown-backed fields.</summary>
+    [Parameter] public string? DropdownOptions { get; set; }
+
     private string ResolvedDisplayName => !string.IsNullOrEmpty(DisplayName) ? DisplayName : FieldName;
     
     private bool HasOriginal => RequestType != RequestType.Insert && OriginalValue != null;
@@ -135,6 +138,18 @@
 
     private string FormatStringValue(string strValue)
     {
+        var controlType = ControlType?.ToLowerInvariant();
+        if (controlType is "select" or "searchable-select" && !string.IsNullOrWhiteSpace(DropdownOptions))
+        {
+            var optionText = FieldRenderUtils.GetDropdownOptions(DropdownOptions)
+                .Where(option => string.Equals(option.Value, strValue, StringComparison.Ordinal))
+                .Select(option => option.Text)
+                .FirstOrDefault();
+
+            if (optionText != null)
+                return optionText;
+        }
+
         // Handle ISO-8601 date strings from JSON deserialization
         if (strValue.Length >= 10 && DateTime.TryParse(strValue, System.Globalization.CultureInfo.InvariantCulture,
                 System.Globalization.DateTimeStyles.None, out var parsedDate))
