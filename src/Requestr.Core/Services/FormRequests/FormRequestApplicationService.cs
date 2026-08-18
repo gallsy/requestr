@@ -391,15 +391,15 @@ public class FormRequestApplicationService : IFormRequestApplicationService
         var whereConditions = new Dictionary<string, object?>();
         foreach (var pkColumn in primaryKeyColumns)
         {
-            if (originalValues.ContainsKey(pkColumn))
-            {
-                whereConditions[pkColumn] = originalValues[pkColumn];
-            }
-            else
+            var matchingKey = originalValues.Keys.FirstOrDefault(key =>
+                string.Equals(key, pkColumn, StringComparison.OrdinalIgnoreCase));
+            if (matchingKey == null || originalValues[matchingKey] == null)
             {
                 throw new InvalidOperationException(
-                    $"Primary key column '{pkColumn}' not found in original values");
+                    $"Primary key column '{pkColumn}' is missing from the original values");
             }
+
+            whereConditions[pkColumn] = originalValues[matchingKey];
         }
 
         return whereConditions;

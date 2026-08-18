@@ -1260,6 +1260,7 @@ public class BulkFormRequestService : IBulkFormRequestService
             {
                 try
                 {
+                    var itemId = (int)item.Id;
                     var fieldValuesJson = item.FieldValues?.ToString() ?? "{}";
                     var originalValuesJson = item.OriginalValues?.ToString() ?? "{}";
 
@@ -1268,6 +1269,7 @@ public class BulkFormRequestService : IBulkFormRequestService
 
                     fieldValues = SqlTypeConverter.ConvertDictionary(fieldValues, fields);
                     originalValues = SqlTypeConverter.ConvertDictionary(originalValues, fields);
+                    var originalValuesByName = new Dictionary<string, object?>(originalValues, StringComparer.OrdinalIgnoreCase);
 
                     bool itemSuccess = false;
                     string processingResult;
@@ -1287,10 +1289,10 @@ public class BulkFormRequestService : IBulkFormRequestService
                             var whereConditions = new Dictionary<string, object?>();
                             foreach (var pk in pkColumns)
                             {
-                                if (originalValues.ContainsKey(pk))
-                                    whereConditions[pk] = originalValues[pk];
-                                else
-                                    throw new InvalidOperationException($"Primary key column '{pk}' not found in original values for item {(int)item.Id}");
+                                if (!originalValuesByName.TryGetValue(pk, out var primaryKeyValue) || primaryKeyValue == null)
+                                    throw new InvalidOperationException($"Primary key column '{pk}' is missing from original values for item {itemId}");
+
+                                whereConditions[pk] = primaryKeyValue;
                             }
 
                             itemSuccess = await _dataService.UpdateDataAsync(dbConnectionName, tableName, schema, fieldValues, whereConditions);
@@ -1305,10 +1307,10 @@ public class BulkFormRequestService : IBulkFormRequestService
                             var deleteConditions = new Dictionary<string, object?>();
                             foreach (var pk in deletePkColumns)
                             {
-                                if (originalValues.ContainsKey(pk))
-                                    deleteConditions[pk] = originalValues[pk];
-                                else
-                                    throw new InvalidOperationException($"Primary key column '{pk}' not found in original values for item {(int)item.Id}");
+                                if (!originalValuesByName.TryGetValue(pk, out var primaryKeyValue) || primaryKeyValue == null)
+                                    throw new InvalidOperationException($"Primary key column '{pk}' is missing from original values for item {itemId}");
+
+                                deleteConditions[pk] = primaryKeyValue;
                             }
 
                             itemSuccess = await _dataService.DeleteDataAsync(dbConnectionName, tableName, schema, deleteConditions);

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using Requestr.Core.Repositories;
+using Requestr.Core.Services.FormRequests;
 using Requestr.Core.Utilities;
 
 namespace Requestr.Core.Services.Workflow;
@@ -24,6 +25,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     private readonly INotificationService _notificationService;
     private readonly IWebhookExecutionService _webhookExecutionService;
     private readonly IFormRequestRepository _formRequestRepository;
+    private readonly IFormRequestHistoryService _formRequestHistoryService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<WorkflowExecutionService> _logger;
 
@@ -73,6 +75,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         INotificationService notificationService,
         IWebhookExecutionService webhookExecutionService,
         IFormRequestRepository formRequestRepository,
+        IFormRequestHistoryService formRequestHistoryService,
         IConfiguration configuration,
         ILogger<WorkflowExecutionService> logger)
     {
@@ -85,6 +88,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         _notificationService = notificationService;
         _webhookExecutionService = webhookExecutionService;
         _formRequestRepository = formRequestRepository;
+        _formRequestHistoryService = formRequestHistoryService;
         _configuration = configuration;
         _logger = logger;
     }
@@ -1253,29 +1257,29 @@ public class WorkflowExecutionService : IWorkflowExecutionService
 
             if (applicationSuccess)
             {
-                // Update status to Applied
-                const string updateStatusSql = "UPDATE FormRequests SET Status = @Status WHERE Id = @Id";
-                await connection.ExecuteAsync(updateStatusSql, new { Id = formRequestId, Status = (int)RequestStatus.Applied });
-
-                // Record "Changes Applied" history entry
-                const string insertHistorySql = @"
-                    INSERT INTO FormRequestHistory (FormRequestId, ChangeType, PreviousValues, NewValues, ChangedBy, ChangedAt, Comments)
-                    VALUES (@FormRequestId, @ChangeType, @PreviousValues, @NewValues, @ChangedBy, @ChangedAt, @Comments)";
-                await connection.ExecuteAsync(insertHistorySql, new
+                await _formRequestRepository.UpdateStatusAsync(formRequestId, RequestStatus.Applied, null);
+                try
                 {
-                    FormRequestId = formRequestId,
-                    ChangeType = (int)FormRequestChangeType.Applied,
-                    PreviousValues = "{\"Status\": \"Approved\"}",
-                    NewValues = "{\"Status\": \"Applied\"}",
-                    ChangedBy = "System",
-                    ChangedAt = DateTime.UtcNow,
-                    Comments = "Data changes applied to target database"
-                });
+                    await _formRequestHistoryService.RecordChangeAsync(
+                        formRequestId,
+                        FormRequestChangeType.Applied,
+                        new Dictionary<string, object?> { ["Status"] = "Approved" },
+                        new Dictionary<string, object?> { ["Status"] = "Applied" },
+                        "System",
+                        "System",
+                        "Data changes applied to target database");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to record applied history for form request {FormRequestId}", formRequestId);
+                }
 
                 _logger.LogInformation("Successfully applied data changes for form request {FormRequestId}", formRequestId);
             }
             else
             {
+                const string failureMessage = "Data application returned an unsuccessful result.";
+                await MarkFormRequestApplicationFailedAsync(formRequestId, failureMessage);
                 _logger.LogError("Failed to apply data changes for form request {FormRequestId}", formRequestId);
             }
         }
@@ -1287,20 +1291,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             {
                 try
                 {
-                    using var failConnection = (SqlConnection)_connectionFactory.CreateConnection();
-                    await failConnection.OpenAsync();
-                    const string updateFailedSql = @"
-                        UPDATE FormRequests 
-                        SET Status = @Status, FailureMessage = @FailureMessage 
-                        WHERE Id = @Id AND Status = @ApprovedStatus";
-
-                    await failConnection.ExecuteAsync(updateFailedSql, new
-                    {
-                        Id = formRequestId,
-                        Status = (int)RequestStatus.Failed,
-                        ApprovedStatus = (int)RequestStatus.Approved,
-                        FailureMessage = $"Background data application failed: {ex.Message}"
-                    });
+                    await MarkFormRequestApplicationFailedAsync(
+                        formRequestId, $"Background data application failed: {ex.Message}");
                 }
                 catch (Exception updateEx)
                 {
@@ -1365,14 +1357,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                         databaseConnectionName,
                         tableName,
                         schema);
-
-                    var whereConditions = new Dictionary<string, object?>();
-                    foreach (var pk in primaryKeyColumns)
-                    {
-                        var matchingKey = originalValues.Keys.FirstOrDefault(k => string.Equals(k, pk, StringComparison.OrdinalIgnoreCase));
-                        if (matchingKey != null)
-                            whereConditions[pk] = originalValues[matchingKey];
-                    }
+                    var whereConditions = BuildPrimaryKeyWhereConditions(
+                        primaryKeyColumns, originalValues, schema, tableName);
 
                     result = await _dataService.UpdateDataAsync(
                         databaseConnectionName,
@@ -1387,14 +1373,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                         databaseConnectionName,
                         tableName,
                         schema);
-
-                    var deleteConditions = new Dictionary<string, object?>();
-                    foreach (var pk in deletePkColumns)
-                    {
-                        var matchingKey = originalValues.Keys.FirstOrDefault(k => string.Equals(k, pk, StringComparison.OrdinalIgnoreCase));
-                        if (matchingKey != null)
-                            deleteConditions[pk] = originalValues[matchingKey];
-                    }
+                    var deleteConditions = BuildPrimaryKeyWhereConditions(
+                        deletePkColumns, originalValues, schema, tableName);
 
                     result = await _dataService.DeleteDataAsync(
                         databaseConnectionName,
@@ -1431,7 +1411,61 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error applying form request data changes");
-            return false;
+            throw;
+        }
+    }
+
+    private static Dictionary<string, object?> BuildPrimaryKeyWhereConditions(
+        IReadOnlyCollection<string> primaryKeyColumns,
+        IReadOnlyDictionary<string, object?> originalValues,
+        string schema,
+        string tableName)
+    {
+        if (primaryKeyColumns.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"Cannot apply data changes because {schema}.{tableName} has no primary key.");
+        }
+
+        var whereConditions = new Dictionary<string, object?>();
+        foreach (var primaryKeyColumn in primaryKeyColumns)
+        {
+            var matchingKey = originalValues.Keys.FirstOrDefault(key =>
+                string.Equals(key, primaryKeyColumn, StringComparison.OrdinalIgnoreCase));
+            if (matchingKey == null || originalValues[matchingKey] == null)
+            {
+                throw new InvalidOperationException(
+                    $"Primary key column '{primaryKeyColumn}' is missing from the original values.");
+            }
+
+            whereConditions[primaryKeyColumn] = originalValues[matchingKey];
+        }
+
+        return whereConditions;
+    }
+
+    private async Task MarkFormRequestApplicationFailedAsync(int formRequestId, string failureMessage)
+    {
+        await _formRequestRepository.UpdateStatusAsync(formRequestId, RequestStatus.Failed, failureMessage);
+
+        try
+        {
+            await _formRequestHistoryService.RecordChangeAsync(
+                formRequestId,
+                FormRequestChangeType.Failed,
+                new Dictionary<string, object?> { ["Status"] = "Approved" },
+                new Dictionary<string, object?>
+                {
+                    ["Status"] = "Failed",
+                    ["FailureMessage"] = failureMessage
+                },
+                "System",
+                "System",
+                failureMessage);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to record failure history for form request {FormRequestId}", formRequestId);
         }
     }
 
@@ -1530,17 +1564,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                                 tableName,
                                 schema);
 
-                            if (primaryKeyColumns.Count == 0)
-                                throw new InvalidOperationException($"No primary key found for table {schema}.{tableName}");
-
-                            var whereConditions = new Dictionary<string, object?>();
-                            foreach (var pkColumn in primaryKeyColumns)
-                            {
-                                if (originalValues.ContainsKey(pkColumn))
-                                    whereConditions[pkColumn] = originalValues[pkColumn];
-                                else
-                                    throw new InvalidOperationException($"Primary key column '{pkColumn}' not found in original values for item {(int)item.Id}");
-                            }
+                            var whereConditions = BuildPrimaryKeyWhereConditions(
+                                primaryKeyColumns, originalValues, schema, tableName);
 
                             itemSuccess = await _dataService.UpdateDataAsync(
                                 dbConnectionName,
@@ -1557,17 +1582,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                                 tableName,
                                 schema);
 
-                            if (deletePkColumns.Count == 0)
-                                throw new InvalidOperationException($"No primary key found for table {schema}.{tableName}");
-
-                            var deleteConditions = new Dictionary<string, object?>();
-                            foreach (var pkColumn in deletePkColumns)
-                            {
-                                if (originalValues.ContainsKey(pkColumn))
-                                    deleteConditions[pkColumn] = originalValues[pkColumn];
-                                else
-                                    throw new InvalidOperationException($"Primary key column '{pkColumn}' not found in original values for item {(int)item.Id}");
-                            }
+                            var deleteConditions = BuildPrimaryKeyWhereConditions(
+                                deletePkColumns, originalValues, schema, tableName);
 
                             itemSuccess = await _dataService.DeleteDataAsync(
                                 dbConnectionName,

@@ -11,14 +11,17 @@ namespace Requestr.Core.Services;
 public class FormPermissionService : IFormPermissionService
 {
     private readonly IConfiguration _configuration;
+    private readonly IDataService _dataService;
     private readonly ILogger<FormPermissionService> _logger;
     private readonly string _connectionString;
 
     public FormPermissionService(
-        IConfiguration configuration, 
+        IConfiguration configuration,
+        IDataService dataService,
         ILogger<FormPermissionService> logger)
     {
         _configuration = configuration;
+        _dataService = dataService;
         _logger = logger;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
@@ -103,6 +106,15 @@ public class FormPermissionService : IFormPermissionService
     {
         try
         {
+            if (isGranted && permissionType is FormPermissionType.UpdateRequest or FormPermissionType.DeleteRequest)
+            {
+                var validationResult = await ValidatePrimaryKeyAsync(formDefinitionId);
+                if (!validationResult.IsSuccess)
+                {
+                    return validationResult;
+                }
+            }
+
             using var connection = new SqlConnection(_connectionString);
             
             // Check if permission already exists
@@ -165,6 +177,18 @@ public class FormPermissionService : IFormPermissionService
     {
         try
         {
+            var grantsDataChanges = rolePermissions.Values.Any(permissions =>
+                permissions.GetValueOrDefault(FormPermissionType.UpdateRequest) ||
+                permissions.GetValueOrDefault(FormPermissionType.DeleteRequest));
+            if (grantsDataChanges)
+            {
+                var validationResult = await ValidatePrimaryKeyAsync(formDefinitionId);
+                if (!validationResult.IsSuccess)
+                {
+                    return validationResult;
+                }
+            }
+
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();
             using var transaction = await connection.BeginTransactionAsync();
@@ -391,13 +415,14 @@ public class FormPermissionService : IFormPermissionService
     {
         try
         {
+            var supportsDataChanges = (await ValidatePrimaryKeyAsync(formDefinitionId)).IsSuccess;
             var defaultPermissions = new Dictionary<string, Dictionary<FormPermissionType, bool>>
             {
                 ["Admin"] = new()
                 {
                     [FormPermissionType.CreateRequest] = true,
-                    [FormPermissionType.UpdateRequest] = true,
-                    [FormPermissionType.DeleteRequest] = true,
+                    [FormPermissionType.UpdateRequest] = supportsDataChanges,
+                    [FormPermissionType.DeleteRequest] = supportsDataChanges,
                     [FormPermissionType.ViewData] = true,
                     [FormPermissionType.BulkActions] = true,
                     [FormPermissionType.BulkUploadCsv] = true
@@ -430,5 +455,34 @@ public class FormPermissionService : IFormPermissionService
             _logger.LogError(ex, "Error deleting form permissions for form {FormDefinitionId}", formDefinitionId);
             return Result.Failure($"Failed to delete form permissions: {ex.Message}");
         }
+    }
+
+    private async Task<Result> ValidatePrimaryKeyAsync(int formDefinitionId)
+    {
+        using var connection = new SqlConnection(_connectionString);
+        const string sql = @"
+            SELECT DatabaseConnectionName, TableName, [Schema]
+            FROM FormDefinitions
+            WHERE Id = @FormDefinitionId AND IsDeleted = 0";
+        var target = await connection.QuerySingleOrDefaultAsync<FormTarget>(sql, new { FormDefinitionId = formDefinitionId });
+        if (target == null)
+        {
+            return Result.Failure("Form definition not found.");
+        }
+
+        var primaryKeyColumns = await _dataService.GetPrimaryKeyColumnsAsync(
+            target.DatabaseConnectionName, target.TableName, target.Schema);
+        return primaryKeyColumns.Count > 0
+            ? Result.Success()
+            : Result.Failure(
+                $"Update and delete permissions require a primary key on {target.Schema}.{target.TableName}. " +
+                "An identity column alone is not a key constraint.");
+    }
+
+    private sealed class FormTarget
+    {
+        public string DatabaseConnectionName { get; init; } = string.Empty;
+        public string TableName { get; init; } = string.Empty;
+        public string Schema { get; init; } = string.Empty;
     }
 }

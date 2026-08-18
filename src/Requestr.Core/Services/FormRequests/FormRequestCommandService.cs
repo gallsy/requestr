@@ -23,6 +23,7 @@ public class FormRequestCommandService : IFormRequestCommandService
     private readonly IInputValidationService _inputValidationService;
     private readonly IUniquenessValidationService _uniquenessValidationService;
     private readonly IFormRequestApplicationService _applicationService;
+    private readonly IDataService _dataService;
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<FormRequestCommandService> _logger;
 
@@ -36,6 +37,7 @@ public class FormRequestCommandService : IFormRequestCommandService
         IInputValidationService inputValidationService,
         IUniquenessValidationService uniquenessValidationService,
         IFormRequestApplicationService applicationService,
+        IDataService dataService,
         IDbConnectionFactory connectionFactory,
         ILogger<FormRequestCommandService> logger)
     {
@@ -48,6 +50,7 @@ public class FormRequestCommandService : IFormRequestCommandService
         _inputValidationService = inputValidationService;
         _uniquenessValidationService = uniquenessValidationService;
         _applicationService = applicationService;
+        _dataService = dataService;
         _connectionFactory = connectionFactory;
         _logger = logger;
     }
@@ -64,6 +67,31 @@ public class FormRequestCommandService : IFormRequestCommandService
             if (formDefinition == null)
             {
                 throw new InvalidOperationException("Form definition not found");
+            }
+
+            if (formRequest.RequestType is RequestType.Update or RequestType.Delete)
+            {
+                var primaryKeyColumns = await _dataService.GetPrimaryKeyColumnsAsync(
+                    formDefinition.DatabaseConnectionName,
+                    formDefinition.TableName,
+                    formDefinition.Schema);
+                if (primaryKeyColumns.Count == 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Cannot create an {formRequest.RequestType.ToString().ToLowerInvariant()} request because " +
+                        $"{formDefinition.Schema}.{formDefinition.TableName} has no primary key.");
+                }
+
+                foreach (var primaryKeyColumn in primaryKeyColumns)
+                {
+                    var originalKey = formRequest.OriginalValues.Keys.FirstOrDefault(key =>
+                        string.Equals(key, primaryKeyColumn, StringComparison.OrdinalIgnoreCase));
+                    if (originalKey == null || formRequest.OriginalValues[originalKey] == null)
+                    {
+                        throw new InvalidOperationException(
+                            $"Primary key column '{primaryKeyColumn}' is missing from the original values.");
+                    }
+                }
             }
 
             // Validate and sanitize field values

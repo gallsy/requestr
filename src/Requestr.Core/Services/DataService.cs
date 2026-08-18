@@ -175,6 +175,15 @@ public class DataService : IDataService
 
     public async Task<bool> UpdateDataAsync(string databaseName, string tableName, string schema, Dictionary<string, object?> data, Dictionary<string, object?> whereConditions)
     {
+        if (whereConditions == null || whereConditions.Count == 0)
+        {
+            throw new ArgumentException("Where conditions cannot be empty for update operations", nameof(whereConditions));
+        }
+        if (whereConditions.Any(condition => condition.Value == null))
+        {
+            throw new ArgumentException("Where condition values cannot be null for update operations", nameof(whereConditions));
+        }
+
         if (!_connectionStrings.ContainsKey(databaseName))
         {
             throw new ArgumentException($"Database connection '{databaseName}' not found");
@@ -306,7 +315,11 @@ public class DataService : IDataService
     {
         if (whereConditions == null || whereConditions.Count == 0)
         {
-            throw new ArgumentException("Where conditions cannot be empty for delete operations");
+            throw new ArgumentException("Where conditions cannot be empty for delete operations", nameof(whereConditions));
+        }
+        if (whereConditions.Any(condition => condition.Value == null))
+        {
+            throw new ArgumentException("Where condition values cannot be null for delete operations", nameof(whereConditions));
         }
 
         if (!_connectionStrings.ContainsKey(databaseName))
