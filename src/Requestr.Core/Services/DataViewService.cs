@@ -87,7 +87,23 @@ public class DataViewService : IDataViewService
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
                 var searchableFields = visibleFields
-                    .Where(f => f.DataType == "string" || f.DataType == "text")
+                    .SelectMany(field =>
+                    {
+                        var column = $"[{field.Name.Replace("]", "]]")}]";
+                        return (field.SqlDataType ?? field.DataType).ToLowerInvariant() switch
+                        {
+                            "string" or "text" or "nvarchar" or "varchar" or "char" or "nchar" or "ntext" => new[] { column },
+                            "bool" or "boolean" or "bit" => new[]
+                            {
+                                $"CASE WHEN {column} = 1 THEN N'True' WHEN {column} = 0 THEN N'False' END",
+                                $"CONVERT(nvarchar(1), {column})"
+                            },
+                            "number" or "integer" or "tinyint" or "smallint" or "int" or "bigint" or
+                            "decimal" or "numeric" or "money" or "smallmoney" or "float" or "real" or "double" =>
+                                new[] { $"CONVERT(nvarchar(100), {column})" },
+                            _ => Array.Empty<string>()
+                        };
+                    })
                     .ToList();
 
                 if (searchableFields.Any())
@@ -97,7 +113,7 @@ public class DataViewService : IDataViewService
                     {
                         var paramName = $"SearchTerm{i}";
                         var termConditions = searchableFields
-                            .Select(f => $"[{f.Name}] LIKE @{paramName}")
+                            .Select(expression => $"{expression} LIKE @{paramName}")
                             .ToList();
                         whereConditions.Add($"({string.Join(" OR ", termConditions)})");
                         parameters.Add(paramName, $"%{terms[i]}%");

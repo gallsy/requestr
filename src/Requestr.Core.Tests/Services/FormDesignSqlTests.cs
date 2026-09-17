@@ -257,6 +257,56 @@ public class FormDesignSqlTests : IAsyncLifetime
         Assert.True(fresh.DesignVersion!.SequenceEqual(saved.DesignVersion!));
     }
 
+    [LocalDbFact]
+    public async Task DataViewSearchMatchesVisibleNumbersAndBooleans()
+    {
+        using var connection = await OpenAsync();
+        await connection.ExecuteAsync("""
+            CREATE TABLE SearchRecords (Id int PRIMARY KEY, Name nvarchar(100), Amount decimal(12,2), Enabled bit NULL, HiddenNumber int);
+            INSERT INTO SearchRecords VALUES (21, 'North office', 1250.75, 1, 998877), (32, 'South office', -42.50, 0, 998877), (43, 'Empty office', NULL, NULL, 998877);
+            """);
+        var form = new FormDefinition
+        {
+            DatabaseConnectionName = "ReferenceData", Schema = "dbo", TableName = "SearchRecords",
+            Fields = new()
+            {
+                new() { Name = "Id", DataType = "int" },
+                new() { Name = "Name", DataType = "text", SqlDataType = "nvarchar" },
+                new() { Name = "Amount", DataType = "number", SqlDataType = "decimal" },
+                new() { Name = "Enabled", DataType = "boolean", SqlDataType = "bit" },
+                new() { Name = "HiddenNumber", DataType = "int", IsVisibleInDataView = false }
+            }
+        };
+        var definitions = new Mock<IFormDefinitionService>();
+        definitions.Setup(service => service.GetFormDefinitionAsync(1)).ReturnsAsync(form);
+        var data = new Mock<IDataService>();
+        data.Setup(service => service.GetPrimaryKeyColumnsAsync("ReferenceData", "SearchRecords", "dbo")).ReturnsAsync(new List<string> { "Id" });
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:DefaultConnection"] = ConnectionString,
+            ["DatabaseConnections:ReferenceData"] = ConnectionString
+        }).Build();
+        var service = new DataViewService(configuration, NullLogger<DataViewService>.Instance, definitions.Object, data.Object, Mock.Of<IBulkFormRequestService>());
+        foreach (var (search, expectedId) in new[] { ("21", 21), ("1250.75", 21), ("-42.50", 32), ("true", 21), ("False", 32), ("North true", 21), ("\"North office\" 1250", 21) })
+        {
+            var result = await service.GetDataAsync(1, pageSize: 1, searchTerm: search);
+            Assert.Equal(expectedId, Assert.Single(result.Records)["Id"]);
+            Assert.Equal(1, result.TotalCount);
+        }
+        Assert.Empty((await service.GetDataAsync(1, searchTerm: "998877")).Records);
+        Assert.Empty((await service.GetDataAsync(1, searchTerm: "North false")).Records);
+        form.Fields.RemoveAll(field => field.Name == "Name");
+        Assert.Equal(1, (await service.GetDataAsync(1, searchTerm: "true")).TotalCount);
+        Assert.Empty((await service.GetDataAsync(1, searchTerm: "no-match")).Records);
+        form.Fields.RemoveAll(field => field.Name != "Enabled");
+        foreach (var (search, expectedValue) in new[] { ("True", true), ("False", false), ("1", true), ("0", false) })
+        {
+            var result = await service.GetDataAsync(1, searchTerm: search);
+            Assert.Equal(expectedValue, Assert.Single(result.Records)["Enabled"]);
+            Assert.Equal(1, result.TotalCount);
+        }
+    }
+
     private async Task<(LookupDataService Service, FormDefinition Form)> CreateLookupAsync(string keyType = "int")
     {
         using var connection = await OpenAsync();
