@@ -26,6 +26,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     private readonly IFormRequestRepository _formRequestRepository;
     private readonly IConfiguration _configuration;
     private readonly ILogger<WorkflowExecutionService> _logger;
+    private readonly ILookupDataService _lookups;
 
     private const string RequestApproved = "REQUEST_APPROVED";
     private const string RequestRejected = "REQUEST_REJECTED";
@@ -74,7 +75,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         IWebhookExecutionService webhookExecutionService,
         IFormRequestRepository formRequestRepository,
         IConfiguration configuration,
-        ILogger<WorkflowExecutionService> logger)
+        ILogger<WorkflowExecutionService> logger,
+        ILookupDataService lookups)
     {
         _instanceRepository = instanceRepository;
         _stepInstanceRepository = stepInstanceRepository;
@@ -87,6 +89,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
         _formRequestRepository = formRequestRepository;
         _configuration = configuration;
         _logger = logger;
+        _lookups = lookups;
     }
 
     /// <inheritdoc />
@@ -1325,6 +1328,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             // Inject computed values (e.g. current datetime, user info, GUID)
             await InjectComputedValuesAsync(fieldValues, fields, requestType, 
                 requestData.RequestedBy?.ToString(), requestData.RequestedByName?.ToString());
+            if (requestType != RequestType.Delete && formDefinition != null)
+                await _lookups.ValidateValuesAsync(formDefinition, fieldValues);
 
             bool result;
             string databaseConnectionName = (string)requestData.DatabaseConnectionName;
@@ -1509,6 +1514,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
 
                     // Inject computed values (e.g. current datetime, user info, GUID)
                     await InjectComputedValuesAsync(fieldValues, bulkFields, requestType, requestedBy, requestedByName);
+                    if (requestType != RequestType.Delete && bulkFormDefinition != null)
+                        await _lookups.ValidateValuesAsync(bulkFormDefinition, fieldValues);
 
                     bool itemSuccess = false;
                     string processingResult = "";

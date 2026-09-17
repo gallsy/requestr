@@ -168,8 +168,8 @@ else
                                                         }
                                                         else if (controlType == "searchable-select")
                                                         {
-                                                            <SearchableSelect @bind-Value="_fieldValues[field.Name]"
-                                                                              Options="@GetDropdownOptions(field.DropdownOptions)"
+                                                            <FormFieldSelect @bind-Value="_fieldValues[field.Name]"
+                                                                              Field="field" FormId="FormId" RequestId="RequestId"
                                                                               Disabled="@IsFieldDisabled(field)"
                                                                               Required="@field.IsRequired"
                                                                               Placeholder="Type to search options..." />
@@ -303,8 +303,8 @@ else
                                             }
                                             else if (controlType == "searchable-select")
                                             {
-                                                <SearchableSelect @bind-Value="_fieldValues[field.Name]"
-                                                                  Options="@GetDropdownOptions(field.DropdownOptions)"
+                                                <FormFieldSelect @bind-Value="_fieldValues[field.Name]"
+                                                                  Field="field" FormId="FormId" RequestId="RequestId"
                                                                   Disabled="@IsFieldDisabled(field)"
                                                                   Required="@field.IsRequired"
                                                                   Placeholder="Type to search options..." />
@@ -978,7 +978,7 @@ else
                 var hasValue = _fieldValues.TryGetValue(field.Name, out var val) &&
                     !string.IsNullOrWhiteSpace(val);
 
-                if (controlType == "searchable-select" && hasValue &&
+                if (controlType == "searchable-select" && field.OptionSource == FieldOptionSource.Static && hasValue &&
                     !GetDropdownOptions(field.DropdownOptions).Any(option =>
                         string.Equals(option.Value, val, StringComparison.Ordinal)))
                 {

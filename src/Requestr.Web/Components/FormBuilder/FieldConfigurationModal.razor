@@ -63,8 +63,12 @@
                 </div>
             }
             }
-            @if (Field.ControlType == "select" || Field.ControlType == "searchable-select" || Field.ControlType == "radio" ||
-                 Field.DataType == "select" || Field.DataType == "searchable-select" || Field.DataType == "radio")
+              @if (!PresentationOnly && Field.ControlType == "searchable-select")
+              {
+                <LookupConfigurationEditor Field="Field" DatabaseConnectionName="@DatabaseConnectionName" />
+              }
+              @if (Field.OptionSource == FieldOptionSource.Static && (Field.ControlType == "select" || Field.ControlType == "searchable-select" || Field.ControlType == "radio" ||
+                  Field.DataType == "select" || Field.DataType == "searchable-select" || Field.DataType == "radio"))
             {
                 <div class="row mb-2">
                     <div class="col-12">
@@ -181,6 +185,7 @@
     /// </summary>
     [Parameter] public FormField? Field { get; set; }
     [Parameter] public bool PresentationOnly { get; set; }
+    [Parameter] public string DatabaseConnectionName { get; set; } = "";
 
     /// <summary>
     /// The original SQL type of the field
@@ -219,6 +224,7 @@
     private void OnControlTypeChanged()
     {
         if (Field == null || PresentationOnly) return;
+        if (Field.ControlType != "searchable-select") Field.OptionSource = FieldOptionSource.Static;
 
         // Clear validation regex if control type doesn't support it
         if (!SupportsValidation(Field.ControlType ?? ""))
@@ -282,6 +288,7 @@
             case var type when type.Contains("int") || type.Contains("decimal") || type.Contains("numeric") || 
                               type.Contains("float") || type.Contains("real") || type.Contains("money"):
                 options.Add(("number", "Number Input"));
+                if (type.Contains("int")) options.Add(("searchable-select", "Searchable Dropdown"));
                 options.Add(("text", "Text Input"));
                 options.Add(("select", "Dropdown"));
                 options.Add(("checkbox", "Checkbox"));
@@ -330,6 +337,7 @@
 
             case var type when type.Contains("uniqueidentifier"):
                 options.Add(("text", "Text Input (GUID)"));
+                options.Add(("searchable-select", "Searchable Dropdown"));
                 break;
 
             default:

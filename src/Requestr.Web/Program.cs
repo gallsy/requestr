@@ -59,6 +59,7 @@ builder.Services.AddScoped(sp => sp.GetRequiredService<Microsoft.Extensions.Opti
 
 // Add custom authorization services
 builder.Services.AddScoped<IFormAuthorizationService, FormAuthorizationService>();
+builder.Services.AddScoped<Requestr.Web.Services.IFormLookupService, Requestr.Web.Services.FormLookupService>();
 
 // Add toast notification service
 builder.Services.AddScoped<Requestr.Web.Services.IToastNotificationService, Requestr.Web.Services.ToastNotificationService>();

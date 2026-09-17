@@ -15,5 +15,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="../Requestr.Migrations/Scripts/026_FormDesignDelegation.sql" Link="026_FormDesignDelegation.sql" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../Requestr.Migrations/Scripts/027_FormFieldLookups.sql" Link="027_FormFieldLookups.sql" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../Requestr.Migrations/Scripts/028_LookupDatabaseConnections.sql" Link="028_LookupDatabaseConnections.sql" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

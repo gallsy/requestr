@@ -1,0 +1,83 @@
+@using Requestr.Core.Models
+@using Requestr.Core.Utilities
+@using Microsoft.AspNetCore.Components.Forms
+@implements IDisposable
+@inject Requestr.Web.Services.IFormLookupService LookupService
+
+@if (Field.OptionSource == FieldOptionSource.DatabaseLookup)
+{
+    <SearchableSelect @key="Identity" Value="@Value" ValueChanged="ValueChanged" Disabled="Disabled" Required="Required"
+                      SearchOptions="SearchAsync" ResolveOption="ResolveAsync" SourceIdentity="@Identity"
+                      Placeholder="@Placeholder" SelectionValidChanged="SelectionChangedAsync" />
+    @if (!_selectionValid && !Disabled)
+    {
+        <div class="small text-danger" role="alert">Select an available lookup value.</div>
+    }
+}
+else
+{
+    <SearchableSelect Value="@Value" ValueChanged="ValueChanged" Disabled="Disabled" Required="Required"
+                      Options="StaticOptions" Placeholder="@Placeholder" />
+}
+
+@code {
+    [Parameter, EditorRequired] public FormField Field { get; set; } = default!;
+    [Parameter] public int FormId { get; set; }
+    [Parameter] public int? RequestId { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Type to search...";
+    [Parameter] public EventCallback<bool> SelectionValidChanged { get; set; }
+    [CascadingParameter] public EditContext? EditContext { get; set; }
+    private EditContext? _validationContext;
+    private ValidationMessageStore? _messages;
+    private bool _selectionValid = true;
+    private bool _wasDisabled;
+    private string Identity => $"{FormId}:{Field.Name}:{RequestId}";
+    private IReadOnlyList<(string Value, string Text)> StaticOptions => DropdownOptionParser.Parse(Field.DropdownOptions)
+        .Select(option => (option.Value, option.Text)).ToList();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_validationContext != EditContext)
+        {
+            _messages?.Clear();
+            _validationContext?.NotifyValidationStateChanged();
+            _validationContext = EditContext;
+            _messages = EditContext == null ? null : new ValidationMessageStore(EditContext);
+        }
+        if (_wasDisabled != Disabled && Field.OptionSource == FieldOptionSource.DatabaseLookup)
+        {
+            _wasDisabled = Disabled;
+            await SelectionChangedAsync(_selectionValid);
+        }
+    }
+
+    private async Task SelectionChangedAsync(bool valid)
+    {
+        _selectionValid = valid;
+        _messages?.Clear();
+        if (!valid && !Disabled && _validationContext != null)
+            _messages?.Add(new FieldIdentifier(_validationContext.Model, Field.Name), $"{Field.DisplayName}: select an available lookup value.");
+        _validationContext?.NotifyValidationStateChanged();
+        await SelectionValidChanged.InvokeAsync(valid || Disabled);
+    }
+
+    public void Dispose()
+    {
+        _messages?.Clear();
+        _validationContext?.NotifyValidationStateChanged();
+    }
+
+    private async Task<IReadOnlyList<(string Value, string Text)>> SearchAsync(string search, CancellationToken cancellationToken)
+        => (await LookupService.SearchAsync(FormId, Field.Name, search, RequestId, cancellationToken))
+            .Select(option => (option.Value, option.Text)).ToList();
+
+    private async Task<(string Value, string Text)?> ResolveAsync(string value, CancellationToken cancellationToken)
+    {
+        var option = await LookupService.ResolveAsync(FormId, Field.Name, value, RequestId, cancellationToken);
+        return option == null ? null : (option.Value, option.Text);
+    }
+}

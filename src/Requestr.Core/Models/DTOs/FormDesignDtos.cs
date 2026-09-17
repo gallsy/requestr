@@ -87,7 +87,7 @@ public class UpdateFormDesignDto
 
             var controlType = string.IsNullOrEmpty(original.ControlType) ? original.DataType : original.ControlType;
             if (field.DropdownOptions != original.DropdownOptions &&
-                controlType is not ("select" or "searchable-select" or "radio"))
+                (original.OptionSource != FieldOptionSource.Static || controlType is not ("select" or "searchable-select" or "radio")))
                 throw new ValidationException("Only static choice fields can have their options edited.");
         }
     }

@@ -8,6 +8,9 @@ using Requestr.Core.Models;
 using Requestr.Core.Models.DTOs;
 using Requestr.Core.Repositories;
 using Requestr.Core.Services;
+using Requestr.Core.Interfaces;
+using Requestr.Core.Services.FormRequests;
+using Requestr.Core.Services.Workflow;
 using Xunit;
 
 namespace Requestr.Core.Tests.Services;
@@ -74,6 +77,12 @@ public class FormDesignSqlTests : IAsyncLifetime
             """);
         await ApplyMigrationAsync(connection);
         await ApplyMigrationAsync(connection);
+        var lookupMigration = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "027_FormFieldLookups.sql"));
+        await connection.ExecuteAsync(lookupMigration);
+        await connection.ExecuteAsync(lookupMigration);
+        var lookupConnectionMigration = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "028_LookupDatabaseConnections.sql"));
+        await connection.ExecuteAsync(lookupConnectionMigration);
+        await connection.ExecuteAsync(lookupConnectionMigration);
         var factory = new Mock<IDbConnectionFactory>();
         factory.Setup(connectionFactory => connectionFactory.CreateConnectionAsync()).Returns(OpenAsync);
         _repository = new FormDesignRepository(factory.Object);
@@ -236,7 +245,7 @@ public class FormDesignSqlTests : IAsyncLifetime
         {
             ["ConnectionStrings:DefaultConnection"] = ConnectionString
         }).Build();
-        var definitions = new FormDefinitionService(configuration, NullLogger<FormDefinitionService>.Instance);
+        var definitions = new FormDefinitionService(configuration, NullLogger<FormDefinitionService>.Instance, new LookupDataService(configuration));
         var adminCopy = (await definitions.GetFormDefinitionAsync(current.Id))!;
         await _repository.SaveAsync(UpdateFormDesignDto.FromForm(current), new() { "Editors" }, false, "editor-id");
         await Assert.ThrowsAsync<InvalidOperationException>(() => definitions.UpdateFormDefinitionAsync(adminCopy));
@@ -246,6 +255,188 @@ public class FormDesignSqlTests : IAsyncLifetime
         var saved = (await definitions.GetFormDefinitionAsync(current.Id))!;
         Assert.Equal("Admin change", saved.Fields[0].DisplayName);
         Assert.True(fresh.DesignVersion!.SequenceEqual(saved.DesignVersion!));
+    }
+
+    private async Task<(LookupDataService Service, FormDefinition Form)> CreateLookupAsync(string keyType = "int")
+    {
+        using var connection = await OpenAsync();
+        await connection.ExecuteAsync($"""
+            CREATE TABLE LookupCountries (Id {keyType} NOT NULL PRIMARY KEY, Name nvarchar(100) NULL);
+            CREATE TABLE LookupDestination (CountryId {keyType} NULL);
+            """);
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:DefaultConnection"] = ConnectionString,
+            ["ConnectionStrings:ReferenceData"] = ConnectionString
+        }).Build();
+        return (new LookupDataService(configuration), new FormDefinition
+        {
+            DatabaseConnectionName = "ReferenceData", TableName = "LookupDestination", Schema = "dbo",
+            Fields = new() { new()
+            {
+                Name = "CountryId", DisplayName = "Country", ControlType = "searchable-select", SqlDataType = keyType,
+                OptionSource = FieldOptionSource.DatabaseLookup, LookupSchema = "dbo", LookupTable = "LookupCountries",
+                LookupKeyColumn = "Id", LookupLabelColumn = "Name", IsRequired = true
+            } }
+        });
+    }
+
+    [LocalDbFact]
+    public async Task LookupUsesSeparateSourceConnectionAndValidatesActualDestination()
+    {
+        var (_, form) = await CreateLookupAsync();
+        var referenceDatabase = new FormDesignSqlTests();
+        await referenceDatabase.InitializeAsync();
+        try
+        {
+            await referenceDatabase.CreateLookupAsync();
+            using var source = await referenceDatabase.OpenAsync();
+            await source.ExecuteAsync("INSERT INTO LookupCountries VALUES (12, 'Australia'); DROP TABLE LookupDestination;");
+            using var destination = await OpenAsync();
+            await destination.ExecuteAsync("INSERT INTO LookupCountries VALUES (12, 'Wrong database');");
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:ReferenceData"] = ConnectionString,
+                ["ConnectionStrings:ExternalReferenceData"] = ConnectionString,
+                ["DatabaseConnections:ExternalReferenceData"] = referenceDatabase.ConnectionString
+            }).Build();
+            var service = new LookupDataService(configuration);
+            var field = form.Fields[0];
+            field.LookupDatabaseConnectionName = "ExternalReferenceData";
+            await service.ValidateConfigurationAsync(form);
+            Assert.Equal("Australia", Assert.Single(await service.SearchAsync(form, field, "Aus")).Text);
+            Assert.Equal("Australia", (await service.ResolveAsync(form, field, "12"))!.Text);
+            var values = new Dictionary<string, object?> { ["CountryId"] = "12" };
+            await service.ValidateValuesAsync(form, values);
+            Assert.Equal(12, Assert.IsType<int>(values["CountryId"]));
+            await destination.ExecuteAsync("ALTER TABLE LookupDestination ALTER COLUMN CountryId nvarchar(20) NULL;");
+            await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => service.ValidateConfigurationAsync(form));
+            await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => service.ResolveAsync(form, field, "12"));
+            field.LookupDatabaseConnectionName = "NotConfigured";
+            await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => service.SearchAsync(form, field, ""));
+        }
+        finally
+        {
+            await referenceDatabase.DisposeAsync();
+        }
+    }
+
+    [LocalDbFact]
+    public async Task LookupSearchResolvesKeysBeyondPageAndStoresIntegerNotLabel()
+    {
+        var (service, form) = await CreateLookupAsync();
+        using var connection = await OpenAsync();
+        await connection.ExecuteAsync("INSERT INTO LookupCountries VALUES (@Id, 'Country')", Enumerable.Range(1, 60).Select(value => new { Id = value }));
+        await service.ValidateConfigurationAsync(form);
+        Assert.Equal(50, (await service.SearchAsync(form, form.Fields[0], "Country")).Count);
+        Assert.Equal("60", (await service.ResolveAsync(form, form.Fields[0], "60"))!.Value);
+        var values = new Dictionary<string, object?> { ["CountryId"] = "60" };
+        await service.ValidateValuesAsync(form, values);
+        Assert.Equal(60, Assert.IsType<int>(values["CountryId"]));
+        values["CountryId"] = "Country";
+        await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => service.ValidateValuesAsync(form, values));
+        await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => service.ValidateValuesAsync(form,
+            new() { ["countryid"] = "Not a key" }));
+        await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => service.ValidateValuesAsync(form,
+            new() { ["countryid"] = "1", ["CountryId"] = "2" }));
+        Assert.Null(await service.ResolveAsync(form, form.Fields[0], "999999999999999999999"));
+        await connection.ExecuteAsync("DELETE FROM LookupCountries WHERE Id = 60");
+        Assert.Null(await service.ResolveAsync(form, form.Fields[0], "60"));
+    }
+
+    [LocalDbFact]
+    public async Task LookupStringKeysAndWildcardsAreLiteral()
+    {
+        var (service, form) = await CreateLookupAsync("nvarchar(20)");
+        using var connection = await OpenAsync();
+        await connection.ExecuteAsync("INSERT INTO LookupCountries VALUES ('001', '100% valid'), ('002', '1000 other'), ('003', NULL)");
+        Assert.Equal("001", Assert.Single(await service.SearchAsync(form, form.Fields[0], "100%")).Value);
+        Assert.Equal("001", (await service.ResolveAsync(form, form.Fields[0], "001"))!.Value);
+        Assert.Equal("003", (await service.ResolveAsync(form, form.Fields[0], "003"))!.Text);
+        Assert.Null(await service.ResolveAsync(form, form.Fields[0], "' OR 1=1--"));
+    }
+
+    [LocalDbFact]
+    public async Task LookupGuidKeysAreTyped()
+    {
+        var (service, form) = await CreateLookupAsync("uniqueidentifier");
+        var key = Guid.NewGuid();
+        using var connection = await OpenAsync();
+        await connection.ExecuteAsync("INSERT INTO LookupCountries VALUES (@Key, 'Country')", new { Key = key });
+        var values = new Dictionary<string, object?> { ["CountryId"] = key.ToString() };
+        await service.ValidateValuesAsync(form, values);
+        Assert.Equal(key, Assert.IsType<Guid>(values["CountryId"]));
+    }
+
+    [LocalDbFact]
+    public async Task LookupConfigurationRejectsNonUniqueKeysAndIncompatibleTypes()
+    {
+        var (service, form) = await CreateLookupAsync();
+        form.Fields[0].LookupKeyColumn = "Name";
+        await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => service.ValidateConfigurationAsync(form));
+        form.Fields[0].LookupKeyColumn = "Id";
+        using var connection = await OpenAsync();
+        await connection.ExecuteAsync("DROP TABLE LookupDestination; CREATE TABLE LookupDestination (CountryId uniqueidentifier NULL)");
+        await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => service.ValidateConfigurationAsync(form));
+    }
+
+    [LocalDbFact]
+    public async Task LookupMetadataRoundTripsAndSurvivesDelegatedSave()
+    {
+        var (service, form) = await CreateLookupAsync();
+        form.Fields[0].LookupDatabaseConnectionName = "DefaultConnection";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        { ["ConnectionStrings:DefaultConnection"] = ConnectionString }).Build();
+        var definitions = new FormDefinitionService(configuration, NullLogger<FormDefinitionService>.Instance, service);
+        form.Name = "Lookup form";
+        form.CreatedBy = "Admin";
+        form.Fields[0].GridColumnSpan = 1;
+        await definitions.CreateFormDefinitionAsync(form);
+        var loaded = (await definitions.GetFormDefinitionAsync(form.Id))!;
+        Assert.Equal("LookupCountries", Assert.Single(loaded.Fields).LookupTable);
+        Assert.Equal(FieldOptionSource.DatabaseLookup, loaded.Fields[0].OptionSource);
+        Assert.Equal("DefaultConnection", loaded.Fields[0].LookupDatabaseConnectionName);
+        var update = UpdateFormDesignDto.FromForm(loaded);
+        update.Fields[0].DisplayName = "Country label";
+        await _repository.SaveAsync(update, new(), true, "Admin");
+        loaded = (await definitions.GetFormDefinitionAsync(form.Id))!;
+        Assert.Equal("LookupCountries", loaded.Fields[0].LookupTable);
+        Assert.Equal("Country label", loaded.Fields[0].DisplayName);
+        Assert.Equal("DefaultConnection", loaded.Fields[0].LookupDatabaseConnectionName);
+        loaded.Fields[0].LookupDatabaseConnectionName = "ReferenceData";
+        await definitions.UpdateFormDefinitionAsync(loaded);
+        Assert.Equal("Id", (await definitions.GetFormDefinitionAsync(form.Id))!.Fields[0].LookupKeyColumn);
+        Assert.Equal("ReferenceData", (await definitions.GetFormDefinitionAsync(form.Id))!.Fields[0].LookupDatabaseConnectionName);
+        Assert.Equal("ReferenceData", Assert.Single(await definitions.GetFormDefinitionsAsync()).Fields[0].LookupDatabaseConnectionName);
+        Assert.Equal("ReferenceData", Assert.Single(await definitions.GetActiveAsync()).Fields[0].LookupDatabaseConnectionName);
+        Assert.Equal("ReferenceData", Assert.Single(await definitions.GetFormDefinitionsForUserAsync("Admin", new() { "Admin" })).Fields[0].LookupDatabaseConnectionName);
+    }
+
+    [LocalDbFact]
+    public async Task RequestApplicationStoresKeyAndRejectsDeletedReference()
+    {
+        var (lookups, form) = await CreateLookupAsync();
+        using var connection = await OpenAsync();
+        await connection.ExecuteAsync("INSERT INTO LookupCountries VALUES (12, 'Australia')");
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        { ["DatabaseConnections:ReferenceData"] = ConnectionString }).Build();
+        var definitions = new Mock<IFormDefinitionService>();
+        definitions.Setup(service => service.GetFormDefinitionAsync(1)).ReturnsAsync(form);
+        var repository = new Mock<IFormRequestRepository>();
+        var application = new FormRequestApplicationService(repository.Object, Mock.Of<IFormRequestHistoryService>(),
+            definitions.Object, new DataService(configuration, NullLogger<DataService>.Instance), Mock.Of<IAdvancedNotificationService>(),
+            Mock.Of<IWorkflowProgressService>(), Mock.Of<IDbConnectionFactory>(), configuration,
+            NullLogger<FormRequestApplicationService>.Instance, lookups);
+        var request = new FormRequest { FormDefinitionId = 1, RequestType = RequestType.Insert, FieldValues = new() { ["CountryId"] = "12" } };
+        Assert.True((await application.ApplyChangesToDatabaseAsync(request)).Success);
+        Assert.Equal(12, await connection.QuerySingleAsync<int>("SELECT CountryId FROM LookupDestination"));
+        await connection.ExecuteAsync("INSERT INTO LookupCountries VALUES (1, 'Boolean-like label')");
+        request.FieldValues["CountryId"] = "True";
+        Assert.False((await application.ApplyChangesToDatabaseAsync(request)).Success);
+        request.FieldValues["CountryId"] = "12";
+        await connection.ExecuteAsync("DELETE FROM LookupCountries WHERE Id = 12");
+        Assert.False((await application.ApplyChangesToDatabaseAsync(request)).Success);
+        Assert.Equal(1, await connection.QuerySingleAsync<int>("SELECT COUNT(*) FROM LookupDestination"));
     }
 
     public async Task DisposeAsync()

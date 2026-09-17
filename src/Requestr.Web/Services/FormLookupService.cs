@@ -1,0 +1,71 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Components.Authorization;
+using Requestr.Core.Interfaces;
+using Requestr.Core.Models;
+using Requestr.Core.Services.FormRequests;
+using Requestr.Core.Services.Workflow;
+using Requestr.Core.Utilities;
+using Requestr.Web.Authorization;
+
+namespace Requestr.Web.Services;
+
+public interface IFormLookupService
+{
+    Task<IReadOnlyList<LookupOption>> SearchAsync(int formId, string fieldName, string? search, int? requestId = null, CancellationToken cancellationToken = default);
+    Task<LookupOption?> ResolveAsync(int formId, string fieldName, string value, int? requestId = null, CancellationToken cancellationToken = default, int? bulkRequestId = null);
+}
+
+public class FormLookupService(AuthenticationStateProvider authentication, IFormAuthorizationService authorization,
+    IFormDefinitionService definitions, IFormRequestQueryService requests, IWorkflowInstanceService workflows,
+    ILookupDataService lookups, IBulkFormRequestService bulkRequests) : IFormLookupService
+{
+    public async Task<IReadOnlyList<LookupOption>> SearchAsync(int formId, string fieldName, string? search, int? requestId = null, CancellationToken cancellationToken = default)
+    {
+        var (form, field) = await GetAuthorizedFieldAsync(formId, fieldName, requestId);
+        cancellationToken.ThrowIfCancellationRequested();
+        return await lookups.SearchAsync(form, field, search, cancellationToken);
+    }
+
+    public async Task<LookupOption?> ResolveAsync(int formId, string fieldName, string value, int? requestId = null, CancellationToken cancellationToken = default, int? bulkRequestId = null)
+    {
+        var (form, field) = await GetAuthorizedFieldAsync(formId, fieldName, requestId, bulkRequestId);
+        cancellationToken.ThrowIfCancellationRequested();
+        return await lookups.ResolveAsync(form, field, value, cancellationToken);
+    }
+
+    private async Task<(FormDefinition, FormField)> GetAuthorizedFieldAsync(int formId, string fieldName, int? requestId, int? bulkRequestId = null)
+    {
+        var user = (await authentication.GetAuthenticationStateAsync()).User;
+        if (user.Identity?.IsAuthenticated != true) throw new UnauthorizedAccessException();
+        var roles = ClaimsHelper.GetUserRoles(user);
+        var userId = user.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value
+            ?? user.FindFirst("oid")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var allowed = roles.Contains("Admin") || await authorization.UserHasAnyPermissionAsync(user, formId,
+            FormPermissionType.CreateRequest, FormPermissionType.UpdateRequest, FormPermissionType.DeleteRequest,
+            FormPermissionType.ViewData, FormPermissionType.BulkUploadCsv, FormPermissionType.BulkActions);
+        FormRequest? request = null;
+        if (!allowed && requestId.HasValue)
+        {
+            request = await requests.GetByIdAsync(requestId.Value);
+            if (request?.FormDefinitionId != formId) throw new UnauthorizedAccessException();
+            allowed = !string.IsNullOrEmpty(userId) && (request.RequestedBy == userId ||
+                (request.WorkflowInstanceId.HasValue && await workflows.HasUserParticipatedInWorkflowAsync(userId, roles, request.WorkflowInstanceId.Value)));
+        }
+        BulkFormRequest? bulkRequest = null;
+        if (!allowed && bulkRequestId.HasValue)
+        {
+            bulkRequest = await bulkRequests.GetBulkFormRequestByIdAsync(bulkRequestId.Value);
+            if (bulkRequest?.FormDefinitionId != formId) throw new UnauthorizedAccessException();
+            allowed = !string.IsNullOrEmpty(userId) && (bulkRequest.RequestedBy == userId ||
+                (bulkRequest.WorkflowInstanceId.HasValue && await workflows.HasUserParticipatedInWorkflowAsync(userId, roles, bulkRequest.WorkflowInstanceId.Value)));
+        }
+        if (!allowed && request == null && bulkRequest == null) throw new UnauthorizedAccessException();
+        var form = await definitions.GetFormDefinitionAsync(formId) ?? throw new UnauthorizedAccessException();
+        if (!allowed && (request != null || bulkRequest != null))
+            allowed = form.ApproverRoles.Any(role => roles.Contains(role, StringComparer.OrdinalIgnoreCase));
+        if (!allowed || form.IsDeleted) throw new UnauthorizedAccessException();
+        var field = form.Fields.FirstOrDefault(field => field.Name == fieldName && field.OptionSource == FieldOptionSource.DatabaseLookup)
+            ?? throw new UnauthorizedAccessException();
+        return (form, field);
+    }
+}

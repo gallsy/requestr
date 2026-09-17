@@ -168,6 +168,7 @@ else
                                                 {
                                                     <div class="border border-top-0 rounded-bottom p-3">
                                                         <RequestFieldValuesCard 
+                                                            RequestId="_formRequest.Id"
                                                             FieldValues="@item.FieldValues"
                                                             OriginalValues="@item.OriginalValues"
                                                             FormFields="@_formDefinition?.Fields"
@@ -187,6 +188,7 @@ else
                             {
                                 <!-- Individual Request - Read-only field values display -->
                                 <RequestFieldValuesCard 
+                                    RequestId="_formRequest.Id"
                                     FieldValues="@_formRequest.FieldValues"
                                     OriginalValues="@_formRequest.OriginalValues"
                                     FormFields="@_formDefinition?.Fields"

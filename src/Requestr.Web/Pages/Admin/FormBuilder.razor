@@ -568,6 +568,7 @@
 <Requestr.Web.Components.FormBuilder.FieldConfigurationModal 
     @ref="_fieldConfigModal"
     Field="_selectedField"
+    DatabaseConnectionName="@(_formDefinition?.DatabaseConnectionName ?? string.Empty)"
     PresentationOnly="@(!_isAdmin)"
     SqlType="@(_selectedField != null ? GetOriginalSqlType(_selectedField) : "varchar")"
     ColumnInfo="@GetColumnInfoForField(_selectedField)"
@@ -1906,6 +1907,7 @@
             case var type when type.Contains("int") || type.Contains("decimal") || type.Contains("numeric") || 
                               type.Contains("float") || type.Contains("real") || type.Contains("money"):
                 options.Add(("number", "Number Input"));
+                if (type.Contains("int")) options.Add(("searchable-select", "Searchable Dropdown"));
                 options.Add(("text", "Text Input"));
                 options.Add(("select", "Dropdown"));
                 options.Add(("checkbox", "Checkbox"));
@@ -1954,6 +1956,7 @@
 
             case var type when type.Contains("uniqueidentifier"):
                 options.Add(("text", "Text Input (GUID)"));
+                options.Add(("searchable-select", "Searchable Dropdown"));
                 break;
 
             default:
@@ -2011,6 +2014,7 @@
 
     private void OnControlTypeChanged(FormField field)
     {
+        if (field.ControlType != "searchable-select") field.OptionSource = FieldOptionSource.Static;
         // Clear validation regex if control type doesn't support it
         if (!SupportsValidation(field.ControlType ?? ""))
         {

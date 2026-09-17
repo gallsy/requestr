@@ -59,6 +59,8 @@
                             string.Equals(f.Name, field.Key, StringComparison.OrdinalIgnoreCase));
                         
                         <FieldValueDisplay 
+                            IsLookup="@(formFieldForDisplay?.OptionSource == FieldOptionSource.DatabaseLookup)"
+                            FormId="@(formFieldForDisplay?.FormDefinitionId ?? 0)" RequestId="RequestId" BulkRequestId="BulkRequestId"
                             FieldName="@field.Key"
                             DisplayName="@displayName"
                             NewValue="@field.Value"
@@ -98,6 +100,8 @@
 </div>
 
 @code {
+    [Parameter] public int? RequestId { get; set; }
+    [Parameter] public int? BulkRequestId { get; set; }
     /// <summary>Field values to display (new/proposed values)</summary>
     [Parameter] public Dictionary<string, object?>? FieldValues { get; set; }
     

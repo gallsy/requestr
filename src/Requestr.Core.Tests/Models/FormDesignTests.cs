@@ -35,6 +35,16 @@ public class FormDesignTests
     }
 
     [Fact]
+    public void LookupOptionsCannotBeChangedByDelegatedEditor()
+    {
+        var current = Form();
+        current.Fields[0].OptionSource = FieldOptionSource.DatabaseLookup;
+        var update = UpdateFormDesignDto.FromForm(current);
+        update.Fields[0].DropdownOptions = "Unexpected";
+        Assert.Throws<ValidationException>(() => update.ValidateAgainst(current));
+    }
+
+    [Fact]
     public void WriteContractContainsOnlyAllowlistedProperties()
     {
         Assert.Equal(new[] { "Fields", "FormDefinitionId", "Sections", "Version" },

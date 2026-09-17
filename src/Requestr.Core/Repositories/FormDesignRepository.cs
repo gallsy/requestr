@@ -42,7 +42,7 @@ public class FormDesignRepository(IDbConnectionFactory connectionFactory) : IFor
             SELECT Id, Name, DesignVersion FROM FormDefinitions {locking}
             WHERE Id = @Id AND IsDeleted = 0;
             SELECT Id, FormDefinitionId, Name, DisplayName, DataType, ControlType, SqlDataType, MaxLength,
-                   DropdownOptions, HelpText, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan
+                   DropdownOptions, OptionSource, HelpText, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan
             FROM FormFields WHERE FormDefinitionId = @Id ORDER BY DisplayOrder, Id;
             SELECT Id, FormDefinitionId, Name, Description, DisplayOrder, MaxColumns, VisibilityCondition
             FROM FormSections WHERE FormDefinitionId = @Id ORDER BY DisplayOrder, Id;

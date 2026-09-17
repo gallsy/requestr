@@ -46,6 +46,7 @@ public class FormRequestApplicationService : IFormRequestApplicationService
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly IConfiguration _configuration;
     private readonly ILogger<FormRequestApplicationService> _logger;
+    private readonly ILookupDataService _lookups;
 
     public FormRequestApplicationService(
         IFormRequestRepository formRequestRepository,
@@ -56,7 +57,8 @@ public class FormRequestApplicationService : IFormRequestApplicationService
         IWorkflowProgressService workflowProgressService,
         IDbConnectionFactory connectionFactory,
         IConfiguration configuration,
-        ILogger<FormRequestApplicationService> logger)
+        ILogger<FormRequestApplicationService> logger,
+        ILookupDataService lookups)
     {
         _formRequestRepository = formRequestRepository;
         _historyService = historyService;
@@ -67,6 +69,7 @@ public class FormRequestApplicationService : IFormRequestApplicationService
         _connectionFactory = connectionFactory;
         _configuration = configuration;
         _logger = logger;
+        _lookups = lookups;
     }
 
     public async Task<bool> ApplyAsync(int formRequestId)
@@ -158,6 +161,8 @@ public class FormRequestApplicationService : IFormRequestApplicationService
 
             // Inject computed values based on field configuration and request type
             await InjectComputedValuesAsync(convertedFieldValues, formDefinition.Fields, formRequest);
+            if (formRequest.RequestType != RequestType.Delete)
+                await _lookups.ValidateValuesAsync(formDefinition, convertedFieldValues);
 
             bool success;
             object? recordKey = null;

@@ -75,7 +75,7 @@ public class InputValidationService : IInputValidationService
                 // Additional security checks for potentially dangerous input
                 if (!string.IsNullOrEmpty(inputValue))
                 {
-                    if (InputValidator.HasExcessiveDangerousCharacters(inputValue))
+                    if (field.OptionSource != FieldOptionSource.DatabaseLookup && InputValidator.HasExcessiveDangerousCharacters(inputValue))
                     {
                         result.IsValid = false;
                         result.Errors.Add($"{field.DisplayName} contains an excessive number of special characters.");

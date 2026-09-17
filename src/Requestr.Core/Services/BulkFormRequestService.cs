@@ -23,6 +23,7 @@ public class BulkFormRequestService : IBulkFormRequestService
     private readonly IInputValidationService _inputValidationService;
     private readonly IDataService _dataService;
     private readonly string _connectionString;
+    private readonly ILookupDataService _lookups;
 
     public BulkFormRequestService(
         IConfiguration configuration,
@@ -31,7 +32,8 @@ public class BulkFormRequestService : IBulkFormRequestService
         IWorkflowInstanceService workflowInstanceService,
         IWorkflowExecutionService workflowExecutionService,
         IInputValidationService inputValidationService,
-        IDataService dataService)
+        IDataService dataService,
+        ILookupDataService lookups)
     {
         _configuration = configuration;
         _logger = logger;
@@ -40,6 +42,7 @@ public class BulkFormRequestService : IBulkFormRequestService
         _workflowExecutionService = workflowExecutionService;
         _inputValidationService = inputValidationService;
         _dataService = dataService;
+        _lookups = lookups;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
     }
@@ -333,6 +336,7 @@ public class BulkFormRequestService : IBulkFormRequestService
                     result.ParsedData[field.Name] = convertedValue;
                 }
             }
+            await _lookups.ValidateValuesAsync(formDefinition, result.ParsedData);
         }
         catch (Exception ex)
         {
@@ -363,6 +367,8 @@ public class BulkFormRequestService : IBulkFormRequestService
             }
 
             // Convert the sanitized value to appropriate type based on SQL data type
+            if (field.OptionSource == FieldOptionSource.DatabaseLookup)
+                return sanitizedValue;
             object? convertedValue = SqlTypeConverter.ConvertToSqlType(sanitizedValue, field.SqlDataType);
             
             return convertedValue;
@@ -389,6 +395,10 @@ public class BulkFormRequestService : IBulkFormRequestService
             {
                 throw new InvalidOperationException("Form definition not found");
             }
+
+            if (createDto.RequestType != RequestType.Delete)
+                foreach (var request in createDto.FormRequests)
+                    await _lookups.ValidateValuesAsync(formDefinition, request.FieldValues);
 
             var bulkRequest = new BulkFormRequest
             {
@@ -1268,6 +1278,8 @@ public class BulkFormRequestService : IBulkFormRequestService
 
                     fieldValues = SqlTypeConverter.ConvertDictionary(fieldValues, fields);
                     originalValues = SqlTypeConverter.ConvertDictionary(originalValues, fields);
+                    if (requestType != RequestType.Delete)
+                        await _lookups.ValidateValuesAsync(formDefinition, fieldValues);
 
                     bool itemSuccess = false;
                     string processingResult;

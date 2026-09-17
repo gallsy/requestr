@@ -73,6 +73,12 @@ public class FormField : BaseEntity
     public string? ValidationMessage { get; set; }
     public string? VisibilityCondition { get; set; }
     public string? DropdownOptions { get; set; } // JSON array of options for select controls
+    public FieldOptionSource OptionSource { get; set; }
+    public string? LookupDatabaseConnectionName { get; set; }
+    public string? LookupSchema { get; set; }
+    public string? LookupTable { get; set; }
+    public string? LookupKeyColumn { get; set; }
+    public string? LookupLabelColumn { get; set; }
     public int DisplayOrder { get; set; }
     public bool TreatBlankAsNull { get; set; } = false;
     public string? HelpText { get; set; } // Tooltip text shown via info icon on the field label
@@ -109,6 +115,12 @@ public class FormPermission : AuditableEntity
 /// <summary>
 /// Types of permissions that can be granted for a form
 /// </summary>
+public enum FieldOptionSource
+{
+    Static = 0,
+    DatabaseLookup = 1
+}
+
 public enum FormPermissionType
 {
     // Request creation permissions
