@@ -25,6 +25,7 @@ public class FormRequestCommandService : IFormRequestCommandService
     private readonly IFormRequestApplicationService _applicationService;
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<FormRequestCommandService> _logger;
+    private readonly ILookupDataService _lookups;
 
     public FormRequestCommandService(
         IFormRequestRepository formRequestRepository,
@@ -37,7 +38,8 @@ public class FormRequestCommandService : IFormRequestCommandService
         IUniquenessValidationService uniquenessValidationService,
         IFormRequestApplicationService applicationService,
         IDbConnectionFactory connectionFactory,
-        ILogger<FormRequestCommandService> logger)
+        ILogger<FormRequestCommandService> logger,
+        ILookupDataService lookups)
     {
         _formRequestRepository = formRequestRepository;
         _historyService = historyService;
@@ -50,6 +52,7 @@ public class FormRequestCommandService : IFormRequestCommandService
         _applicationService = applicationService;
         _connectionFactory = connectionFactory;
         _logger = logger;
+        _lookups = lookups;
     }
 
     public async Task<FormRequest> CreateAsync(FormRequest formRequest)
@@ -67,6 +70,8 @@ public class FormRequestCommandService : IFormRequestCommandService
             }
 
             // Validate and sanitize field values
+            if (formRequest.RequestType != RequestType.Delete)
+                await _lookups.ValidateValuesAsync(formDefinition, formRequest.FieldValues);
             var validationResult = await _inputValidationService.ValidateFormSubmissionAsync(
                 formRequest.FieldValues, formDefinition.Fields);
             if (!validationResult.IsValid)
@@ -201,6 +206,8 @@ public class FormRequestCommandService : IFormRequestCommandService
             }
 
             // Validate and sanitize input before updating
+            if (formRequest.RequestType != RequestType.Delete)
+                await _lookups.ValidateValuesAsync(formDefinition, formRequest.FieldValues);
             var validationResult = await _inputValidationService.ValidateFormSubmissionAsync(
                 formRequest.FieldValues, formDefinition.Fields);
             
@@ -226,7 +233,11 @@ public class FormRequestCommandService : IFormRequestCommandService
                 if (formRequest.FieldValues.ContainsKey(field.Name))
                 {
                     var inputValue = formRequest.FieldValues[field.Name]?.ToString();
-                    if (!string.IsNullOrEmpty(inputValue))
+                    if (field.OptionSource == FieldOptionSource.DatabaseLookup)
+                    {
+                        sanitizedFieldValues[field.Name] = formRequest.FieldValues[field.Name];
+                    }
+                    else if (!string.IsNullOrEmpty(inputValue))
                     {
                         var sanitizedValue = InputValidator.SanitizeInput(inputValue, field);
                         sanitizedFieldValues[field.Name] = sanitizedValue;

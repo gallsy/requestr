@@ -4,6 +4,8 @@
 @using Requestr.Core.Services.Workflow
 @inject IWorkflowExecutionService WorkflowExecutionService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+@inject IFormDesignService FormDesignService
 @inject IJSRuntime JSRuntime
 @inject IUserTimezoneService UserTimezoneService
 @implements IDisposable
@@ -39,12 +41,16 @@
                 </Authorized>
             </AuthorizeView>
             
+            @if (_canManageForms)
+            {
+                <NavLink class="nav-link sidebar-nav-link" href="admin/forms">
+                    Manage Forms
+                </NavLink>
+            }
+
             <AuthorizeView Roles="Admin">
                 <Authorized>
                     <div class="nav-section-label">Admin</div>
-                    <NavLink class="nav-link sidebar-nav-link" href="admin/forms">
-                        Manage Forms
-                    </NavLink>
                     <NavLink class="nav-link sidebar-nav-link" href="admin/workflows">
                         Manage Workflows
                     </NavLink>
@@ -85,13 +91,16 @@
     private bool _isDarkMode;
     private bool _isSidebarOpen = false;
     private bool UserHasPendingWorkflowSteps = false;
-    private string? CurrentUserId;
-    private List<string> UserRoles = new();
+    private bool _canManageForms;
+    private int _workflowCheckVersion;
+    private bool _disposed;
 
     protected override async Task OnInitializedAsync()
     {
         _isDarkMode = ThemeService.IsDarkMode;
         ThemeService.OnThemeChanged += OnThemeChanged;
+        Navigation.LocationChanged += OnLocationChanged;
+        AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
         
         await CheckUserWorkflowSteps();
     }
@@ -118,27 +127,49 @@
 
     private async Task CheckUserWorkflowSteps()
     {
+        var version = ++_workflowCheckVersion;
+        var canManageForms = false;
+        var hasPendingSteps = false;
         try
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             if (authState.User.Identity?.IsAuthenticated == true)
             {
-                CurrentUserId = UserIdentityHelper.GetUserId(authState.User);
+                var currentUserId = UserIdentityHelper.GetUserId(authState.User);
 
-                UserRoles = ClaimsHelper.GetUserRoles(authState.User);
+                var userRoles = ClaimsHelper.GetUserRoles(authState.User);
 
-                if (!string.IsNullOrEmpty(CurrentUserId))
+                canManageForms = userRoles.Contains("Admin") ||
+                    (await FormDesignService.GetEditableFormsAsync(authState.User)).Any();
+
+                if (!string.IsNullOrEmpty(currentUserId))
                 {
-                    var pendingSteps = await WorkflowExecutionService.GetPendingStepsForUserAsync(CurrentUserId, UserRoles);
-                    UserHasPendingWorkflowSteps = pendingSteps?.Any() == true;
+                    var pendingSteps = await WorkflowExecutionService.GetPendingStepsForUserAsync(currentUserId, userRoles);
+                    hasPendingSteps = pendingSteps?.Any() == true;
                 }
             }
         }
         catch (Exception)
         {
             // Silent fail - navigation will default to role-based access only
-            UserHasPendingWorkflowSteps = false;
+            hasPendingSteps = false;
         }
+        if (!_disposed && version == _workflowCheckVersion)
+        {
+            _canManageForms = canManageForms;
+            UserHasPendingWorkflowSteps = hasPendingSteps;
+        }
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args) => _ = InvokeAsync(RefreshNavigationAsync);
+
+    private void OnAuthenticationStateChanged(Task<AuthenticationState> state) => _ = InvokeAsync(RefreshNavigationAsync);
+
+    private async Task RefreshNavigationAsync()
+    {
+        if (_disposed) return;
+        await CheckUserWorkflowSteps();
+        if (!_disposed) StateHasChanged();
     }
 
     private void OnThemeChanged()
@@ -159,6 +190,10 @@
 
     public void Dispose()
     {
+        _disposed = true;
+        _workflowCheckVersion++;
         ThemeService.OnThemeChanged -= OnThemeChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
+        AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
     }
 }

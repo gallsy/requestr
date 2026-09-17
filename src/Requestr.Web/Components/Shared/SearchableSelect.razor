@@ -1,7 +1,7 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JSRuntime
 
-<div class="position-relative">
+<div class="position-relative" style="min-width: 0;">
     <div class="input-group">
         <input @ref="_input"
                type="text"
@@ -41,7 +41,15 @@
              class="dropdown-menu show w-100 overflow-auto shadow-sm"
                style="top: 100%; left: 0; max-height: 16rem; z-index: 1050;"
              role="listbox">
-            @if (filteredOptions.Count > 0)
+            @if (_loading)
+            {
+                <span class="dropdown-item-text text-muted" role="status">Loading...</span>
+            }
+            else if (!string.IsNullOrEmpty(_error))
+            {
+                <span class="dropdown-item-text text-danger" role="alert">@_error</span>
+            }
+            else if (filteredOptions.Count > 0)
             {
                 @for (var index = 0; index < filteredOptions.Count; index++)
                 {
@@ -49,13 +57,17 @@
                     var optionIndex = index;
                     <button id="@GetOptionId(optionIndex)"
                             type="button"
-                            class="dropdown-item @(optionIndex == _highlightedIndex ? "active" : null)"
+                            class="dropdown-item text-wrap text-break @(optionIndex == _highlightedIndex ? "active" : null)"
                             role="option"
                             aria-selected="@(string.Equals(option.Value, _selectedValue, StringComparison.Ordinal))"
                             @onmousedown="PreventInputBlur"
                             @onmousedown:preventDefault
                             @onclick="@(() => SelectOptionAsync(option))">
                         @option.Text
+                        @if (SearchOptions != null)
+                        {
+                            <small class="text-muted ms-2">(@option.Value)</small>
+                        }
                     </button>
                 }
             }
@@ -66,6 +78,10 @@
         </div>
     }
 </div>
+@if (!_isOpen && !string.IsNullOrEmpty(_error))
+{
+    <div class="small text-danger" role="alert">@_error</div>
+}
 
 @code {
     [Parameter] public string? Value { get; set; }
@@ -76,6 +92,10 @@
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool Required { get; set; }
     [Parameter] public int MaxSuggestions { get; set; } = 50;
+    [Parameter] public Func<string, CancellationToken, Task<IReadOnlyList<(string Value, string Text)>>>? SearchOptions { get; set; }
+    [Parameter] public Func<string, CancellationToken, Task<(string Value, string Text)?>>? ResolveOption { get; set; }
+    [Parameter] public string? SourceIdentity { get; set; }
+    [Parameter] public EventCallback<bool> SelectionValidChanged { get; set; }
 
     private readonly string _listboxId = $"searchable-select-{Guid.NewGuid():N}";
     private List<SearchableSelectOption> _options = new();
@@ -88,6 +108,10 @@
     private bool _filterOnInput;
     private bool _wasInteractedWith;
     private int _highlightedIndex = -1;
+    private CancellationTokenSource? _operation;
+    private bool _loading;
+    private string? _error;
+    private string? _loadedSource;
 
     private string InputCssClass
     {
@@ -108,14 +132,54 @@
 
     private bool HasValidSelection =>
         !string.IsNullOrEmpty(_selectedValue) &&
-        _options.Any(option =>
+        (SearchOptions != null || _options.Any(option =>
             string.Equals(option.Value, _selectedValue, StringComparison.Ordinal) &&
-            string.Equals(option.Text, _searchText, StringComparison.Ordinal));
+            string.Equals(option.Text, _searchText, StringComparison.Ordinal)));
 
     private string? ActiveOptionId => _highlightedIndex >= 0 ? GetOptionId(_highlightedIndex) : null;
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
+        if (SearchOptions != null)
+        {
+            var external = Value ?? string.Empty;
+            if (_initialized && _loadedSource == SourceIdentity && external == _currentValue) return;
+            _loadedSource = SourceIdentity;
+            _initialized = true;
+            _currentValue = external;
+            _selectedValue = string.Empty;
+            _searchText = external;
+            _options.Clear();
+            var operation = BeginOperation();
+            _loading = true;
+            _error = null;
+            try
+            {
+                if (!string.IsNullOrEmpty(external) && ResolveOption != null)
+                {
+                    var resolved = await ResolveOption(external, operation.Token);
+                    if (operation.IsCancellationRequested) return;
+                    if (resolved.HasValue)
+                    {
+                        _selectedValue = resolved.Value.Value;
+                        _searchText = resolved.Value.Text;
+                        _options.Add(new(resolved.Value.Value, resolved.Value.Text));
+                    }
+                    else _error = $"Unavailable lookup key: {external}";
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch { if (!operation.IsCancellationRequested) _error = "Unable to load the selected lookup value."; }
+            finally
+            {
+                if (!operation.IsCancellationRequested)
+                {
+                    _loading = false;
+                    await SelectionValidChanged.InvokeAsync(_error == null && (HasValidSelection || (!Required && string.IsNullOrEmpty(_searchText))));
+                }
+            }
+            return;
+        }
         _options = Options
             .Where(option => !string.IsNullOrWhiteSpace(option.Value))
             .Select(option => new SearchableSelectOption(
@@ -157,6 +221,7 @@
 
     private List<SearchableSelectOption> GetFilteredOptions()
     {
+        if (SearchOptions != null) return _options;
         var query = _filterOnInput ? _searchText.Trim() : string.Empty;
         return _options
             .Where(option => string.IsNullOrEmpty(query) ||
@@ -166,11 +231,12 @@
             .ToList();
     }
 
-    private void HandleFocus(FocusEventArgs args)
+    private async Task HandleFocus(FocusEventArgs args)
     {
         _isOpen = true;
         _filterOnInput = false;
         _highlightedIndex = -1;
+        if (SearchOptions != null) await SearchAsync(string.Empty, false);
     }
 
     private void HandleBlur(FocusEventArgs args)
@@ -186,6 +252,16 @@
         _filterOnInput = true;
         _wasInteractedWith = true;
         _highlightedIndex = -1;
+
+        if (SearchOptions != null)
+        {
+            _selectedValue = string.Empty;
+            _currentValue = string.Empty;
+            await ValueChanged.InvokeAsync(null);
+            await SelectionValidChanged.InvokeAsync(!Required && string.IsNullOrEmpty(_searchText));
+            await SearchAsync(_searchText, true);
+            return;
+        }
 
         var exactOption = _options.FirstOrDefault(option =>
             string.Equals(option.Text, _searchText, StringComparison.Ordinal));
@@ -206,6 +282,9 @@
 
     private async Task SelectOptionAsync(SearchableSelectOption option)
     {
+        _operation?.Cancel();
+        _loading = false;
+        _error = null;
         _currentValue = option.Value;
         _selectedValue = option.Value;
         _searchText = option.Text;
@@ -214,11 +293,15 @@
         _isOpen = false;
         _highlightedIndex = -1;
         await ValueChanged.InvokeAsync(_selectedValue);
+        if (SearchOptions != null) await SelectionValidChanged.InvokeAsync(true);
         await _input.FocusAsync();
     }
 
     private async Task ClearAsync()
     {
+        _operation?.Cancel();
+        _error = null;
+        _loading = false;
         _currentValue = string.Empty;
         _selectedValue = string.Empty;
         _searchText = string.Empty;
@@ -227,6 +310,8 @@
         _isOpen = true;
         _highlightedIndex = -1;
         await ValueChanged.InvokeAsync(string.Empty);
+        if (SearchOptions != null) await SelectionValidChanged.InvokeAsync(!Required);
+        if (SearchOptions != null) await SearchAsync(string.Empty, false);
         await _input.FocusAsync();
     }
 
@@ -239,6 +324,7 @@
             return;
         }
 
+        if (_loading || !string.IsNullOrEmpty(_error)) return;
         var filteredOptions = GetFilteredOptions();
         if (filteredOptions.Count == 0)
             return;
@@ -287,6 +373,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _operation?.Cancel();
+        _operation?.Dispose();
         try
         {
             await JSRuntime.InvokeVoidAsync("requestrSearchableSelect.dispose", _input);
@@ -295,6 +383,31 @@
         {
             // The browser connection has already closed.
         }
+    }
+
+    private CancellationTokenSource BeginOperation()
+    {
+        _operation?.Cancel();
+        _operation?.Dispose();
+        return _operation = new CancellationTokenSource();
+    }
+
+    private async Task SearchAsync(string query, bool debounce)
+    {
+        if (SearchOptions == null) return;
+        var operation = BeginOperation();
+        _loading = true;
+        _error = null;
+        try
+        {
+            if (debounce) await Task.Delay(250, operation.Token);
+            var options = await SearchOptions(query, operation.Token);
+            if (operation.IsCancellationRequested) return;
+            _options = options.Select(option => new SearchableSelectOption(option.Value, option.Text)).ToList();
+        }
+        catch (OperationCanceledException) { }
+        catch { if (!operation.IsCancellationRequested) _error = "Unable to load lookup options."; }
+        finally { if (!operation.IsCancellationRequested) _loading = false; }
     }
 
     private sealed record SearchableSelectOption(string Value, string Text);

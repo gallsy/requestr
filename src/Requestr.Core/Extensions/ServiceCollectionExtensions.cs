@@ -28,9 +28,12 @@ public static class ServiceCollectionExtensions
         // Data Services
         services.AddScoped<IDatabaseService, DatabaseService>();
         services.AddScoped<IDataService, DataService>();
+        services.AddScoped<ILookupDataService, LookupDataService>();
         
         // Business Services
         services.AddScoped<IFormDefinitionService, FormDefinitionService>();
+        services.AddScoped<IFormDesignRepository, FormDesignRepository>();
+        services.AddScoped<IFormDesignService, FormDesignService>();
         services.AddScoped<IBulkFormRequestService, BulkFormRequestService>();
         services.AddScoped<IDataViewService, DataViewService>();
         

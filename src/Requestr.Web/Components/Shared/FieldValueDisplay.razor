@@ -1,5 +1,8 @@
 @* FieldValueDisplay - Displays a single field with optional before/after diff *@
 @using Requestr.Core.Models
+@using Requestr.Core.Utilities
+@using System.Globalization
+@inject Requestr.Web.Services.IFormLookupService LookupService
 
 <div class="field-value-item py-2 @(ShowBorder ? "border-bottom" : "")">
     <div class="row align-items-start">
@@ -14,7 +17,7 @@
                 <i class="bi bi-gear-fill text-info ms-1" style="font-size: 0.75rem;" title="@(ComputedDescription ?? "Auto-computed value")"></i>
             }
         </div>
-        <div class="col-md-8">
+        <div class="col-md-8 text-break">
             @if (IsComputedPending)
             {
                 @if (ShowOriginal && HasOriginal)
@@ -75,6 +78,39 @@
 
     /// <summary>Configured value/text pairs for dropdown-backed fields.</summary>
     [Parameter] public string? DropdownOptions { get; set; }
+    [Parameter] public bool IsLookup { get; set; }
+    [Parameter] public int FormId { get; set; }
+    [Parameter] public int? RequestId { get; set; }
+    [Parameter] public int? BulkRequestId { get; set; }
+    private readonly Dictionary<string, string> _lookupLabels = new(StringComparer.Ordinal);
+    private (int FormId, string FieldName, int? RequestId, int? BulkRequestId, string? NewKey, string? OriginalKey)? _loadedLookup;
+    private int _loadVersion;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsLookup) { _loadedLookup = null; _lookupLabels.Clear(); return; }
+        var identity = (FormId, FieldName, RequestId, BulkRequestId, Key(NewValue), Key(OriginalValue));
+        if (_loadedLookup == identity) return;
+        _loadedLookup = identity;
+        var version = ++_loadVersion;
+        _lookupLabels.Clear();
+        foreach (var key in new[] { identity.Item5, identity.Item6 }.Where(key => !string.IsNullOrEmpty(key)).Distinct())
+        {
+            try
+            {
+                var option = await LookupService.ResolveAsync(FormId, FieldName, key!, RequestId, bulkRequestId: BulkRequestId);
+                if (version != _loadVersion) return;
+                _lookupLabels[key!] = option == null ? $"Unavailable lookup key: {key}" : $"{option.Text} ({option.Value})";
+            }
+            catch
+            {
+                if (version != _loadVersion) return;
+                _lookupLabels[key!] = $"{key} (lookup unavailable)";
+            }
+        }
+    }
+
+    private static string? Key(object? value) => Convert.ToString(SqlTypeConverter.UnwrapJsonElement(value), CultureInfo.InvariantCulture);
 
     private string ResolvedDisplayName => !string.IsNullOrEmpty(DisplayName) ? DisplayName : FieldName;
     
@@ -97,6 +133,11 @@
 
     private string FormatValue(object? value)
     {
+        if (IsLookup)
+        {
+            var key = Key(value);
+            return string.IsNullOrEmpty(key) ? "(empty)" : _lookupLabels.GetValueOrDefault(key, key);
+        }
         if (value == null) return "(empty)";
         
         // Handle JsonElement values (from JSON deserialization of FieldValues)

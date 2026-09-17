@@ -20,6 +20,7 @@ public static class FormPermissionHelper
             FormPermissionType.ViewData => "View the data view page for this form",
             FormPermissionType.BulkActions => "Perform bulk actions from the data view",
             FormPermissionType.BulkUploadCsv => "Upload Excel files for bulk operations",
+            FormPermissionType.EditFormDesign => "Edit layout, labels, help text, and static options on this form",
             _ => permissionType.ToString()
         };
     }
@@ -37,6 +38,7 @@ public static class FormPermissionHelper
             FormPermissionType.ViewData => "Data Access",
             FormPermissionType.BulkActions => "Bulk Operations",
             FormPermissionType.BulkUploadCsv => "Bulk Operations",
+            FormPermissionType.EditFormDesign => "Administrative",
             _ => "Other"
         };
     }

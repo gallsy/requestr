@@ -26,7 +26,7 @@ public static class SqlTypeConverter
             var field = fields.FirstOrDefault(f =>
                 string.Equals(f.Name, kvp.Key, StringComparison.OrdinalIgnoreCase));
 
-            result[kvp.Key] = field != null
+            result[kvp.Key] = field != null && field.OptionSource != FieldOptionSource.DatabaseLookup
                 ? ConvertToSqlType(kvp.Value, field.SqlDataType)
                 : UnwrapJsonElement(kvp.Value);
         }

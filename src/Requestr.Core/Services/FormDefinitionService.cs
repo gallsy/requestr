@@ -13,11 +13,13 @@ public class FormDefinitionService : IFormDefinitionService
     private readonly IConfiguration _configuration;
     private readonly ILogger<FormDefinitionService> _logger;
     private readonly string _connectionString;
+    private readonly ILookupDataService _lookupDataService;
 
-    public FormDefinitionService(IConfiguration configuration, ILogger<FormDefinitionService> logger)
+    public FormDefinitionService(IConfiguration configuration, ILogger<FormDefinitionService> logger, ILookupDataService lookupDataService)
     {
         _configuration = configuration;
         _logger = logger;
+        _lookupDataService = lookupDataService;
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("DefaultConnection not found in configuration");
     }
@@ -38,7 +40,7 @@ public class FormDefinitionService : IFormDefinitionService
                        fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.SqlDataType, ff.MaxLength, 
                        ff.IsRequired, ff.IsReadOnly, ff.IsUnique, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
-                       ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull,
+                       ff.VisibilityCondition, ff.DropdownOptions, ff.OptionSource, ff.LookupDatabaseConnectionName, ff.LookupSchema, ff.LookupTable, ff.LookupKeyColumn, ff.LookupLabelColumn, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull,
                        ff.ComputedValueType, COALESCE(ff.ComputedValueApplyMode, 0) as ComputedValueApplyMode
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
@@ -98,6 +100,10 @@ public class FormDefinitionService : IFormDefinitionService
                         ValidationMessage = (string?)row.ValidationMessage,
                         VisibilityCondition = (string?)row.VisibilityCondition,
                         DropdownOptions = (string?)row.DropdownOptions,
+                        OptionSource = (FieldOptionSource)(int)row.OptionSource,
+                        LookupDatabaseConnectionName = (string?)row.LookupDatabaseConnectionName,
+                        LookupSchema = (string?)row.LookupSchema, LookupTable = (string?)row.LookupTable,
+                        LookupKeyColumn = (string?)row.LookupKeyColumn, LookupLabelColumn = (string?)row.LookupLabelColumn,
                         DisplayOrder = (int)row.DisplayOrder,
                         TreatBlankAsNull = Convert.ToBoolean(row.TreatBlankAsNull),
                         ComputedValueType = row.ComputedValueType != null ? (ComputedValueType)(int)row.ComputedValueType : null,
@@ -158,7 +164,7 @@ public class FormDefinitionService : IFormDefinitionService
                        fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.SqlDataType, ff.MaxLength, 
                        ff.IsRequired, ff.IsReadOnly, ff.IsUnique, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
-                       ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull,
+                       ff.VisibilityCondition, ff.DropdownOptions, ff.OptionSource, ff.LookupDatabaseConnectionName, ff.LookupSchema, ff.LookupTable, ff.LookupKeyColumn, ff.LookupLabelColumn, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull,
                        ff.ComputedValueType, COALESCE(ff.ComputedValueApplyMode, 0) as ComputedValueApplyMode
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
@@ -216,6 +222,10 @@ public class FormDefinitionService : IFormDefinitionService
                         ValidationMessage = row.ValidationMessage as string,
                         VisibilityCondition = row.VisibilityCondition as string,
                         DropdownOptions = row.DropdownOptions as string,
+                        OptionSource = (FieldOptionSource)(int)row.OptionSource,
+                        LookupDatabaseConnectionName = (string?)row.LookupDatabaseConnectionName,
+                        LookupSchema = (string?)row.LookupSchema, LookupTable = (string?)row.LookupTable,
+                        LookupKeyColumn = (string?)row.LookupKeyColumn, LookupLabelColumn = (string?)row.LookupLabelColumn,
                         DisplayOrder = (int)(row.DisplayOrder ?? 0),
                         TreatBlankAsNull = Convert.ToBoolean(row.TreatBlankAsNull ?? 0),
                         ComputedValueType = row.ComputedValueType != null ? (ComputedValueType)(int)row.ComputedValueType : null,
@@ -248,13 +258,13 @@ public class FormDefinitionService : IFormDefinitionService
                        COALESCE(fd.NotificationEmail, '') as NotificationEmail, 
                        COALESCE(fd.NotifyOnCreation, 0) as NotifyOnCreation, 
                        COALESCE(fd.NotifyOnCompletion, 0) as NotifyOnCompletion,
-                       fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
+                       fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy, fd.DesignVersion,
                        fs.Id as SectionId, fs.Name as SectionName, fs.Description as SectionDescription, 
                        fs.DisplayOrder as SectionDisplayOrder, fs.IsCollapsible, fs.DefaultExpanded, 
                        fs.VisibilityCondition as SectionVisibilityCondition, fs.MaxColumns,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.SqlDataType, ff.MaxLength, 
                        ff.IsRequired, ff.IsReadOnly, ff.IsUnique, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
-                       ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, ff.FormSectionId,
+                       ff.VisibilityCondition, ff.DropdownOptions, ff.OptionSource, ff.LookupDatabaseConnectionName, ff.LookupSchema, ff.LookupTable, ff.LookupKeyColumn, ff.LookupLabelColumn, ff.DisplayOrder, ff.FormSectionId,
                        ff.GridRow, ff.GridColumn, ff.GridColumnSpan,
                        COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull, ff.HelpText,
                        ff.ComputedValueType, COALESCE(ff.ComputedValueApplyMode, 0) as ComputedValueApplyMode
@@ -297,6 +307,7 @@ public class FormDefinitionService : IFormDefinitionService
                         UpdatedBy = (string?)row.UpdatedBy,
                         Fields = new List<FormField>(),
                         Sections = new List<FormSection>(),
+                        DesignVersion = (byte[])row.DesignVersion,
                         ApproverRoles = JsonSerializer.Deserialize<List<string>>((string)(row.ApproverRolesJson ?? "[]")) ?? new List<string>()
                     };
                 }
@@ -344,6 +355,10 @@ public class FormDefinitionService : IFormDefinitionService
                         ValidationMessage = (string?)row.ValidationMessage,
                         VisibilityCondition = (string?)row.VisibilityCondition,
                         DropdownOptions = (string?)row.DropdownOptions,
+                        OptionSource = (FieldOptionSource)(int)row.OptionSource,
+                        LookupDatabaseConnectionName = (string?)row.LookupDatabaseConnectionName,
+                        LookupSchema = (string?)row.LookupSchema, LookupTable = (string?)row.LookupTable,
+                        LookupKeyColumn = (string?)row.LookupKeyColumn, LookupLabelColumn = (string?)row.LookupLabelColumn,
                         DisplayOrder = (int)row.DisplayOrder,
                         TreatBlankAsNull = Convert.ToBoolean(row.TreatBlankAsNull ?? 0),
                         HelpText = (string?)row.HelpText,
@@ -377,6 +392,7 @@ public class FormDefinitionService : IFormDefinitionService
     {
         try
         {
+            await _lookupDataService.ValidateConfigurationAsync(formDefinition);
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();
             using var transaction = await connection.BeginTransactionAsync();
@@ -437,8 +453,8 @@ public class FormDefinitionService : IFormDefinitionService
                 if (formDefinition.Fields.Any())
                 {
                     var fieldSql = @"
-                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, SqlDataType, MaxLength, IsRequired, IsReadOnly, IsUnique, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan, TreatBlankAsNull, HelpText, ComputedValueType, ComputedValueApplyMode)
-                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @SqlDataType, @MaxLength, @IsRequired, @IsReadOnly, @IsUnique, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan, @TreatBlankAsNull, @HelpText, @ComputedValueType, @ComputedValueApplyMode)";
+                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, SqlDataType, MaxLength, IsRequired, IsReadOnly, IsUnique, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, OptionSource, LookupDatabaseConnectionName, LookupSchema, LookupTable, LookupKeyColumn, LookupLabelColumn, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan, TreatBlankAsNull, HelpText, ComputedValueType, ComputedValueApplyMode)
+                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @SqlDataType, @MaxLength, @IsRequired, @IsReadOnly, @IsUnique, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @OptionSource, @LookupDatabaseConnectionName, @LookupSchema, @LookupTable, @LookupKeyColumn, @LookupLabelColumn, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan, @TreatBlankAsNull, @HelpText, @ComputedValueType, @ComputedValueApplyMode)";
 
                     foreach (var field in formDefinition.Fields)
                     {
@@ -480,6 +496,7 @@ public class FormDefinitionService : IFormDefinitionService
     {
         try
         {
+            await _lookupDataService.ValidateConfigurationAsync(formDefinition);
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();
             using var transaction = await connection.BeginTransactionAsync();
@@ -494,11 +511,14 @@ public class FormDefinitionService : IFormDefinitionService
                         NotificationEmail = @NotificationEmail, NotifyOnCreation = @NotifyOnCreation, NotifyOnCompletion = @NotifyOnCompletion,
                         WorkflowDefinitionId = @WorkflowDefinitionId,
                         UpdatedAt = @UpdatedAt, UpdatedBy = @UpdatedBy
-                    WHERE Id = @Id";
+                    OUTPUT INSERTED.DesignVersion
+                    WHERE Id = @Id AND IsDeleted = 0
+                      AND (@DesignVersion IS NULL OR DesignVersion = @DesignVersion)";
 
-                await connection.ExecuteAsync(formSql, new
+                var savedVersion = await connection.ExecuteScalarAsync<byte[]>(formSql, new
                 {
                     formDefinition.Id,
+                    formDefinition.DesignVersion,
                     formDefinition.Name,
                     formDefinition.Description,
                     formDefinition.Category,
@@ -517,6 +537,9 @@ public class FormDefinitionService : IFormDefinitionService
                     formDefinition.UpdatedAt,
                     formDefinition.UpdatedBy
                 }, transaction);
+
+                if (savedVersion == null)
+                    throw new InvalidOperationException("This form has changed or is no longer available. Reload it before saving your edits.");
 
                 // Delete existing sections and fields, then recreate them
                 await connection.ExecuteAsync("DELETE FROM FormFields WHERE FormDefinitionId = @Id", 
@@ -551,8 +574,8 @@ public class FormDefinitionService : IFormDefinitionService
                 if (formDefinition.Fields.Any())
                 {
                     var fieldSql = @"
-                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, SqlDataType, MaxLength, IsRequired, IsReadOnly, IsUnique, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan, TreatBlankAsNull, HelpText, ComputedValueType, ComputedValueApplyMode)
-                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @SqlDataType, @MaxLength, @IsRequired, @IsReadOnly, @IsUnique, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan, @TreatBlankAsNull, @HelpText, @ComputedValueType, @ComputedValueApplyMode)";
+                        INSERT INTO FormFields (FormDefinitionId, Name, DisplayName, DataType, ControlType, SqlDataType, MaxLength, IsRequired, IsReadOnly, IsUnique, IsVisible, IsVisibleInDataView, DefaultValue, ValidationRegex, ValidationMessage, VisibilityCondition, DropdownOptions, OptionSource, LookupDatabaseConnectionName, LookupSchema, LookupTable, LookupKeyColumn, LookupLabelColumn, DisplayOrder, FormSectionId, GridRow, GridColumn, GridColumnSpan, TreatBlankAsNull, HelpText, ComputedValueType, ComputedValueApplyMode)
+                        VALUES (@FormDefinitionId, @Name, @DisplayName, @DataType, @ControlType, @SqlDataType, @MaxLength, @IsRequired, @IsReadOnly, @IsUnique, @IsVisible, @IsVisibleInDataView, @DefaultValue, @ValidationRegex, @ValidationMessage, @VisibilityCondition, @DropdownOptions, @OptionSource, @LookupDatabaseConnectionName, @LookupSchema, @LookupTable, @LookupKeyColumn, @LookupLabelColumn, @DisplayOrder, @FormSectionId, @GridRow, @GridColumn, @GridColumnSpan, @TreatBlankAsNull, @HelpText, @ComputedValueType, @ComputedValueApplyMode)";
 
                     foreach (var field in formDefinition.Fields)
                     {
@@ -578,6 +601,7 @@ public class FormDefinitionService : IFormDefinitionService
                 // pointing multiple forms at the same workflow via FormDefinitions.WorkflowDefinitionId.
 
                 await transaction.CommitAsync();
+                formDefinition.DesignVersion = savedVersion;
                 return formDefinition;
             }
             catch
@@ -628,7 +652,7 @@ public class FormDefinitionService : IFormDefinitionService
                        fd.ApproverRoles as ApproverRolesJson, fd.RequiresApproval, fd.RequiresRequestComments, fd.RequiresApprovalComments, fd.IsActive, fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
                        ff.Id as FieldId, ff.FormDefinitionId, ff.Name as FieldName, ff.DisplayName, ff.DataType, ff.ControlType, ff.SqlDataType, ff.MaxLength, 
                        ff.IsRequired, ff.IsReadOnly, ff.IsUnique, ff.IsVisible, ff.IsVisibleInDataView, ff.DefaultValue, ff.ValidationRegex, ff.ValidationMessage, 
-                       ff.VisibilityCondition, ff.DropdownOptions, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull,
+                       ff.VisibilityCondition, ff.DropdownOptions, ff.OptionSource, ff.LookupDatabaseConnectionName, ff.LookupSchema, ff.LookupTable, ff.LookupKeyColumn, ff.LookupLabelColumn, ff.DisplayOrder, COALESCE(ff.TreatBlankAsNull, 0) as TreatBlankAsNull,
                        ff.ComputedValueType, COALESCE(ff.ComputedValueApplyMode, 0) as ComputedValueApplyMode
                 FROM FormDefinitions fd
                 LEFT JOIN FormFields ff ON fd.Id = ff.FormDefinitionId
@@ -687,6 +711,10 @@ public class FormDefinitionService : IFormDefinitionService
                         ValidationMessage = (string?)row.ValidationMessage,
                         VisibilityCondition = (string?)row.VisibilityCondition,
                         DropdownOptions = (string?)row.DropdownOptions,
+                        OptionSource = (FieldOptionSource)(int)row.OptionSource,
+                        LookupDatabaseConnectionName = (string?)row.LookupDatabaseConnectionName,
+                        LookupSchema = (string?)row.LookupSchema, LookupTable = (string?)row.LookupTable,
+                        LookupKeyColumn = (string?)row.LookupKeyColumn, LookupLabelColumn = (string?)row.LookupLabelColumn,
                         DisplayOrder = (int)row.DisplayOrder,
                         TreatBlankAsNull = Convert.ToBoolean(row.TreatBlankAsNull),
                         ComputedValueType = row.ComputedValueType != null ? (ComputedValueType)(int)row.ComputedValueType : null,

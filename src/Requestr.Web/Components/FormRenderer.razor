@@ -108,9 +108,9 @@ else
                                 }
                                 else if (controlType == "searchable-select")
                                 {
-                                    <SearchableSelect Value="@GetFieldStringValue(field.Name)"
+                                    <FormFieldSelect Value="@GetFieldStringValue(field.Name)"
                                                       ValueChanged="@((string? value) => HandleFieldValueChange(field.Name, value))"
-                                                      Options="@GetDropdownOptions(field.DropdownOptions)"
+                                                      Field="field" FormId="FormDefinition.Id" RequestId="RequestId"
                                                       Disabled="@isReadOnly"
                                                       Required="@IsFieldRequired(field)"
                                                       Placeholder="Type to search options..." />
@@ -247,9 +247,9 @@ else
                     }
                     else if (controlType == "searchable-select")
                     {
-                        <SearchableSelect Value="@GetFieldStringValue(field.Name)"
+                        <FormFieldSelect Value="@GetFieldStringValue(field.Name)"
                                           ValueChanged="@((string? value) => HandleFieldValueChange(field.Name, value))"
-                                          Options="@GetDropdownOptions(field.DropdownOptions)"
+                                          Field="field" FormId="FormDefinition.Id" RequestId="RequestId"
                                           Disabled="@isReadOnly"
                                           Required="@IsFieldRequired(field)"
                                           Placeholder="Type to search options..." />
@@ -298,6 +298,7 @@ else
 
 @code {
     [Parameter] public FormDefinition? FormDefinition { get; set; }
+    [Parameter] public int? RequestId { get; set; }
     [Parameter] public Dictionary<string, object?> FieldValues { get; set; } = new();
     [Parameter] public Dictionary<string, bool> CheckboxValues { get; set; } = new();
     [Parameter] public FormDisplayMode DisplayMode { get; set; } = FormDisplayMode.Edit;

@@ -36,7 +36,7 @@ public static class InputValidator
         }
 
         // Check for SQL injection patterns
-        if (ContainsSqlInjectionPatterns(input))
+        if (field.OptionSource != FieldOptionSource.DatabaseLookup && ContainsSqlInjectionPatterns(input))
         {
             result.IsValid = false;
             result.Errors.Add($"{field.DisplayName} contains potentially dangerous content.");
@@ -44,7 +44,7 @@ public static class InputValidator
         }
 
         // Check for XSS patterns
-        if (ContainsXssPatterns(input))
+        if (field.OptionSource != FieldOptionSource.DatabaseLookup && ContainsXssPatterns(input))
         {
             result.IsValid = false;
             result.Errors.Add($"{field.DisplayName} contains potentially dangerous script content.");
@@ -59,7 +59,7 @@ public static class InputValidator
             return result;
         }
 
-        if (string.Equals(field.ControlType, "searchable-select", StringComparison.OrdinalIgnoreCase))
+        if (field.OptionSource == FieldOptionSource.Static && string.Equals(field.ControlType, "searchable-select", StringComparison.OrdinalIgnoreCase))
         {
             var isConfiguredOption = DropdownOptionParser.Parse(field.DropdownOptions)
                 .Any(option => string.Equals(option.Value, input, StringComparison.Ordinal));
@@ -167,6 +167,8 @@ public static class InputValidator
     {
         if (string.IsNullOrEmpty(input))
             return string.Empty;
+        if (field.OptionSource == FieldOptionSource.DatabaseLookup)
+            return input;
 
         // For text fields, strip dangerous patterns but preserve the original characters.
         // Data is stored in SQL — Blazor handles HTML encoding at render time.

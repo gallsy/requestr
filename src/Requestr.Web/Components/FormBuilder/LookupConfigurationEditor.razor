@@ -1,0 +1,145 @@
+@using Requestr.Core.Models
+@using Requestr.Core.Interfaces
+@using Requestr.Core.Utilities
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IDatabaseService DatabaseService
+@inject AuthenticationStateProvider Authentication
+
+<div class="row g-2 mb-3">
+    <div class="col-12">
+        <label class="form-label">Option source</label>
+        <select class="form-select" @bind="Field.OptionSource" @bind:after="LoadAsync" disabled="@(!_isAdmin || _loading)">
+            <option value="@FieldOptionSource.Static">Static options</option>
+            <option value="@FieldOptionSource.DatabaseLookup">Database lookup</option>
+        </select>
+    </div>
+    @if (Field.OptionSource == FieldOptionSource.DatabaseLookup && _isAdmin)
+    {
+        <div class="col-12">
+            <label class="form-label">Database connection</label>
+            <select class="form-select" aria-label="Database connection" @bind="Field.LookupDatabaseConnectionName" @bind:after="ConnectionChangedAsync" disabled="@_loading">
+                <option value="">Form connection (@DatabaseConnectionName)</option>
+                @if (!string.IsNullOrEmpty(Field.LookupDatabaseConnectionName) && !_connections.Contains(Field.LookupDatabaseConnectionName, StringComparer.OrdinalIgnoreCase))
+                {
+                    <option value="@Field.LookupDatabaseConnectionName">@Field.LookupDatabaseConnectionName (unavailable)</option>
+                }
+                @foreach (var connection in _connections) { <option value="@connection">@connection</option> }
+            </select>
+        </div>
+        <div class="col-sm-6">
+            <label class="form-label">Schema</label>
+            <select class="form-select" aria-label="Schema" @bind="Field.LookupSchema" @bind:after="SchemaChangedAsync" disabled="@_loading">
+                <option value="">Select schema</option>
+                @foreach (var schema in _schemas) { <option value="@schema">@schema</option> }
+            </select>
+        </div>
+        <div class="col-sm-6">
+            <label class="form-label">Table</label>
+            <select class="form-select" aria-label="Table" @bind="Field.LookupTable" @bind:after="TableChangedAsync" disabled="@_loading">
+                <option value="">Select table</option>
+                @foreach (var table in _tables) { <option value="@table">@table</option> }
+            </select>
+        </div>
+        <div class="col-sm-6">
+            <label class="form-label">Key column</label>
+            <select class="form-select" aria-label="Key column" @bind="Field.LookupKeyColumn" disabled="@_loading">
+                <option value="">Select key</option>
+                @foreach (var column in _columns.Where(column => !column.IsNullable && (column.IsPrimaryKey || column.IsUnique)))
+                { <option value="@column.Name">@column.Name (@column.DataType)</option> }
+            </select>
+        </div>
+        <div class="col-sm-6">
+            <label class="form-label">Label column</label>
+            <select class="form-select" aria-label="Label column" @bind="Field.LookupLabelColumn" disabled="@_loading">
+                <option value="">Select label</option>
+                @foreach (var column in _columns.Where(column => column.DataType is "varchar" or "nvarchar" or "char" or "nchar"))
+                { <option value="@column.Name">@column.Name</option> }
+            </select>
+        </div>
+    }
+    @if (!string.IsNullOrEmpty(_error)) { <div class="col-12 text-danger" role="alert">@_error</div> }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FormField Field { get; set; } = default!;
+    [Parameter] public string DatabaseConnectionName { get; set; } = "";
+    private FormField? _loadedField;
+    private string? _loadedConnection;
+    private bool _isAdmin;
+    private bool _loading;
+    private string? _error;
+    private int _loadVersion;
+    private List<string> _connections = new();
+    private List<string> _schemas = new();
+    private List<string> _tables = new();
+    private List<ColumnInfo> _columns = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReferenceEquals(Field, _loadedField) && DatabaseConnectionName == _loadedConnection) return;
+        _loadedField = Field;
+        _loadedConnection = DatabaseConnectionName;
+        await LoadAsync();
+    }
+
+    private async Task ConnectionChangedAsync()
+    {
+        Field.LookupSchema = Field.LookupTable = Field.LookupKeyColumn = Field.LookupLabelColumn = null;
+        _schemas = new();
+        _tables = new();
+        _columns = new();
+        await LoadAsync();
+    }
+
+    private async Task SchemaChangedAsync()
+    {
+        Field.LookupTable = Field.LookupKeyColumn = Field.LookupLabelColumn = null;
+        _tables = new();
+        _columns = new();
+        await LoadAsync();
+    }
+
+    private async Task TableChangedAsync()
+    {
+        Field.LookupKeyColumn = Field.LookupLabelColumn = null;
+        _columns = new();
+        await LoadAsync();
+        var primaryKeyColumns = _columns.Where(column => column.IsPrimaryKey).ToList();
+        if (primaryKeyColumns.Count == 1 && !primaryKeyColumns[0].IsNullable &&
+            primaryKeyColumns[0].DataType is "tinyint" or "smallint" or "int" or "bigint" or "uniqueidentifier" or "varchar" or "nvarchar" or "char" or "nchar")
+            Field.LookupKeyColumn = primaryKeyColumns[0].Name;
+    }
+
+    private async Task LoadAsync()
+    {
+        var version = ++_loadVersion;
+        var field = Field;
+        var connectionName = string.IsNullOrWhiteSpace(field.LookupDatabaseConnectionName) ? DatabaseConnectionName : field.LookupDatabaseConnectionName;
+        var schema = field.LookupSchema;
+        var table = field.LookupTable;
+        var user = (await Authentication.GetAuthenticationStateAsync()).User;
+        if (version != _loadVersion) return;
+        _isAdmin = user.Identity?.IsAuthenticated == true && ClaimsHelper.GetUserRoles(user).Contains("Admin");
+        _error = null;
+        _loading = false;
+        if (!_isAdmin || field.OptionSource != FieldOptionSource.DatabaseLookup) return;
+        _loading = true;
+        try
+        {
+            var connections = await DatabaseService.GetDatabaseNamesAsync();
+            if (version != _loadVersion) return;
+            _connections = connections.OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
+            var schemas = await DatabaseService.GetSchemasAsync(connectionName);
+            var tables = !string.IsNullOrEmpty(schema)
+                ? await DatabaseService.GetTablesAsync(connectionName, schema) : new List<string>();
+            var columns = !string.IsNullOrEmpty(table)
+                ? await DatabaseService.GetTableColumnsAsync(connectionName, table, schema) : new List<ColumnInfo>();
+            if (version != _loadVersion) return;
+            _schemas = schemas;
+            _tables = tables;
+            _columns = columns;
+        }
+        catch { if (version == _loadVersion) _error = "Unable to load lookup source metadata."; }
+        finally { if (version == _loadVersion) _loading = false; }
+    }
+}
