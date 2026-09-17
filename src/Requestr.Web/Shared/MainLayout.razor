@@ -4,6 +4,7 @@
 @using Requestr.Core.Services.Workflow
 @inject IWorkflowExecutionService WorkflowExecutionService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IFormDesignService FormDesignService
 @inject IJSRuntime JSRuntime
 @inject IUserTimezoneService UserTimezoneService
 @implements IDisposable
@@ -39,12 +40,16 @@
                 </Authorized>
             </AuthorizeView>
             
+            @if (_canManageForms)
+            {
+                <NavLink class="nav-link sidebar-nav-link" href="admin/forms">
+                    Manage Forms
+                </NavLink>
+            }
+
             <AuthorizeView Roles="Admin">
                 <Authorized>
                     <div class="nav-section-label">Admin</div>
-                    <NavLink class="nav-link sidebar-nav-link" href="admin/forms">
-                        Manage Forms
-                    </NavLink>
                     <NavLink class="nav-link sidebar-nav-link" href="admin/workflows">
                         Manage Workflows
                     </NavLink>
@@ -85,6 +90,7 @@
     private bool _isDarkMode;
     private bool _isSidebarOpen = false;
     private bool UserHasPendingWorkflowSteps = false;
+    private bool _canManageForms;
     private string? CurrentUserId;
     private List<string> UserRoles = new();
 
@@ -126,6 +132,9 @@
                 CurrentUserId = UserIdentityHelper.GetUserId(authState.User);
 
                 UserRoles = ClaimsHelper.GetUserRoles(authState.User);
+
+                _canManageForms = UserRoles.Contains("Admin") ||
+                    (await FormDesignService.GetEditableFormsAsync(authState.User)).Any();
 
                 if (!string.IsNullOrEmpty(CurrentUserId))
                 {

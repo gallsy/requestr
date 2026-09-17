@@ -2,6 +2,7 @@ namespace Requestr.Core.Models;
 
 public class FormDefinition : AuditableEntity, ISoftDeletable
 {
+    public byte[]? DesignVersion { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
@@ -121,4 +122,6 @@ public enum FormPermissionType
     // Bulk operation permissions
     BulkActions = 20,       // Can perform bulk actions from data view
     BulkUploadCsv = 21,     // Can upload CSV files for bulk operations
+
+    EditFormDesign = 40,
 }

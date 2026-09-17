@@ -248,7 +248,7 @@ public class FormDefinitionService : IFormDefinitionService
                        COALESCE(fd.NotificationEmail, '') as NotificationEmail, 
                        COALESCE(fd.NotifyOnCreation, 0) as NotifyOnCreation, 
                        COALESCE(fd.NotifyOnCompletion, 0) as NotifyOnCompletion,
-                       fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy,
+                       fd.CreatedAt, fd.CreatedBy, fd.UpdatedAt, fd.UpdatedBy, fd.DesignVersion,
                        fs.Id as SectionId, fs.Name as SectionName, fs.Description as SectionDescription, 
                        fs.DisplayOrder as SectionDisplayOrder, fs.IsCollapsible, fs.DefaultExpanded, 
                        fs.VisibilityCondition as SectionVisibilityCondition, fs.MaxColumns,
@@ -297,6 +297,7 @@ public class FormDefinitionService : IFormDefinitionService
                         UpdatedBy = (string?)row.UpdatedBy,
                         Fields = new List<FormField>(),
                         Sections = new List<FormSection>(),
+                        DesignVersion = (byte[])row.DesignVersion,
                         ApproverRoles = JsonSerializer.Deserialize<List<string>>((string)(row.ApproverRolesJson ?? "[]")) ?? new List<string>()
                     };
                 }
@@ -494,11 +495,14 @@ public class FormDefinitionService : IFormDefinitionService
                         NotificationEmail = @NotificationEmail, NotifyOnCreation = @NotifyOnCreation, NotifyOnCompletion = @NotifyOnCompletion,
                         WorkflowDefinitionId = @WorkflowDefinitionId,
                         UpdatedAt = @UpdatedAt, UpdatedBy = @UpdatedBy
-                    WHERE Id = @Id";
+                    OUTPUT INSERTED.DesignVersion
+                    WHERE Id = @Id AND IsDeleted = 0
+                      AND (@DesignVersion IS NULL OR DesignVersion = @DesignVersion)";
 
-                await connection.ExecuteAsync(formSql, new
+                var savedVersion = await connection.ExecuteScalarAsync<byte[]>(formSql, new
                 {
                     formDefinition.Id,
+                    formDefinition.DesignVersion,
                     formDefinition.Name,
                     formDefinition.Description,
                     formDefinition.Category,
@@ -517,6 +521,9 @@ public class FormDefinitionService : IFormDefinitionService
                     formDefinition.UpdatedAt,
                     formDefinition.UpdatedBy
                 }, transaction);
+
+                if (savedVersion == null)
+                    throw new InvalidOperationException("This form has changed or is no longer available. Reload it before saving your edits.");
 
                 // Delete existing sections and fields, then recreate them
                 await connection.ExecuteAsync("DELETE FROM FormFields WHERE FormDefinitionId = @Id", 
@@ -578,6 +585,7 @@ public class FormDefinitionService : IFormDefinitionService
                 // pointing multiple forms at the same workflow via FormDefinitions.WorkflowDefinitionId.
 
                 await transaction.CommitAsync();
+                formDefinition.DesignVersion = savedVersion;
                 return formDefinition;
             }
             catch

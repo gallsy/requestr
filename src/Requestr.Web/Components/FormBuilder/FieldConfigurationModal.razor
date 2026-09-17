@@ -11,6 +11,8 @@
                     <label class="form-label">Field Name</label>
                     <input type="text" class="form-control" @bind="Field.DisplayName" />
                 </div>
+                @if (!PresentationOnly)
+                {
                 <div class="col-md-6">
                     <label class="form-label">Control Type</label>
                     <select class="form-select" @bind="Field.ControlType" @bind:after="OnControlTypeChanged">
@@ -21,7 +23,10 @@
                     </select>
                     <small class="form-text text-muted">SQL Type: @SqlType</small>
                 </div>
+                }
             </div>
+            @if (!PresentationOnly)
+            {
             <div class="row mb-2">
                 <div class="col-md-6">
                     @if (HasComputedValue)
@@ -57,6 +62,7 @@
                     </div>
                 </div>
             }
+            }
             @if (Field.ControlType == "select" || Field.ControlType == "searchable-select" || Field.ControlType == "radio" ||
                  Field.DataType == "select" || Field.DataType == "searchable-select" || Field.DataType == "radio")
             {
@@ -68,6 +74,8 @@
                     </div>
                 </div>
             }
+            @if (!PresentationOnly)
+            {
             <div class="row mb-2">
                 <div class="col-md-3">
                     <div class="form-check" title="@(HasComputedValue ? "Auto-generated fields cannot be required" : "")">
@@ -122,6 +130,7 @@
                     </div>
                 </div>
             </div>
+            }
             <div class="row mb-2">
                 <div class="col-12">
                     <label class="form-label">Help Text (Tooltip)</label>
@@ -129,6 +138,8 @@
                     <small class="form-text text-muted">When provided, an info icon will appear next to the field label</small>
                 </div>
             </div>
+            @if (!PresentationOnly)
+            {
             <div class="row mb-2">
                 <div class="col-md-6">
                     <label class="form-label">Computed Value</label>
@@ -154,6 +165,7 @@
                     </div>
                 }
             </div>
+            }
         }
     </BodyTemplate>
     <FooterTemplate>
@@ -168,6 +180,7 @@
     /// The field being configured
     /// </summary>
     [Parameter] public FormField? Field { get; set; }
+    [Parameter] public bool PresentationOnly { get; set; }
 
     /// <summary>
     /// The original SQL type of the field
@@ -205,7 +218,7 @@
 
     private void OnControlTypeChanged()
     {
-        if (Field == null) return;
+        if (Field == null || PresentationOnly) return;
 
         // Clear validation regex if control type doesn't support it
         if (!SupportsValidation(Field.ControlType ?? ""))
@@ -332,7 +345,7 @@
 
     private void OnComputedValueTypeChanged(ChangeEventArgs e)
     {
-        if (Field == null) return;
+        if (Field == null || PresentationOnly) return;
         var intValue = int.Parse(e.Value?.ToString() ?? "0");
         if (intValue == 0)
         {

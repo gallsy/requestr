@@ -6,11 +6,13 @@
 @using Microsoft.JSInterop
 @using Requestr.Core.Interfaces
 @using Requestr.Core.Models
+@using Requestr.Core.Models.DTOs
 @using Requestr.Core.Services
 @using Requestr.Core.Services.Workflow
 @using System.Text.Json
 @using BlazorBootstrap
 @inject IFormDefinitionService FormDefinitionService
+@inject IFormDesignService FormDesignService
 @inject IDatabaseService DatabaseService
 @inject IDataService DataService
 @inject IFormPermissionService FormPermissionService
@@ -23,14 +25,14 @@
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<FormBuilder> Logger
-@attribute [Authorize(Roles = "Admin")]
+@attribute [Authorize]
 
 @* Form Builder *@
 
 <PageHeader Title="@(FormId.HasValue ? "Edit Form" : "Create New Form")">
     <Actions>
         <button type="button" class="btn btn-secondary me-2" @onclick="Cancel">Cancel</button>
-        <button type="button" class="btn btn-primary" @onclick="SaveForm" disabled="@_isSaving">
+        <button type="button" class="btn btn-primary" @onclick="SaveForm" disabled="@(_isSaving || _isLoading || !_canEdit)">
             <i class="bi bi-save me-1"></i>
             @if (_isSaving)
             {
@@ -73,12 +75,18 @@
     {
         <LoadingSpinner Message="Loading form..." />
     }
+    else if (!_canEdit)
+    {
+        <div class="alert alert-danger" role="alert">@_accessError</div>
+    }
     else
     {
         <!-- Tab Navigation -->
         <div class="row">
             <div class="col-12">
                 <ul class="nav nav-tabs mb-4" id="formBuilderTabs" role="tablist">
+                    @if (_isAdmin)
+                    {
                     <li class="nav-item" role="presentation">
                         <button class="nav-link @(ActiveTab == "details" ? "active" : "")" 
                                 @onclick="@(() => SetActiveTab("details"))" 
@@ -87,6 +95,7 @@
                             Form Details
                         </button>
                     </li>
+                    }
                     <li class="nav-item" role="presentation">
                         <button class="nav-link @(ActiveTab == "designer" ? "active" : "")" 
                                 @onclick="@(() => SetActiveTab("designer"))" 
@@ -95,6 +104,8 @@
                             Form Designer
                         </button>
                     </li>
+                    @if (_isAdmin)
+                    {
                     <li class="nav-item" role="presentation">
                         <button class="nav-link @(ActiveTab == "permissions" ? "active" : "")" 
                                 @onclick="@(() => SetActiveTab("permissions"))" 
@@ -119,6 +130,7 @@
                             Notifications
                         </button>
                     </li>
+                    }
                 </ul>
             </div>
         </div>
@@ -126,7 +138,7 @@
         <!-- Tab Content -->
         <div class="tab-content">
             <!-- Form Details Tab -->
-            @if (ActiveTab == "details")
+            @if (_isAdmin && ActiveTab == "details")
             {
                 <Requestr.Web.Components.FormBuilder.FormDetailsTab 
                     FormDefinition="_formDefinition"
@@ -147,6 +159,8 @@
             {
                 <div class="row form-designer-row">
                     <!-- Available Fields Panel -->
+                    @if (_isAdmin)
+                    {
                     <div class="col-lg-3 field-palette-column">
                         @if (_tableColumns.Any())
                         {
@@ -176,9 +190,10 @@
                             </div>
                         }
                     </div>
+                    }
                     
                     <!-- Form Sections Panel -->
-                    <div class="col-lg-9">
+                    <div class="@(_isAdmin ? "col-lg-9" : "col-12")">
                         <div class="card">
                             <div class="card-header d-flex justify-content-between align-items-center">
                                 <h5 class="mb-0">
@@ -217,7 +232,7 @@
                                                                 </div>
                                                                 <div class="col-md-4">
                                                                     <label class="form-label small">Max Columns</label>
-                                                                    <select class="form-select form-select-sm" @bind="section.MaxColumns">
+                                                                    <select class="form-select form-select-sm" @bind="section.MaxColumns" @bind:after="() => FitSectionFields(section)">
                                                                         <option value="1">1 Column</option>
                                                                         <option value="2">2 Columns</option>
                                                                         <option value="3">3 Columns</option>
@@ -239,7 +254,7 @@
                                                             </div>
                                                         </div>
                                                         <div class="section-actions ms-3">
-                                                            <button type="button" class="btn btn-danger btn-sm" @onclick="() => RemoveSection(section)">
+                                                            <button type="button" class="btn btn-danger btn-sm" @onclick="() => RemoveSection(section)" disabled="@(!_isAdmin && !string.IsNullOrWhiteSpace(section.VisibilityCondition))" title="Remove section" aria-label="Remove section">
                                                                 <i class="bi bi-trash"></i>
                                                             </button>
                                                         </div>
@@ -397,12 +412,15 @@
                                                                             title="Position Field">
                                                                         <i class="bi bi-arrows-move"></i>
                                                                     </button>
-                                                                    <button type="button" class="btn btn-outline-danger btn-sm" 
+                                                                        @if (_isAdmin)
+                                                                        {
+                                                                        <button type="button" class="btn btn-outline-danger btn-sm"
                                                                             @onclick="@(e => RemoveField(field))"
                                                                             @onclick:stopPropagation="true"
                                                                             title="Remove Field">
                                                                         <i class="bi bi-trash"></i>
                                                                     </button>
+                                                                    }
                                                                 </div>
                                                                 
                                                                 <!-- Resize handle for visual feedback -->
@@ -474,7 +492,7 @@
                                                                     </div>
                                                                     <div class="col-md-6">
                                                                         <label class="form-label">Control Type</label>
-                                                                        <select class="form-select form-select-sm" @bind="field.ControlType" @bind:after="() => OnControlTypeChanged(field)">
+                                                                        <select class="form-select form-select-sm" @bind="field.ControlType" @bind:after="() => OnControlTypeChanged(field)" disabled="@(!_isAdmin)">
                                                                             @foreach (var controlOption in GetAvailableControlTypes(field))
                                                                             {
                                                                                 <option value="@controlOption.Value">@controlOption.Text</option>
@@ -488,9 +506,12 @@
                                                                 <button type="button" class="btn btn-outline-primary btn-sm me-1" @onclick="() => ConfigureField(field)">
                                                                     <i class="bi bi-gear"></i>
                                                                 </button>
+                                                                @if (_isAdmin)
+                                                                {
                                                                 <button type="button" class="btn btn-danger btn-sm" @onclick="() => RemoveField(field)">
                                                                     <i class="bi bi-trash"></i>
                                                                 </button>
+                                                                }
                                                             </div>
                                                         </div>
                                                     </div>
@@ -506,7 +527,7 @@
             }
 
             <!-- Permissions Tab -->
-            @if (ActiveTab == "permissions")
+            @if (_isAdmin && ActiveTab == "permissions")
             {
                 <Requestr.Web.Components.FormBuilder.FormPermissionsTab 
                     IsLoading="_isLoadingPermissions"
@@ -523,7 +544,7 @@
             }
 
             <!-- Workflow Tab -->
-            @if (ActiveTab == "workflow")
+            @if (_isAdmin && ActiveTab == "workflow")
             {
                 <Requestr.Web.Components.FormBuilder.FormWorkflowTab 
                     SelectedWorkflowId="_selectedWorkflowId"
@@ -535,7 +556,7 @@
             }
 
             <!-- Notifications Tab -->
-            @if (ActiveTab == "notifications")
+            @if (_isAdmin && ActiveTab == "notifications")
             {
                 <Requestr.Web.Components.FormBuilder.FormNotificationsTab FormDefinition="_formDefinition" />
             }
@@ -547,6 +568,7 @@
 <Requestr.Web.Components.FormBuilder.FieldConfigurationModal 
     @ref="_fieldConfigModal"
     Field="_selectedField"
+    PresentationOnly="@(!_isAdmin)"
     SqlType="@(_selectedField != null ? GetOriginalSqlType(_selectedField) : "varchar")"
     ColumnInfo="@GetColumnInfoForField(_selectedField)"
     OnClosed="OnFieldConfigClosed" />
@@ -646,6 +668,12 @@
     private string _selectedConnectionString = "";
     private bool _isLoading = true;
     private bool _isSaving = false;
+    private bool _isAdmin;
+    private bool _canEdit;
+    private bool _hasLoadedForm;
+    private int? _loadedFormId;
+    private int _nextDesignSectionId = -1;
+    private string _accessError = "You do not have permission to edit this form.";
     private ColumnInfo? _draggedColumn;
     private FormField? _draggedField;
     private Dictionary<string, string> _fieldOriginalSqlTypes = new(); // Track original SQL types for each field
@@ -724,6 +752,7 @@
 
     private async Task SetActiveTab(string tab)
     {
+        if (!_canEdit || (!_isAdmin && tab != "designer")) return;
         ActiveTab = tab;
         
         // Initialize sticky palette when switching to designer tab
@@ -762,15 +791,49 @@
         StateHasChanged();
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnParametersSetAsync()
     {
+        if (_hasLoadedForm && _loadedFormId == FormId) return;
+        _hasLoadedForm = true;
+        _loadedFormId = FormId;
+        _isLoading = true;
+        _canEdit = false;
+        _formDefinition = new();
+        _tableColumns.Clear();
+        _connectionStrings.Clear();
+        _fieldOriginalSqlTypes.Clear();
+        _staleFields.Clear();
+        _schemaChangedFields.Clear();
+        _selectedField = null;
+        _selectedFieldForPositioning = null;
+        _nextDesignSectionId = -1;
         try
         {
+            var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+            _isAdmin = user.Identity?.IsAuthenticated == true && ClaimsHelper.GetUserRoles(user).Contains("Admin");
+            if (!_isAdmin)
+            {
+                if (!FormId.HasValue) return;
+                var design = await FormDesignService.GetDesignAsync(user, FormId.Value);
+                if (design == null)
+                {
+                    _accessError = "The form is no longer available.";
+                    return;
+                }
+                _formDefinition = design;
+                ActiveTab = "designer";
+                foreach (var field in design.Fields)
+                    _fieldOriginalSqlTypes[field.Name] = field.SqlDataType ?? field.DataType;
+                _canEdit = true;
+                return;
+            }
+
+            ActiveTab = "details";
             // Check for tab parameter in URL
             var uri = new Uri(Navigation.Uri);
             var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
             var tabParam = query["tab"];
-            if (!string.IsNullOrEmpty(tabParam))
+            if (tabParam != null && new[] { "details", "designer", "permissions", "workflow", "notifications" }.Contains(tabParam))
             {
                 ActiveTab = tabParam;
             }
@@ -795,7 +858,13 @@
             
             if (FormId.HasValue)
             {
-                _formDefinition = await FormDefinitionService.GetByIdAsync(FormId.Value) ?? new FormDefinition();
+                var form = await FormDefinitionService.GetByIdAsync(FormId.Value);
+                if (form == null)
+                {
+                    _accessError = "The form is no longer available.";
+                    return;
+                }
+                _formDefinition = form;
                 _selectedConnectionString = _formDefinition.DatabaseConnectionName;
                 
                 // Populate ControlType for existing fields if empty (for backward compatibility)
@@ -859,6 +928,11 @@
                     _selectedRole = _availableRoles.First();
                 }
             }
+            _canEdit = true;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _accessError = ex.Message;
         }
         catch (Exception ex)
         {
@@ -884,7 +958,7 @@
     
     private async Task LoadFormPermissions()
     {
-        if (!FormId.HasValue) return;
+        if (!FormId.HasValue || !await HasAdminAccessAsync()) return;
         
         try
         {
@@ -940,6 +1014,7 @@
     
     private async Task SavePermissions()
     {
+        if (!await HasAdminAccessAsync()) return;
         if (!FormId.HasValue)
         {
             toastService.ShowWarning("Please save the form first before configuring permissions.");
@@ -1046,6 +1121,7 @@
 
     private async Task AddNewRole()
     {
+        if (!await HasAdminAccessAsync()) return;
         if (string.IsNullOrWhiteSpace(_newRoleName) || !FormId.HasValue)
             return;
             
@@ -1124,7 +1200,7 @@
     
     private async Task DeleteRole(string roleName)
     {
-        if (!FormId.HasValue) return;
+        if (!FormId.HasValue || !await HasAdminAccessAsync()) return;
         
         try
         {
@@ -1600,7 +1676,17 @@
     {
         try
         {
+            if (!_canEdit || _isSaving) return;
             _isSaving = true;
+
+            var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+            if (!_isAdmin)
+            {
+                await FormDesignService.SaveAsync(user, UpdateFormDesignDto.FromForm(_formDefinition));
+                Navigation.NavigateTo("/admin/forms", forceLoad: true);
+                return;
+            }
+            if (!await HasAdminAccessAsync()) return;
             
             // Validate form
             if (string.IsNullOrWhiteSpace(_formDefinition.Name))
@@ -1729,6 +1815,14 @@
     private void Cancel()
     {
         Navigation.NavigateTo("/admin/forms");
+    }
+
+    private async Task<bool> HasAdminAccessAsync()
+    {
+        var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        var allowed = user.Identity?.IsAuthenticated == true && ClaimsHelper.GetUserRoles(user).Contains("Admin");
+        if (!allowed) toastService.ShowError("Admin access is required for this action.");
+        return allowed;
     }
 
     private bool IsLongText(string sqlDataType)
@@ -2103,7 +2197,7 @@
 
     private async Task SaveWorkflowConfiguration()
     {
-        if (!FormId.HasValue) return;
+        if (!FormId.HasValue || !await HasAdminAccessAsync()) return;
 
         try
         {
@@ -2227,6 +2321,7 @@
 
     private async Task UpdateFieldConfiguration(WorkflowStepConfigModel stepConfig, FieldConfigurationModel fieldConfig)
     {
+        if (!await HasAdminAccessAsync()) return;
         try
         {
             // Update the field configuration in the step config
@@ -2327,6 +2422,7 @@
 
     private void RemoveSection(FormSection section)
     {
+        if (!_isAdmin && !string.IsNullOrWhiteSpace(section.VisibilityCondition)) return;
         if (_formDefinition.Sections != null)
         {
             // Move fields from this section to unassigned (for backward compatibility)
@@ -2408,7 +2504,7 @@
                     field.FormSectionId = newSection.Id;
                     field.GridRow = currentRow;
                     field.GridColumn = currentColumn;
-                    field.GridColumnSpan = 6;
+                    field.GridColumnSpan = _isAdmin ? 6 : 1;
                     
                     currentColumn++;
                     if (currentColumn > newSection.MaxColumns)
@@ -2425,11 +2521,22 @@
     // Helper methods
     private int GetNextSectionId()
     {
+        if (!_isAdmin) return _nextDesignSectionId--;
         if (_formDefinition.Sections?.Any() == true)
         {
             return _formDefinition.Sections.Max(s => s.Id) + 1;
         }
         return 1;
+    }
+
+    private void FitSectionFields(FormSection section)
+    {
+        if (_isAdmin) return;
+        foreach (var field in _formDefinition.Fields.Where(field => field.FormSectionId == section.Id))
+        {
+            field.GridColumn = Math.Clamp(field.GridColumn, 1, section.MaxColumns);
+            field.GridColumnSpan = Math.Clamp(field.GridColumnSpan, 1, section.MaxColumns - field.GridColumn + 1);
+        }
     }
 
     private int GetNextAvailableRow(FormSection section)

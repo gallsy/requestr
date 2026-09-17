@@ -2,20 +2,25 @@
 @using Requestr.Core.Models
 @using Requestr.Core.Interfaces
 @inject IFormDefinitionService FormDefinitionService
+@inject IFormDesignService FormDesignService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IToastNotificationService toastService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
-@attribute [Authorize(Roles = "Admin")]
+@attribute [Authorize]
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
 @inject IUserTimezoneService Tz
-<PageTitle>Form Management | @Branding.ApplicationName Admin</PageTitle>
+<PageTitle>Form Management | @Branding.ApplicationName</PageTitle>
 
-<PageHeader Title="Manage Forms" Description="Manage all forms including inactive ones">
+<PageHeader Title="Manage Forms">
     <Actions>
+        @if (_isAdmin)
+        {
         <button class="btn btn-primary btn-sm" @onclick="CreateForm" title="Create New Form">
             <i class="bi bi-plus-lg"></i>
         </button>
+        }
     </Actions>
 </PageHeader>
 
@@ -28,12 +33,15 @@
     else if (!_filteredForms.Any())
     {
         <EmptyState Title="No Forms Available" 
-                    Description="@(StatusFilter == "active" ? "No active forms found" : StatusFilter == "inactive" ? "No inactive forms found" : "No forms found. Get started by creating your first form.")">
+                    Description="@(!_isAdmin ? "No editable forms found." : StatusFilter == "active" ? "No active forms found" : StatusFilter == "inactive" ? "No inactive forms found" : "No forms found.")">
             <Action>
+                @if (_isAdmin)
+                {
                 <Button Color="ButtonColor.Primary" @onclick="CreateForm">
                     <Icon Name="IconName.Plus" class="me-2" />
                     Create New Form
                 </Button>
+                }
             </Action>
         </EmptyState>
     }
@@ -58,6 +66,8 @@
                             }
                         </select>
                     </div>
+                    @if (_isAdmin)
+                    {
                     <div class="col-md-3">
                         <select class="form-select form-select-sm" @bind="RoleFilter" @bind:after="ApplyFilter">
                             <option value="">All Roles</option>
@@ -67,6 +77,7 @@
                             }
                         </select>
                     </div>
+                    }
                     <div class="col-md-3 text-end">
                         <span class="text-muted small">@_filteredForms.Count of @(_forms?.Count ?? 0) forms</span>
                     </div>
@@ -82,7 +93,10 @@
                                 <th>Name</th>
                                 <th>Description</th>
                                 <th>Category</th>
-                                <th>Roles</th>
+                                @if (_isAdmin)
+                                {
+                                    <th>Roles</th>
+                                }
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
@@ -112,6 +126,8 @@
                                             <span class="text-muted small">&mdash;</span>
                                         }
                                     </td>
+                                    @if (_isAdmin)
+                                    {
                                     <td>
                                         @{
                                             var roles = form.FormPermissions
@@ -133,6 +149,7 @@
                                             <span class="text-muted small">No roles</span>
                                         }
                                     </td>
+                                    }
                                     <td>
                                         @if (form.IsActive)
                                         {
@@ -145,9 +162,11 @@
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm" role="group">
-                                            <button class="btn btn-outline-primary" @onclick="() => EditForm(form.Id)">
+                                            <button class="btn btn-outline-primary" @onclick="() => EditForm(form.Id)" title="Edit form" aria-label="Edit form">
                                                 <i class="bi bi-pencil-square"></i>
                                             </button>
+                                            @if (_isAdmin)
+                                            {
                                             <button class="btn btn-outline-info" @onclick="() => ViewForm(form.Id)">
                                                 <i class="bi bi-eye"></i>
                                             </button>
@@ -157,6 +176,7 @@
                                             <button class="btn btn-outline-danger" @onclick="() => DeleteForm(form.Id)">
                                                 <i class="bi bi-trash"></i>
                                             </button>
+                                            }
                                         </div>
                                     </td>
                                 </tr>
@@ -176,6 +196,7 @@
     private List<string> _allCategories = new();
     private List<string> _allRoles = new();
     private bool _isLoading = true;
+    private bool _isAdmin;
     private string StatusFilter = "all";
     private string CategoryFilter = "";
     private string RoleFilter = "";
@@ -190,7 +211,11 @@
         try
         {
             _isLoading = true;
-            _forms = await FormDefinitionService.GetFormDefinitionsAsync();
+            var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+            _isAdmin = user.Identity?.IsAuthenticated == true && ClaimsHelper.GetUserRoles(user).Contains("Admin");
+            _forms = _isAdmin
+                ? await FormDefinitionService.GetFormDefinitionsAsync()
+                : await FormDesignService.GetEditableFormsAsync(user);
             _allCategories = _forms
                 .Where(f => !string.IsNullOrEmpty(f.Category))
                 .Select(f => f.Category)
@@ -232,7 +257,7 @@
             query = query.Where(f => string.Equals(f.Category, CategoryFilter, StringComparison.OrdinalIgnoreCase));
         }
 
-        if (!string.IsNullOrEmpty(RoleFilter))
+        if (_isAdmin && !string.IsNullOrEmpty(RoleFilter))
         {
             query = query.Where(f => f.FormPermissions
                 .Any(p => p.IsGranted && string.Equals(p.RoleName, RoleFilter, StringComparison.OrdinalIgnoreCase)));
@@ -243,6 +268,7 @@
 
     private void CreateForm()
     {
+        if (!_isAdmin) return;
         Navigation.NavigateTo("/admin/forms/builder");
     }
 
@@ -260,27 +286,31 @@
     {
         try
         {
-            form.IsActive = !form.IsActive;
-            await FormDefinitionService.UpdateFormDefinitionAsync(form);
+            if (!await HasAdminAccessAsync()) return;
+            var current = await FormDefinitionService.GetByIdAsync(form.Id);
+            if (current == null) return;
+            current.IsActive = !current.IsActive;
+            await FormDefinitionService.UpdateFormDefinitionAsync(current);
+            form.IsActive = current.IsActive;
             ApplyFilter(); // Refresh the filtered list
             StateHasChanged();
         }
         catch (Exception ex)
         {
             toastService.ShowError($"Error updating form status: {ex.Message}");
-            // Revert the change
-            form.IsActive = !form.IsActive;
             ApplyFilter(); // Refresh the filtered list
         }
     }
 
     private async Task DeleteForm(int formId)
     {
+        if (!await HasAdminAccessAsync()) return;
         var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this form? This action cannot be undone.");
         if (confirmed)
         {
             try
             {
+                if (!await HasAdminAccessAsync()) return;
                 await FormDefinitionService.DeleteFormDefinitionAsync(formId);
                 await LoadForms();
             }
@@ -289,5 +319,13 @@
                 toastService.ShowError($"Error deleting form: {ex.Message}");
             }
         }
+    }
+
+    private async Task<bool> HasAdminAccessAsync()
+    {
+        var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        var allowed = user.Identity?.IsAuthenticated == true && ClaimsHelper.GetUserRoles(user).Contains("Admin");
+        if (!allowed) toastService.ShowError("Admin access is required for this action.");
+        return allowed;
     }
 }
