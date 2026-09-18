@@ -12,7 +12,7 @@
                     <div class="col-md-6">
                         <div class="mb-3">
                             <label class="form-label">Form Name *</label>
-                            <input type="text" class="form-control" @bind="FormDefinition.Name" placeholder="Enter form name" />
+                            <input type="text" class="form-control" @bind="FormDefinition.Name" @bind:after="Changed" placeholder="Enter form name" />
                             <small class="form-text text-muted">This name will be displayed to users</small>
                         </div>
                     </div>
@@ -20,7 +20,7 @@
                         <div class="mb-3">
                             <label class="form-label">Status</label>
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" @bind="FormDefinition.IsActive" id="formActiveSwitch">
+                                <input class="form-check-input" type="checkbox" @bind="FormDefinition.IsActive" @bind:after="Changed" id="formActiveSwitch">
                                 <label class="form-check-label" for="formActiveSwitch">
                                     @(FormDefinition.IsActive ? "Active" : "Inactive")
                                 </label>
@@ -35,7 +35,7 @@
                         <div class="mb-3">
                             <label class="form-label">Require Request Comments</label>
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" @bind="FormDefinition.RequiresRequestComments" id="requiresRequestCommentsSwitch">
+                                <input class="form-check-input" type="checkbox" @bind="FormDefinition.RequiresRequestComments" @bind:after="Changed" id="requiresRequestCommentsSwitch">
                                 <label class="form-check-label" for="requiresRequestCommentsSwitch">
                                     @(FormDefinition.RequiresRequestComments ? "Required" : "Optional")
                                 </label>
@@ -47,7 +47,7 @@
                         <div class="mb-3">
                             <label class="form-label">Require Approval Comments</label>
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" @bind="FormDefinition.RequiresApprovalComments" id="requiresApprovalCommentsSwitch">
+                                <input class="form-check-input" type="checkbox" @bind="FormDefinition.RequiresApprovalComments" @bind:after="Changed" id="requiresApprovalCommentsSwitch">
                                 <label class="form-check-label" for="requiresApprovalCommentsSwitch">
                                     @(FormDefinition.RequiresApprovalComments ? "Required" : "Optional")
                                 </label>
@@ -59,7 +59,7 @@
                 
                 <div class="mb-3">
                     <label class="form-label">Description</label>
-                    <textarea class="form-control" rows="3" @bind="FormDefinition.Description" placeholder="Enter form description"></textarea>
+                    <textarea class="form-control" rows="3" @bind="FormDefinition.Description" @bind:after="Changed" placeholder="Enter form description"></textarea>
                     <small class="form-text text-muted">Provide a clear description of what this form is used for</small>
                 </div>
                 
@@ -69,6 +69,7 @@
                         <input type="text" class="form-control" 
                                list="categoryOptions" 
                                @bind="FormDefinition.Category" 
+                               @bind:after="Changed"
                                placeholder="Select or create a category" />
                         <datalist id="categoryOptions">
                             @foreach (var category in ExistingCategories)
@@ -163,6 +164,8 @@
 
 @code {
     [Parameter] public FormDefinition FormDefinition { get; set; } = new();
+    [Parameter] public EventCallback OnChanged { get; set; }
+    private Task Changed() => OnChanged.InvokeAsync();
     [Parameter] public List<string> ExistingCategories { get; set; } = new();
     [Parameter] public Dictionary<string, string> ConnectionStrings { get; set; } = new();
     [Parameter] public string SelectedConnectionString { get; set; } = "";

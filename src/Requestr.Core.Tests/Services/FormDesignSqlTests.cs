@@ -83,6 +83,9 @@ public class FormDesignSqlTests : IAsyncLifetime
         var lookupConnectionMigration = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "028_LookupDatabaseConnections.sql"));
         await connection.ExecuteAsync(lookupConnectionMigration);
         await connection.ExecuteAsync(lookupConnectionMigration);
+        var conditionMigration = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "029_FormConditionals.sql"));
+        await connection.ExecuteAsync(conditionMigration);
+        await connection.ExecuteAsync(conditionMigration);
         var factory = new Mock<IDbConnectionFactory>();
         factory.Setup(connectionFactory => connectionFactory.CreateConnectionAsync()).Returns(OpenAsync);
         _repository = new FormDesignRepository(factory.Object);
@@ -117,7 +120,7 @@ public class FormDesignSqlTests : IAsyncLifetime
         await connection.ExecuteAsync("""
             INSERT INTO FormFields (FormDefinitionId, FormSectionId, Name, DisplayName, DataType, ControlType, SqlDataType,
                 MaxLength, DefaultValue, ValidationRegex, VisibilityCondition, DropdownOptions)
-            VALUES (@FormId, @SectionId, 'Region', 'Region', 'text', 'select', 'nvarchar', 50, 'North', '^.+$', 'Restricted', 'North');
+            VALUES (@FormId, @SectionId, 'Region', 'Region', 'text', 'select', 'nvarchar', 50, 'North', '^.+$', NULL, 'North');
             INSERT INTO FormPermissions VALUES (@FormId, 'Editors', 40, @Grant);
             """, new { FormId = formId, SectionId = sectionId, Grant = grant });
         return (await _repository.GetAsync(formId))!;
@@ -487,6 +490,56 @@ public class FormDesignSqlTests : IAsyncLifetime
         await connection.ExecuteAsync("DELETE FROM LookupCountries WHERE Id = 12");
         Assert.False((await application.ApplyChangesToDatabaseAsync(request)).Success);
         Assert.Equal(1, await connection.QuerySingleAsync<int>("SELECT COUNT(*) FROM LookupDestination"));
+    }
+
+    [LocalDbFact]
+    public async Task ConditionalLookupsFilterAndRejectWrongParentAndPreserveHiddenUpdates()
+    {
+        var (service, form) = await CreateLookupAsync();
+        using var connection = await OpenAsync();
+        await connection.ExecuteAsync("""
+            ALTER TABLE LookupCountries ADD Region varchar(3) NULL;
+            ALTER TABLE LookupDestination ADD Id int IDENTITY PRIMARY KEY, Region varchar(3) NULL, Notes nvarchar(100) NULL;
+            """);
+        await connection.ExecuteAsync("""
+            INSERT INTO LookupCountries (Id, Name, Region) VALUES (1, 'Australia', 'OCE'), (2, 'Canada', 'NAM');
+            INSERT INTO LookupDestination (CountryId, Region, Notes) VALUES (1, 'OCE', 'Keep me');
+            """);
+        form.Fields[0].LookupParentField = "Region";
+        form.Fields[0].LookupFilterColumn = "Region";
+        form.Fields.Add(new() { Name = "Region", SqlDataType = "varchar", DataType = "text", IsRequired = true });
+        form.Fields.Add(new() { Name = "Notes", SqlDataType = "nvarchar", DataType = "text", VisibilityCondition = Requestr.Core.Validation.FormConditions.Serialize(new() { Field = "Region", Value = "NAM" }) });
+        await service.ValidateConfigurationAsync(form);
+        Assert.Empty(await service.SearchDependentAsync(form, form.Fields[0], "", null));
+        Assert.Equal("1", Assert.Single(await service.SearchDependentAsync(form, form.Fields[0], "", "OCE")).Value);
+        Assert.Null(await service.ResolveDependentAsync(form, form.Fields[0], "2", "OCE"));
+        var values = new Dictionary<string, object?> { ["Region"] = "OCE", ["CountryId"] = 1, ["Notes"] = "Malicious replacement" };
+        await service.ValidateSubmissionAsync(form, values, RequestType.Update, new Dictionary<string, object?> { ["Id"] = 1 });
+        Assert.False(values.ContainsKey("Notes"));
+        values = new() { ["Region"] = "NAM" };
+        await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => service.ValidateSubmissionAsync(form, values, RequestType.Update, new Dictionary<string, object?> { ["Id"] = 1 }));
+        Assert.Equal("Keep me", await connection.QuerySingleAsync<string>("SELECT Notes FROM LookupDestination"));
+        form.Fields[2].IsRequired = true;
+        values = new() { ["Region"] = "OCE", ["CountryId"] = 1, ["Notes"] = "Ignored" };
+        await service.ValidateSubmissionAsync(form, values, RequestType.Insert);
+        Assert.False(values.ContainsKey("Notes"));
+        values = new() { ["Region"] = "NAM", ["CountryId"] = 2 };
+        await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => service.ValidateSubmissionAsync(form, values, RequestType.Insert));
+        form.Fields[2].IsRequired = false;
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:DefaultConnection"] = ConnectionString }).Build();
+        var definitions = new FormDefinitionService(configuration, NullLogger<FormDefinitionService>.Instance, service);
+        form.Name = "Conditional form";
+        form.CreatedBy = "Admin";
+        await definitions.CreateFormDefinitionAsync(form);
+        var loaded = (await definitions.GetFormDefinitionAsync(form.Id))!;
+        Assert.Equal("Region", loaded.Fields[0].LookupParentField);
+        Assert.Equal("Region", loaded.Fields[0].LookupFilterColumn);
+        Assert.Equal(form.Fields[2].VisibilityCondition, loaded.Fields[2].VisibilityCondition);
+        await definitions.UpdateFormDefinitionAsync(loaded);
+        foreach (var read in new[] { await definitions.GetFormDefinitionsAsync(), await definitions.GetActiveAsync(), await definitions.GetFormDefinitionsForUserAsync("Admin", new() { "Admin" }) })
+            Assert.Equal("Region", Assert.Single(read).Fields[0].LookupParentField);
+        await connection.ExecuteAsync("ALTER TABLE LookupDestination ALTER COLUMN Notes nvarchar(100) NOT NULL");
+        await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => service.ValidateConfigurationAsync(form));
     }
 
     public async Task DisposeAsync()

@@ -42,7 +42,7 @@
         </div>
         <div class="col-sm-6">
             <label class="form-label">Key column</label>
-            <select class="form-select" aria-label="Key column" @bind="Field.LookupKeyColumn" disabled="@_loading">
+            <select class="form-select" aria-label="Key column" @bind="Field.LookupKeyColumn" @bind:after="Changed" disabled="@_loading">
                 <option value="">Select key</option>
                 @foreach (var column in _columns.Where(column => !column.IsNullable && (column.IsPrimaryKey || column.IsUnique)))
                 { <option value="@column.Name">@column.Name (@column.DataType)</option> }
@@ -50,7 +50,7 @@
         </div>
         <div class="col-sm-6">
             <label class="form-label">Label column</label>
-            <select class="form-select" aria-label="Label column" @bind="Field.LookupLabelColumn" disabled="@_loading">
+            <select class="form-select" aria-label="Label column" @bind="Field.LookupLabelColumn" @bind:after="Changed" disabled="@_loading">
                 <option value="">Select label</option>
                 @foreach (var column in _columns.Where(column => column.DataType is "varchar" or "nvarchar" or "char" or "nchar"))
                 { <option value="@column.Name">@column.Name</option> }
@@ -58,11 +58,36 @@
         </div>
     }
     @if (!string.IsNullOrEmpty(_error)) { <div class="col-12 text-danger" role="alert">@_error</div> }
+    @if (_isAdmin && Field.OptionSource == FieldOptionSource.DatabaseLookup)
+    {
+        <div class="col-12">
+            <label class="form-label">Filter by field</label>
+            <select class="form-select" aria-label="Filter by field" @bind="Field.LookupParentField" @bind:after="ParentChanged">
+                <option value="">No parent filter</option>
+                @foreach (var parent in Fields.Where(parent => parent.Name != Field.Name && parent.ComputedValueType is null or ComputedValueType.None))
+                { <option value="@parent.Name">@parent.DisplayName</option> }
+            </select>
+        </div>
+        @if (!string.IsNullOrEmpty(Field.LookupParentField))
+        {
+            <div class="col-12">
+                <label class="form-label">Matching source column</label>
+                <select class="form-select" aria-label="Matching source column" @bind="Field.LookupFilterColumn" @bind:after="Changed" disabled="@_loading">
+                    <option value="">Select filter column</option>
+                    @foreach (var column in _columns) { <option value="@column.Name">@column.Name (@column.DataType)</option> }
+                </select>
+            </div>
+        }
+    }
 </div>
 
 @code {
     [Parameter, EditorRequired] public FormField Field { get; set; } = default!;
     [Parameter] public string DatabaseConnectionName { get; set; } = "";
+    [Parameter] public List<FormField> Fields { get; set; } = new();
+    [Parameter] public EventCallback OnChanged { get; set; }
+    private Task Changed() => OnChanged.InvokeAsync();
+    private async Task ParentChanged() { Field.LookupFilterColumn = null; await Changed(); }
     private FormField? _loadedField;
     private string? _loadedConnection;
     private bool _isAdmin;
@@ -84,6 +109,7 @@
 
     private async Task ConnectionChangedAsync()
     {
+        Field.LookupFilterColumn = null;
         Field.LookupSchema = Field.LookupTable = Field.LookupKeyColumn = Field.LookupLabelColumn = null;
         _schemas = new();
         _tables = new();
@@ -93,6 +119,7 @@
 
     private async Task SchemaChangedAsync()
     {
+        Field.LookupFilterColumn = null;
         Field.LookupTable = Field.LookupKeyColumn = Field.LookupLabelColumn = null;
         _tables = new();
         _columns = new();
@@ -101,6 +128,7 @@
 
     private async Task TableChangedAsync()
     {
+        Field.LookupFilterColumn = null;
         Field.LookupKeyColumn = Field.LookupLabelColumn = null;
         _columns = new();
         await LoadAsync();
@@ -108,6 +136,7 @@
         if (primaryKeyColumns.Count == 1 && !primaryKeyColumns[0].IsNullable &&
             primaryKeyColumns[0].DataType is "tinyint" or "smallint" or "int" or "bigint" or "uniqueidentifier" or "varchar" or "nvarchar" or "char" or "nchar")
             Field.LookupKeyColumn = primaryKeyColumns[0].Name;
+        await Changed();
     }
 
     private async Task LoadAsync()
@@ -122,7 +151,12 @@
         _isAdmin = user.Identity?.IsAuthenticated == true && ClaimsHelper.GetUserRoles(user).Contains("Admin");
         _error = null;
         _loading = false;
-        if (!_isAdmin || field.OptionSource != FieldOptionSource.DatabaseLookup) return;
+        if (!_isAdmin || field.OptionSource != FieldOptionSource.DatabaseLookup)
+        {
+            if (_isAdmin) field.LookupParentField = field.LookupFilterColumn = null;
+            await Changed();
+            return;
+        }
         _loading = true;
         try
         {
@@ -140,6 +174,6 @@
             _columns = columns;
         }
         catch { if (version == _loadVersion) _error = "Unable to load lookup source metadata."; }
-        finally { if (version == _loadVersion) _loading = false; }
+        finally { if (version == _loadVersion) { _loading = false; await Changed(); } }
     }
 }

@@ -97,6 +97,18 @@ public class FormLookupTests
         Assert.NotNull(await Service.ResolveAsync(1, "CountryId", "1", bulkRequestId: 20));
     }
 
+    [Fact]
+    public async Task DraftLookupsRequireAdminAndValidateBeforeQuerying()
+    {
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Service.SearchPreviewAsync(_form, "CountryId", "", "North"));
+        _data.VerifyNoOtherCalls();
+        _authentication.Role = "Admin";
+        _data.Setup(service => service.ValidateConfigurationAsync(_form, default)).Returns(Task.CompletedTask);
+        _data.Setup(service => service.SearchDependentAsync(_form, _form.Fields[0], "", "North", default)).ReturnsAsync(new[] { new LookupOption("1", "Country") });
+        Assert.Single(await Service.SearchPreviewAsync(_form, "CountryId", "", "North"));
+        _data.Verify(service => service.ValidateConfigurationAsync(_form, default), Times.Once);
+    }
+
     private sealed class LookupAuthentication : AuthenticationStateProvider
     {
         public bool Authenticated { get; set; } = true;

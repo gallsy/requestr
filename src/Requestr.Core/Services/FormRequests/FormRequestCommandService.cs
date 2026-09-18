@@ -71,9 +71,9 @@ public class FormRequestCommandService : IFormRequestCommandService
 
             // Validate and sanitize field values
             if (formRequest.RequestType != RequestType.Delete)
-                await _lookups.ValidateValuesAsync(formDefinition, formRequest.FieldValues);
+                await _lookups.ValidateSubmissionAsync(formDefinition, formRequest.FieldValues, formRequest.RequestType, formRequest.OriginalValues);
             var validationResult = await _inputValidationService.ValidateFormSubmissionAsync(
-                formRequest.FieldValues, formDefinition.Fields);
+                formRequest.FieldValues, formDefinition.Fields.Where(field => !FormConditions.HasConditions(formDefinition) || formRequest.FieldValues.ContainsKey(field.Name)).ToList());
             if (!validationResult.IsValid)
             {
                 throw new InvalidOperationException($"Form validation failed: {string.Join(", ", validationResult.Errors)}");
@@ -207,9 +207,9 @@ public class FormRequestCommandService : IFormRequestCommandService
 
             // Validate and sanitize input before updating
             if (formRequest.RequestType != RequestType.Delete)
-                await _lookups.ValidateValuesAsync(formDefinition, formRequest.FieldValues);
+                await _lookups.ValidateSubmissionAsync(formDefinition, formRequest.FieldValues, formRequest.RequestType, formRequest.OriginalValues);
             var validationResult = await _inputValidationService.ValidateFormSubmissionAsync(
-                formRequest.FieldValues, formDefinition.Fields);
+                formRequest.FieldValues, formDefinition.Fields.Where(field => !FormConditions.HasConditions(formDefinition) || formRequest.FieldValues.ContainsKey(field.Name)).ToList());
             
             if (!validationResult.IsValid)
             {

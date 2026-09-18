@@ -146,7 +146,7 @@ public class BulkFormRequestService : IBulkFormRequestService
             }
 
             // Validate headers against form fields
-            var validationErrors = ValidateHeaders(headers.ToArray(), formDefinition.Fields);
+            var validationErrors = ValidateHeaders(headers.ToArray(), formDefinition);
             if (validationErrors.Any())
             {
                 result.Errors.AddRange(validationErrors);
@@ -238,13 +238,15 @@ public class BulkFormRequestService : IBulkFormRequestService
         return columnIndex - 1; // 0-based
     }
 
-    private List<string> ValidateHeaders(string[] headers, List<FormField> formFields)
+    private List<string> ValidateHeaders(string[] headers, FormDefinition form)
     {
+        var formFields = form.Fields;
         var errors = new List<string>();
         var formFieldNames = formFields.Select(f => f.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         // Check for required fields
-        var requiredFields = formFields.Where(f => f.IsRequired && f.IsVisible).Select(f => f.Name).ToList();
+        var requiredFields = formFields.Where(f => f.IsRequired && f.IsVisible && string.IsNullOrEmpty(f.VisibilityCondition) &&
+            string.IsNullOrEmpty(form.Sections.FirstOrDefault(section => section.Id == f.FormSectionId)?.VisibilityCondition)).Select(f => f.Name).ToList();
         var missingRequired = requiredFields.Where(rf => !headers.Contains(rf, StringComparer.OrdinalIgnoreCase)).ToList();
         
         if (missingRequired.Any())
@@ -296,7 +298,8 @@ public class BulkFormRequestService : IBulkFormRequestService
                 return result;
             }
 
-            foreach (var field in formDefinition.Fields.Where(f => f.IsVisible))
+            var conditionValues = rowData.ToDictionary(pair => pair.Key, pair => (object?)(string.Equals(pair.Value, "NULL", StringComparison.OrdinalIgnoreCase) ? null : pair.Value));
+            foreach (var field in formDefinition.Fields.Where(f => f.IsVisible && Requestr.Core.Validation.FormConditions.IsApplicable(formDefinition, f, conditionValues)))
             {
                 rowData.TryGetValue(field.Name, out var cellValue);
                 
@@ -398,7 +401,7 @@ public class BulkFormRequestService : IBulkFormRequestService
 
             if (createDto.RequestType != RequestType.Delete)
                 foreach (var request in createDto.FormRequests)
-                    await _lookups.ValidateValuesAsync(formDefinition, request.FieldValues);
+                    await _lookups.ValidateSubmissionAsync(formDefinition, request.FieldValues, createDto.RequestType, request.OriginalValues);
 
             var bulkRequest = new BulkFormRequest
             {
@@ -1279,7 +1282,7 @@ public class BulkFormRequestService : IBulkFormRequestService
                     fieldValues = SqlTypeConverter.ConvertDictionary(fieldValues, fields);
                     originalValues = SqlTypeConverter.ConvertDictionary(originalValues, fields);
                     if (requestType != RequestType.Delete)
-                        await _lookups.ValidateValuesAsync(formDefinition, fieldValues);
+                        await _lookups.ValidateSubmissionAsync(formDefinition, fieldValues, requestType, originalValues);
 
                     bool itemSuccess = false;
                     string processingResult;

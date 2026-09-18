@@ -25,6 +25,7 @@
     --border-radius: 0.5rem;
     --border-radius-sm: 0.25rem;
     --sidebar-width: 260px;
+    --sidebar-collapsed-width: 80px;
     
     /* Light theme (default) */
     --bg-color: #f8fafc;
@@ -108,6 +109,7 @@ small, .small, .text-muted {
 
 .main {
     flex: 1;
+    min-width: 0;
     margin-left: var(--sidebar-width);
     display: flex;
     flex-direction: column;
@@ -138,15 +140,59 @@ small, .small, .text-muted {
     margin: 0 auto;
 }
 
+@media (min-width: 768px) {
+    .page.sidebar-collapsed .sidebar {
+        width: var(--sidebar-collapsed-width);
+    }
+
+    .page.sidebar-collapsed .main {
+        margin-left: var(--sidebar-collapsed-width);
+    }
+
+    .page.sidebar-collapsed .sidebar-brand,
+    .page.sidebar-collapsed .sidebar-label {
+        display: none;
+    }
+
+    .page.sidebar-collapsed .sidebar-header,
+    .page.sidebar-collapsed .sidebar-nav-link {
+        justify-content: center;
+    }
+
+    .page.sidebar-collapsed .sidebar-nav-link {
+        padding: 0.625rem 0;
+        gap: 0;
+    }
+
+    .page.sidebar-collapsed .nav-section-label {
+        border-top: 1px solid var(--border-color);
+        padding: 0;
+        margin: 1rem 0;
+    }
+
+    .page.sidebar-collapsed .sidebar-approval-badge {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        width: 16px;
+        height: 16px;
+        padding: 0;
+        line-height: 16px;
+        font-size: 0.625rem;
+    }
+}
+
 /* Mobile responsive */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
     .sidebar {
         transform: translateX(-100%);
+        visibility: hidden;
         transition: transform 0.3s ease;
     }
     
     .page.sidebar-open .sidebar {
         transform: translateX(0);
+        visibility: visible;
     }
     
     .main {
@@ -177,8 +223,37 @@ small, .small, .text-muted {
    Sidebar Navigation
    ============================================ */
 .sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
     padding-bottom: 1rem;
     border-bottom: 1px solid var(--border-color);
+}
+
+.sidebar-brand {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.sidebar-header .sidebar-toggle-btn {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+}
+
+.sidebar-icon {
+    width: 1.25rem;
+    flex-shrink: 0;
+    font-size: 1.125rem;
+    text-align: center;
+}
+
+.sidebar-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .nav-section-label {
@@ -197,8 +272,10 @@ small, .small, .text-muted {
     border-radius: var(--border-radius-sm);
     padding: 0.625rem 0.875rem;
     margin: 0.125rem 0;
+    position: relative;
     display: flex;
     align-items: center;
+    gap: 0.75rem;
     transition: background-color 0.15s ease;
 }
 

@@ -10,32 +10,46 @@
 @inject IUserTimezoneService UserTimezoneService
 @implements IDisposable
 
-<div class="page @(_isSidebarOpen ? "sidebar-open" : null)" data-theme="@(_isDarkMode ? "dark" : "light")">
-    <div class="sidebar p-3">
+<div class="page @(_isSidebarOpen ? "sidebar-open" : null) @(_isSidebarCollapsed ? "sidebar-collapsed" : null)" data-theme="@(_isDarkMode ? "dark" : "light")">
+    <div id="main-navigation" class="sidebar p-3">
         <div class="sidebar-header mb-4">
-            <h5 class="mb-0 fw-semibold">@Branding.ApplicationName</h5>
+            <h5 class="sidebar-brand mb-0 fw-semibold">@Branding.ApplicationName</h5>
+            <button type="button" class="btn btn-link text-decoration-none sidebar-toggle-btn d-none d-md-inline-flex" @onclick="ToggleDesktopSidebar"
+                    aria-controls="main-navigation" aria-expanded="@(!_isSidebarCollapsed ? "true" : "false")"
+                    aria-label="@(_isSidebarCollapsed ? "Expand navigation" : "Collapse navigation")" title="@(_isSidebarCollapsed ? "Expand navigation" : "Collapse navigation")">
+                <i class="bi @(_isSidebarCollapsed ? "bi-chevron-double-right" : "bi-chevron-double-left")" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="btn btn-link text-decoration-none sidebar-toggle-btn d-md-none" @onclick="CloseSidebar"
+                    aria-controls="main-navigation" aria-label="Close navigation" title="Close navigation">
+                <i class="bi bi-x-lg" aria-hidden="true"></i>
+            </button>
         </div>
         
-        <nav class="nav flex-column">
-            <NavLink class="nav-link sidebar-nav-link" href="" Match="NavLinkMatch.All">
-                Home
+        <nav class="nav flex-column" aria-label="Main navigation">
+            <NavLink class="nav-link sidebar-nav-link" href="" Match="NavLinkMatch.All" aria-label="Home" title="Home">
+                <i class="bi bi-house-door sidebar-icon" aria-hidden="true"></i>
+                <span class="sidebar-label">Home</span>
             </NavLink>
             
-            <NavLink class="nav-link sidebar-nav-link" href="/forms">
-                New Request
+            <NavLink class="nav-link sidebar-nav-link" href="/forms" aria-label="New Request" title="New Request">
+                <i class="bi bi-plus-square sidebar-icon" aria-hidden="true"></i>
+                <span class="sidebar-label">New Request</span>
             </NavLink>
             
-            <NavLink class="nav-link sidebar-nav-link" href="requests">
-                All Requests
+            <NavLink class="nav-link sidebar-nav-link" href="requests" aria-label="All Requests" title="All Requests">
+                <i class="bi bi-inbox sidebar-icon" aria-hidden="true"></i>
+                <span class="sidebar-label">All Requests</span>
             </NavLink>
             
             <AuthorizeView>
                 <Authorized>
-                    <NavLink class="nav-link sidebar-nav-link" href="approvals">
-                        Approvals
+                    <NavLink class="nav-link sidebar-nav-link" href="approvals"
+                             aria-label="@(UserHasPendingWorkflowSteps ? "Approvals (pending approvals)" : "Approvals")" title="Approvals">
+                        <i class="bi bi-check2-square sidebar-icon" aria-hidden="true"></i>
+                        <span class="sidebar-label">Approvals</span>
                         @if (UserHasPendingWorkflowSteps)
                         {
-                            <span class="badge bg-primary ms-auto">!</span>
+                            <span class="badge sidebar-approval-badge bg-primary ms-auto" title="Pending approvals">!</span>
                         }
                     </NavLink>
                 </Authorized>
@@ -43,19 +57,22 @@
             
             @if (_canManageForms)
             {
-                <NavLink class="nav-link sidebar-nav-link" href="admin/forms">
-                    Manage Forms
+                <NavLink class="nav-link sidebar-nav-link" href="admin/forms" aria-label="Manage Forms" title="Manage Forms">
+                    <i class="bi bi-ui-checks sidebar-icon" aria-hidden="true"></i>
+                    <span class="sidebar-label">Manage Forms</span>
                 </NavLink>
             }
 
             <AuthorizeView Roles="Admin">
                 <Authorized>
-                    <div class="nav-section-label">Admin</div>
-                    <NavLink class="nav-link sidebar-nav-link" href="admin/workflows">
-                        Manage Workflows
+                    <div class="nav-section-label"><span class="sidebar-label">Admin</span></div>
+                    <NavLink class="nav-link sidebar-nav-link" href="admin/workflows" aria-label="Manage Workflows" title="Manage Workflows">
+                        <i class="bi bi-diagram-3 sidebar-icon" aria-hidden="true"></i>
+                        <span class="sidebar-label">Manage Workflows</span>
                     </NavLink>
-                    <NavLink class="nav-link sidebar-nav-link" href="admin/notifications">
-                        Notifications
+                    <NavLink class="nav-link sidebar-nav-link" href="admin/notifications" aria-label="Notifications" title="Notifications">
+                        <i class="bi bi-bell sidebar-icon" aria-hidden="true"></i>
+                        <span class="sidebar-label">Notifications</span>
                     </NavLink>
                 </Authorized>
             </AuthorizeView>
@@ -68,7 +85,8 @@
     <main class="main">
         <div class="top-row px-4 auth">
             <div class="d-flex align-items-center ms-n2">
-                <button type="button" class="btn btn-link text-decoration-none sidebar-toggle-btn d-md-none me-2" @onclick="ToggleSidebar" aria-label="Toggle navigation">
+                <button type="button" class="btn btn-link text-decoration-none sidebar-toggle-btn d-md-none me-2" @onclick="ToggleSidebar" aria-label="Toggle navigation"
+                        aria-controls="main-navigation" aria-expanded="@(_isSidebarOpen ? "true" : "false")" title="Toggle navigation">
                     <i class="bi bi-list fs-4"></i>
                 </button>
                 <ThemeToggle />
@@ -90,6 +108,7 @@
 @code {
     private bool _isDarkMode;
     private bool _isSidebarOpen = false;
+    private bool _isSidebarCollapsed;
     private bool UserHasPendingWorkflowSteps = false;
     private bool _canManageForms;
     private int _workflowCheckVersion;
@@ -107,6 +126,15 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            try
+            {
+                _isSidebarCollapsed = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "requestr.sidebarCollapsed") == "true";
+                StateHasChanged();
+            }
+            catch (JSException) { }
+        }
         if (firstRender && !UserTimezoneService.IsInitialized)
         {
             try
@@ -181,6 +209,16 @@
     private void ToggleSidebar()
     {
         _isSidebarOpen = !_isSidebarOpen;
+    }
+
+    private async Task ToggleDesktopSidebar()
+    {
+        _isSidebarCollapsed = !_isSidebarCollapsed;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "requestr.sidebarCollapsed", _isSidebarCollapsed ? "true" : "false");
+        }
+        catch (JSException) { }
     }
 
     private void CloseSidebar()

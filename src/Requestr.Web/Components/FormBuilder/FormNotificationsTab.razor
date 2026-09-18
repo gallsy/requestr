@@ -16,8 +16,7 @@
                 <div class="mb-4">
                     <label class="form-label">Notification Email Address (Optional)</label>
                     <input type="email" class="form-control" 
-                           value="@(FormDefinition.NotificationEmail ?? "")"
-                           @onchange="@((ChangeEventArgs e) => FormDefinition.NotificationEmail = e.Value?.ToString())"
+                           @bind="FormDefinition.NotificationEmail" @bind:after="Changed"
                            placeholder="Enter email address to receive notifications...">
                     <small class="form-text text-muted">
                         Leave blank to disable form-level notifications. This email will receive notifications for the events selected below.
@@ -29,6 +28,7 @@
                     <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" 
                                @bind="FormDefinition.NotifyOnCreation"
+                               @bind:after="Changed"
                                id="notifyOnCreation">
                         <label class="form-check-label" for="notifyOnCreation">
                             <strong>Request Created</strong>
@@ -40,6 +40,7 @@
                     <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" 
                                @bind="FormDefinition.NotifyOnCompletion"
+                               @bind:after="Changed"
                                id="notifyOnCompletion">
                         <label class="form-check-label" for="notifyOnCompletion">
                             <strong>Request Completed</strong>
@@ -83,4 +84,6 @@
 
 @code {
     [Parameter] public FormDefinition FormDefinition { get; set; } = new();
+    [Parameter] public EventCallback OnChanged { get; set; }
+    private Task Changed() => OnChanged.InvokeAsync();
 }

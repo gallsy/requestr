@@ -29,10 +29,15 @@
 
 @* Form Builder *@
 
-<PageHeader Title="@(FormId.HasValue ? "Edit Form" : "Create New Form")">
+<NavigationLock ConfirmExternalNavigation="HasChanges" OnBeforeInternalNavigation="ConfirmNavigation" />
+<div class="builder-savebar">
+<PageHeader Title="@(string.IsNullOrWhiteSpace(_formDefinition.Name) ? "New Form" : _formDefinition.Name)">
     <Actions>
-        <button type="button" class="btn btn-secondary me-2" @onclick="Cancel">Cancel</button>
-        <button type="button" class="btn btn-primary" @onclick="SaveForm" disabled="@(_isSaving || _isLoading || !_canEdit)">
+        <span class="small text-muted me-2" role="status">@(HasChanges ? "Unsaved changes" : "Saved")</span>
+        <button type="button" class="btn btn-outline-secondary me-2" @onclick="ShowPreview" disabled="@(_isLoading || !_canEdit)"><i class="bi bi-eye me-1"></i>Preview</button>
+        <button type="button" class="btn btn-outline-secondary me-2" @onclick="Cancel">Close</button>
+        <button type="button" class="btn btn-outline-primary me-2" @onclick="SaveAndClose" disabled="@(_isSaving || _isLoading || !_canEdit)">Save and close</button>
+        <button type="button" class="btn btn-primary" @onclick="SaveAndStay" disabled="@(_isSaving || _isLoading || !_canEdit)">
             <i class="bi bi-save me-1"></i>
             @if (_isSaving)
             {
@@ -41,11 +46,12 @@
             }
             else
             {
-                <text>Save Form</text>
+                <text>Save</text>
             }
         </button>
     </Actions>
 </PageHeader>
+</div>
 
 @* Schema Drift Warning Banner *@
 @if (!_isLoading && HasSchemaDrift)
@@ -70,7 +76,7 @@
     </div>
 }
 
-<div class="container-fluid">
+<div class="container-fluid" @onchange="StateHasChanged" @oninput="StateHasChanged">
     @if (_isLoading)
     {
         <LoadingSpinner Message="Loading form..." />
@@ -142,6 +148,7 @@
             {
                 <Requestr.Web.Components.FormBuilder.FormDetailsTab 
                     FormDefinition="_formDefinition"
+                    OnChanged="StateHasChanged"
                     ExistingCategories="_existingCategories"
                     ConnectionStrings="_connectionStrings"
                     SelectedConnectionString="@_selectedConnectionString"
@@ -157,6 +164,16 @@
             <!-- Form Designer Tab -->
             @if (ActiveTab == "designer")
             {
+                <div class="d-flex justify-content-end mb-3">
+                    <div class="form-check form-switch"><input id="advancedLayout" class="form-check-input" type="checkbox" @bind="_advancedLayout" /><label class="form-check-label" for="advancedLayout">Advanced layout</label></div>
+                </div>
+                @if (!_advancedLayout)
+                {
+                    <Requestr.Web.Components.FormBuilder.DesignerWorkspace Form="_formDefinition" Columns="_tableColumns" PresentationOnly="@(!_isAdmin)"
+                        OnAddField="QuickAddField" OnAddSection="AddSection" OnRemoveField="RemoveField" OnRemoveSection="RemoveSection" OnChanged="StateHasChanged" />
+                }
+                else
+                {
                 <div class="row form-designer-row">
                     <!-- Available Fields Panel -->
                     @if (_isAdmin)
@@ -527,6 +544,7 @@
             }
 
             <!-- Permissions Tab -->
+            }
             @if (_isAdmin && ActiveTab == "permissions")
             {
                 <Requestr.Web.Components.FormBuilder.FormPermissionsTab 
@@ -558,16 +576,31 @@
             <!-- Notifications Tab -->
             @if (_isAdmin && ActiveTab == "notifications")
             {
-                <Requestr.Web.Components.FormBuilder.FormNotificationsTab FormDefinition="_formDefinition" />
+                <Requestr.Web.Components.FormBuilder.FormNotificationsTab FormDefinition="_formDefinition" OnChanged="StateHasChanged" />
             }
         </div>
     }
 </div>
 
 <!-- Field Configuration Modal -->
+<Modal @ref="_previewModal" Title="Form Preview" Size="ModalSize.ExtraLarge">
+    <BodyTemplate>
+        @if (_previewDefinition != null)
+        {
+            <CascadingValue Name="DraftForm" Value="_previewDefinition">
+                <CascadingValue Name="PreviewCanQuery" Value="_isAdmin">
+                    <Requestr.Web.Components.FormRenderer FormDefinition="_previewDefinition" FieldValues="_previewValues" IsPreview="true" CurrentRequestType="RequestType.Insert" TableColumns="_tableColumns" />
+                </CascadingValue>
+            </CascadingValue>
+        }
+    </BodyTemplate>
+    <FooterTemplate><Button Color="ButtonColor.Secondary" @onclick="ClosePreview">Close</Button></FooterTemplate>
+</Modal>
 <Requestr.Web.Components.FormBuilder.FieldConfigurationModal 
     @ref="_fieldConfigModal"
     Field="_selectedField"
+    Fields="@(_formDefinition?.Fields ?? new())"
+    Sections="@(_formDefinition?.Sections ?? new())"
     DatabaseConnectionName="@(_formDefinition?.DatabaseConnectionName ?? string.Empty)"
     PresentationOnly="@(!_isAdmin)"
     SqlType="@(_selectedField != null ? GetOriginalSqlType(_selectedField) : "varchar")"
@@ -699,6 +732,41 @@
     private FormSection? _dragTargetSection;
     private FormField? _selectedField;
     private Requestr.Web.Components.FormBuilder.FieldConfigurationModal _fieldConfigModal = default!;
+    private bool _advancedLayout;
+    private Modal _previewModal = default!;
+    private FormDefinition? _previewDefinition;
+    private Dictionary<string, object?> _previewValues = new();
+    private async Task ShowPreview()
+    {
+        try
+        {
+            Requestr.Core.Validation.FormConditions.ValidateConfiguration(_formDefinition);
+            _previewDefinition = JsonSerializer.Deserialize<FormDefinition>(JsonSerializer.Serialize(_formDefinition,
+                new JsonSerializerOptions { ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles }));
+            _previewValues = _formDefinition.Fields.ToDictionary(field => field.Name, field => (object?)(field.DefaultValue ?? (field.ControlType == "checkbox" ? "false" : "")));
+            await _previewModal.ShowAsync();
+        }
+        catch (Exception exception) { toastService.ShowWarning(exception.Message); }
+    }
+    private Task ClosePreview() => _previewModal.HideAsync();
+    private string? _savedSnapshot;
+    private string? _savedConditions;
+    private bool _closeAfterSave;
+    private bool HasChanges => !_isLoading && _canEdit && _savedSnapshot != null && _savedSnapshot != Snapshot();
+    private string Snapshot() => JsonSerializer.Serialize(new { Form = _formDefinition, Connection = _selectedConnectionString, Workflow = _selectedWorkflowId },
+        new JsonSerializerOptions { ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles });
+    private string ConditionSnapshot() => JsonSerializer.Serialize(new
+    {
+        Fields = _formDefinition.Fields.Select(field => new { field.Name, field.FormSectionId, field.VisibilityCondition, field.LookupParentField, field.LookupFilterColumn, field.LookupDatabaseConnectionName, field.LookupSchema, field.LookupTable, field.LookupKeyColumn, field.LookupLabelColumn }),
+        Sections = _formDefinition.Sections.Select(section => new { section.Id, section.VisibilityCondition })
+    });
+    private void MarkSaved() { _savedSnapshot = Snapshot(); _savedConditions = ConditionSnapshot(); }
+    private async Task ConfirmNavigation(Microsoft.AspNetCore.Components.Routing.LocationChangingContext context)
+    {
+        if (HasChanges && !await JSRuntime.InvokeAsync<bool>("confirm", "Discard unsaved form changes?")) context.PreventNavigation();
+    }
+    private async Task SaveAndStay() { _closeAfterSave = false; await SaveForm(); }
+    private async Task SaveAndClose() { _closeAfterSave = true; await SaveForm(); }
 
     // Permission-related fields
     private bool _isLoadingPermissions = false;
@@ -942,6 +1010,7 @@
         finally
         {
             _isLoading = false;
+            MarkSaved();
         }
     }
 
@@ -1664,6 +1733,12 @@
 
     private void RemoveField(FormField field)
     {
+        if (_formDefinition.Fields.Any(candidate => candidate.LookupParentField == field.Name || Requestr.Core.Validation.FormConditions.Parse(candidate.VisibilityCondition)?.Field == field.Name) ||
+            _formDefinition.Sections.Any(section => Requestr.Core.Validation.FormConditions.Parse(section.VisibilityCondition)?.Field == field.Name))
+        {
+            toastService.ShowWarning("Remove conditions that reference this field before removing it.");
+            return;
+        }
         _formDefinition.Fields.Remove(field);
         // Reorder remaining fields
         var orderedFields = _formDefinition.Fields.OrderBy(f => f.DisplayOrder).ToList();
@@ -1684,7 +1759,10 @@
             if (!_isAdmin)
             {
                 await FormDesignService.SaveAsync(user, UpdateFormDesignDto.FromForm(_formDefinition));
-                Navigation.NavigateTo("/admin/forms", forceLoad: true);
+                _formDefinition = await FormDesignService.GetDesignAsync(user, _formDefinition.Id) ?? _formDefinition;
+                MarkSaved();
+                toastService.ShowSuccess("Form saved.");
+                if (_closeAfterSave) Navigation.NavigateTo("/admin/forms");
                 return;
             }
             if (!await HasAdminAccessAsync()) return;
@@ -1715,6 +1793,12 @@
             }
             
             _formDefinition.DatabaseConnectionName = _selectedConnectionString;
+            Requestr.Core.Validation.FormConditions.ValidateConfiguration(_formDefinition);
+            if (FormId.HasValue && _savedConditions != ConditionSnapshot())
+            {
+                var pending = await FormRequestQueryService.GetPendingByFormDefinitionAsync(FormId.Value);
+                if (pending.Any() && !await JSRuntime.InvokeAsync<bool>("confirm", $"{pending.Count} pending requests will be revalidated using these conditions before application. Save these changes?")) return;
+            }
             
             // Check for affected pending requests if there are stale fields and this is an existing form
             // Only check if the user hasn't already confirmed to proceed
@@ -1779,18 +1863,12 @@
                 await SaveWorkflowConfiguration();
             }
 
-            // Use a small delay to ensure the save operation completes before navigation
-            await Task.Delay(100);
-            
-            if (isNewForm)
-            {
-                // For new forms, navigate to edit mode so user can configure permissions
-                Navigation.NavigateTo($"/admin/forms/builder/{FormId}?tab=permissions", forceLoad: true);
-            }
-            else
-            {
-                Navigation.NavigateTo("/admin/forms", forceLoad: true);
-            }
+            _formDefinition = await FormDefinitionService.GetByIdAsync(_formDefinition.Id) ?? _formDefinition;
+            _loadedFormId = FormId;
+            MarkSaved();
+            toastService.ShowSuccess("Form saved.");
+            if (_closeAfterSave) Navigation.NavigateTo("/admin/forms");
+            else if (isNewForm) Navigation.NavigateTo($"/admin/forms/builder/{FormId}?tab={ActiveTab}", replace: true);
         }
         catch (Exception ex)
         {

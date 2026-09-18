@@ -81,6 +81,7 @@ else
                             {
                                 @foreach (var formSection in _formDefinition.Sections.OrderBy(s => s.DisplayOrder))
                                 {
+                                    if (!formSection.Fields.Any(field => field.IsVisible && IsApplicable(field) && !ShouldHideFieldOnCreate(field))) { continue; }
                                     <div class="form-section mb-4">
                                         @if (!string.IsNullOrEmpty(formSection.Name))
                                         {
@@ -97,7 +98,7 @@ else
                                         <div class="form-grid" style="display: grid; grid-template-columns: repeat(@formSection.MaxColumns, 1fr); gap: 1rem; margin-bottom: 1rem;">
                                             @{
                                                 var sectionFields = formSection.Fields
-                                                    .Where(f => f.IsVisible)
+                                                    .Where(f => f.IsVisible && IsApplicable(f))
                                                     .Where(f => !ShouldHideFieldOnCreate(f))
                                                     .ToList();
                                                 var maxRow = sectionFields.Any() ? sectionFields.Max(f => f.GridRow) : 0;
@@ -109,7 +110,7 @@ else
                                                     .OrderBy(f => f.GridColumn))
                                                 {
                                                     <div class="form-field-container" 
-                                                         style="grid-row: @row; grid-column: @field.GridColumn / span @field.GridColumnSpan;">
+                                                         style="grid-row: @(sectionFields.Select(item => item.GridRow).Distinct().Order().ToList().IndexOf(row) + 1); grid-column: @field.GridColumn / span @field.GridColumnSpan;">
                                                         <label class="form-label">
                                                             @field.DisplayName
                                                             @if (field.IsRequired)
@@ -170,6 +171,7 @@ else
                                                         {
                                                             <FormFieldSelect @bind-Value="_fieldValues[field.Name]"
                                                                               Field="field" FormId="FormId" RequestId="RequestId"
+                                                                              ParentValue="@GetParentValue(field)"
                                                                               Disabled="@IsFieldDisabled(field)"
                                                                               Required="@field.IsRequired"
                                                                               Placeholder="Type to search options..." />
@@ -242,7 +244,7 @@ else
                             {
                                 @* Fallback: Render fields without form sections using legacy layout *@
                                 <div class="row">
-                                    @foreach (var field in _formDefinition.Fields.Where(f => f.IsVisible).Where(f => !ShouldHideFieldOnCreate(f)).OrderBy(f => f.DisplayOrder))
+                                    @foreach (var field in _formDefinition.Fields.Where(f => f.IsVisible && IsApplicable(f)).Where(f => !ShouldHideFieldOnCreate(f)).OrderBy(f => f.DisplayOrder))
                                     {
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label">
@@ -305,6 +307,7 @@ else
                                             {
                                                 <FormFieldSelect @bind-Value="_fieldValues[field.Name]"
                                                                   Field="field" FormId="FormId" RequestId="RequestId"
+                                                                  ParentValue="@GetParentValue(field)"
                                                                   Disabled="@IsFieldDisabled(field)"
                                                                   Required="@field.IsRequired"
                                                                   Placeholder="Type to search options..." />
@@ -457,6 +460,22 @@ else
     private bool _isLoading = true;
     private bool _isSubmitting = false;
     private Dictionary<string, string> _validationErrors = new();
+    private Dictionary<string, object?> ConditionValues()
+    {
+        var values = _fieldValues.ToDictionary(pair => pair.Key, pair => (object?)pair.Value);
+        foreach (var pair in _checkboxValues) values[pair.Key] = pair.Value;
+        return values;
+    }
+
+    private bool IsApplicable(FormField field)
+    {
+        var applicable = _requestType == RequestType.Delete || Requestr.Core.Validation.FormConditions.IsApplicable(_formDefinition!, field, ConditionValues());
+        if (!applicable) _validationErrors.Remove(field.Name);
+        return applicable;
+    }
+
+    private string? GetParentValue(FormField field) => string.IsNullOrEmpty(field.LookupParentField) ? null :
+        Requestr.Core.Validation.FormConditions.Text(Requestr.Core.Validation.FormConditions.Value(ConditionValues(), field.LookupParentField));
     
     // Permission flags
     private bool _canCreateRequests = false;
@@ -970,7 +989,7 @@ else
             // Validate required fields
             _validationErrors.Clear();
             var visibleFields = _formDefinition.Fields
-                .Where(f => f.IsVisible && !ShouldHideFieldOnCreate(f) && !IsFieldDisabled(f))
+                .Where(f => f.IsVisible && IsApplicable(f) && !ShouldHideFieldOnCreate(f) && !IsFieldDisabled(f))
                 .ToList();
             foreach (var field in visibleFields)
             {
@@ -1019,6 +1038,7 @@ else
             foreach (var kv in _fieldValues)
             {
                 var fld = _formDefinition.Fields.FirstOrDefault(f => f.Name == kv.Key);
+                if (fld != null && !IsApplicable(fld)) continue;
                 
                 // Skip identity/computed/rowversion fields on Insert (e.g. duplicated records carry the original ID)
                 // Also skip computed fields that will be regenerated at apply time for any request type
@@ -1061,6 +1081,8 @@ else
             }
             foreach (var checkboxValue in _checkboxValues)
             {
+                var field = _formDefinition.Fields.FirstOrDefault(field => field.Name == checkboxValue.Key);
+                if (field != null && !IsApplicable(field)) continue;
                 allFieldValues[checkboxValue.Key] = checkboxValue.Value;
             }
 

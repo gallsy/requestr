@@ -344,10 +344,15 @@ else
                                     <FormFieldSelect @bind-Value="_bulkUpdateFields[field.Name]"
                                                       @bind-Value:after="@(() => SetBulkFieldValue(field, null))"
                                                       Field="field" FormId="_formDefinition.Id"
+                                                      ParentValue="@(string.IsNullOrEmpty(field.LookupParentField) || _bulkSetNull.GetValueOrDefault(field.LookupParentField) ? null : _bulkUpdateFields.GetValueOrDefault(field.LookupParentField))"
                                                       SelectionValidChanged="@(valid => SetLookupSelectionValidity(field.Name, valid))"
                                                       Disabled="@(_bulkSetNull.TryGetValue(field.Name, out var searchableSetNull) && searchableSetNull)"
                                                       Required="@field.IsRequired"
                                                       Placeholder="Type to search options..." />
+                                    @if (!string.IsNullOrEmpty(field.LookupParentField) && string.IsNullOrEmpty(_bulkUpdateFields.GetValueOrDefault(field.LookupParentField)))
+                                    {
+                                        <div class="text-warning small" role="status">Select a value for @field.LookupParentField for these records first.</div>
+                                    }
                                 }
                                 else if (controlType == "suggested-text")
                                 {

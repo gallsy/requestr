@@ -6,7 +6,7 @@
 
 @if (Field.OptionSource == FieldOptionSource.DatabaseLookup)
 {
-    <SearchableSelect @key="Identity" Value="@Value" ValueChanged="ValueChanged" Disabled="Disabled" Required="Required"
+    <SearchableSelect @key="Identity" Value="@Value" ValueChanged="ValueChanged" Disabled="@(Disabled || MissingParent || (DraftForm != null && !PreviewCanQuery))" Required="Required"
                       SearchOptions="SearchAsync" ResolveOption="ResolveAsync" SourceIdentity="@Identity"
                       Placeholder="@Placeholder" SelectionValidChanged="SelectionChangedAsync" />
     @if (!_selectionValid && !Disabled)
@@ -25,22 +25,47 @@ else
     [Parameter] public int FormId { get; set; }
     [Parameter] public int? RequestId { get; set; }
     [Parameter] public string? Value { get; set; }
+    [Parameter] public string? ParentValue { get; set; }
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool Required { get; set; }
     [Parameter] public string Placeholder { get; set; } = "Type to search...";
     [Parameter] public EventCallback<bool> SelectionValidChanged { get; set; }
     [CascadingParameter] public EditContext? EditContext { get; set; }
+    [CascadingParameter(Name = "DraftForm")] public FormDefinition? DraftForm { get; set; }
+    [CascadingParameter(Name = "PreviewCanQuery")] public bool PreviewCanQuery { get; set; }
     private EditContext? _validationContext;
     private ValidationMessageStore? _messages;
     private bool _selectionValid = true;
     private bool _wasDisabled;
-    private string Identity => $"{FormId}:{Field.Name}:{RequestId}";
+    private bool MissingParent => !string.IsNullOrEmpty(Field.LookupParentField) && string.IsNullOrEmpty(ParentValue);
+    private string Identity => $"{FormId}:{Field.Name}:{RequestId}:{ParentValue}";
+    private string? _lastIdentity;
+    private int _version;
     private IReadOnlyList<(string Value, string Text)> StaticOptions => DropdownOptionParser.Parse(Field.DropdownOptions)
         .Select(option => (option.Value, option.Text)).ToList();
 
     protected override async Task OnParametersSetAsync()
     {
+        var identity = Identity;
+        if (_lastIdentity != identity)
+        {
+            var changed = _lastIdentity != null;
+            _lastIdentity = identity;
+            var version = ++_version;
+            if (changed && !Disabled && !string.IsNullOrEmpty(Field.LookupParentField) && !string.IsNullOrEmpty(Value))
+            {
+                (string Value, string Text)? option;
+                try { option = await ResolveAsync(Value, CancellationToken.None); }
+                catch
+                {
+                    if (version == _version) await SelectionChangedAsync(false);
+                    return;
+                }
+                if (version != _version) return;
+                if (option == null) await ValueChanged.InvokeAsync(null);
+            }
+        }
         if (_validationContext != EditContext)
         {
             _messages?.Clear();
@@ -67,17 +92,28 @@ else
 
     public void Dispose()
     {
+        _version++;
         _messages?.Clear();
         _validationContext?.NotifyValidationStateChanged();
     }
 
     private async Task<IReadOnlyList<(string Value, string Text)>> SearchAsync(string search, CancellationToken cancellationToken)
-        => (await LookupService.SearchAsync(FormId, Field.Name, search, RequestId, cancellationToken))
-            .Select(option => (option.Value, option.Text)).ToList();
+    {
+        if (DraftForm != null && !PreviewCanQuery) return Array.Empty<(string, string)>();
+        var options = DraftForm != null
+            ? await LookupService.SearchPreviewAsync(DraftForm, Field.Name, search, ParentValue, cancellationToken)
+            : await (string.IsNullOrEmpty(Field.LookupParentField)
+                ? LookupService.SearchAsync(FormId, Field.Name, search, RequestId, cancellationToken)
+                : LookupService.SearchDependentAsync(FormId, Field.Name, search, ParentValue, RequestId, cancellationToken));
+        return options.Select(option => (option.Value, option.Text)).ToList();
+    }
 
     private async Task<(string Value, string Text)?> ResolveAsync(string value, CancellationToken cancellationToken)
     {
-        var option = await LookupService.ResolveAsync(FormId, Field.Name, value, RequestId, cancellationToken);
+        if (DraftForm != null && !PreviewCanQuery) return null;
+        var option = DraftForm != null ? await LookupService.ResolvePreviewAsync(DraftForm, Field.Name, value, ParentValue, cancellationToken) : await (string.IsNullOrEmpty(Field.LookupParentField) || Disabled
+            ? LookupService.ResolveAsync(FormId, Field.Name, value, RequestId, cancellationToken)
+            : LookupService.ResolveDependentAsync(FormId, Field.Name, value, ParentValue, RequestId, cancellationToken));
         return option == null ? null : (option.Value, option.Text);
     }
 }

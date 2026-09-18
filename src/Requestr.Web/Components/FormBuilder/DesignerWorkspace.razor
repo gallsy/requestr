@@ -1,0 +1,185 @@
+@using Requestr.Core.Models
+@using Requestr.Core.Utilities
+
+<div class="designer-workspace">
+    <aside class="designer-outline" aria-label="Form outline">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <h2 class="h6 mb-0">Outline</h2>
+            <button class="btn btn-sm btn-outline-primary" type="button" @onclick="AddSection" title="Add section" aria-label="Add section"><i class="bi bi-plus-lg"></i></button>
+        </div>
+        @foreach (var section in Form.Sections.OrderBy(section => section.DisplayOrder))
+        {
+            <button type="button" class="outline-item @(_section == section && _field == null ? "selected" : "")" @onclick="() => SelectSection(section)">
+                <i class="bi bi-layout-text-window me-2"></i>@(section.Name)
+            </button>
+            @foreach (var field in Form.Fields.Where(field => field.FormSectionId == section.Id).OrderBy(field => field.GridRow).ThenBy(field => field.GridColumn))
+            {
+                <button type="button" class="outline-item outline-field @(_field == field ? "selected" : "")" @onclick="() => SelectField(field)">@field.DisplayName</button>
+            }
+        }
+        @foreach (var field in Form.Fields.Where(field => !Form.Sections.Any(section => section.Id == field.FormSectionId)))
+        {
+            <button type="button" class="outline-item @(_field == field ? "selected" : "")" @onclick="() => SelectField(field)">@field.DisplayName</button>
+        }
+        @if (!PresentationOnly)
+        {
+            <h2 class="h6 mt-4">Available Fields</h2>
+            <input class="form-control form-control-sm mb-2" placeholder="Search fields" aria-label="Search available fields" @bind="_search" @bind:event="oninput" />
+            @foreach (var column in Columns.Where(column => !Form.Fields.Any(field => field.Name == column.Name) && column.Name.Contains(_search, StringComparison.OrdinalIgnoreCase)))
+            {
+                <button class="outline-item" type="button" @onclick="() => AddField(column)" title="Add to selected section"><i class="bi bi-plus me-2"></i>@column.Name</button>
+            }
+        }
+    </aside>
+    <main class="designer-canvas" aria-label="Form layout">
+        <h2 class="h5 mb-4">@Form.Name</h2>
+        @foreach (var section in Form.Sections.OrderBy(section => section.DisplayOrder))
+        {
+            <section class="canvas-section @(_section == section ? "active-section" : "")">
+                <button type="button" class="section-heading" @onclick="() => SelectSection(section)">
+                    <span>@(section.Name)</span>
+                    @if (!string.IsNullOrWhiteSpace(section.VisibilityCondition)) { <i class="bi bi-signpost-split" title="Conditional section"></i> }
+                </button>
+                @if (!string.IsNullOrWhiteSpace(section.Description)) { <p class="small text-muted">@(section.Description)</p> }
+                <div class="canvas-fields" style="grid-template-columns: repeat(@(section.MaxColumns), minmax(0, 1fr));">
+                    @foreach (var field in Form.Fields.Where(field => field.FormSectionId == section.Id).OrderBy(field => field.GridRow).ThenBy(field => field.GridColumn))
+                    {
+                        <button type="button" class="canvas-field @(_field == field ? "selected" : "")" style="grid-row: @field.GridRow; grid-column: @field.GridColumn / span @field.GridColumnSpan;" @onclick="() => SelectField(field)" aria-pressed="@(_field == field)">
+                            <span class="d-flex justify-content-between gap-2"><span>@field.DisplayName @if (field.IsRequired) { <span class="text-danger">*</span> }</span>
+                                @if (!string.IsNullOrEmpty(field.VisibilityCondition) || !string.IsNullOrEmpty(field.LookupParentField)) { <i class="bi bi-signpost-split" title="Conditional field"></i> }
+                            </span>
+                            <span class="field-preview" aria-hidden="true">
+                                @if (field.ControlType == "checkbox") { <i class="bi bi-square"></i> }
+                                else { <span class="text-muted">@(field.DefaultValue ?? " ")</span><i class="bi @(field.ControlType is "select" or "searchable-select" ? "bi-chevron-down" : "bi-input-cursor-text")"></i> }
+                            </span>
+                        </button>
+                    }
+                </div>
+                @if (!Form.Fields.Any(field => field.FormSectionId == section.Id)) { <div class="empty-section text-muted">No fields</div> }
+            </section>
+        }
+    </main>
+    <aside class="designer-properties" aria-label="Properties">
+        @if (_field != null)
+        {
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+                <div><h2 class="h6 mb-1">@_field.DisplayName</h2><small class="text-muted">@_field.Name</small></div>
+                @if (!PresentationOnly) { <button class="btn btn-sm btn-outline-danger" type="button" title="Remove field" aria-label="Remove field" @onclick="RemoveField"><i class="bi bi-trash"></i></button> }
+            </div>
+            <h3 class="h6 border-bottom pb-2 mb-3">Layout</h3>
+            <label class="form-label">Section</label>
+            <select class="form-select mb-2" value="@_field.FormSectionId" @onchange="MoveSection" aria-label="Field section">
+                @foreach (var section in Form.Sections.Where(section => !PresentationOnly || section.VisibilityCondition == _section?.VisibilityCondition)) { <option value="@(section.Id)">@(section.Name)</option> }
+            </select>
+            @if (_section != null)
+            {
+                <label class="form-label">Width</label>
+                <select class="form-select mb-2" @bind="_field.GridColumnSpan" @bind:after="FitWidth" aria-label="Field width">
+                    @for (var span = 1; span <= _section.MaxColumns; span++) { <option value="@span">@(span == _section.MaxColumns ? "Full width" : $"{span} of {_section.MaxColumns} columns")</option> }
+                </select>
+                <div class="btn-group mb-3">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => MoveField(-1)" title="Move field up" aria-label="Move field up"><i class="bi bi-arrow-up"></i></button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => MoveField(1)" title="Move field down" aria-label="Move field down"><i class="bi bi-arrow-down"></i></button>
+                </div>
+            }
+            <FieldConfigurationModal @key="_field" Inline="true" Field="_field" Fields="Form.Fields" Sections="Form.Sections" PresentationOnly="PresentationOnly"
+                DatabaseConnectionName="@Form.DatabaseConnectionName" SqlType="@(_field.SqlDataType ?? _field.DataType)"
+                ColumnInfo="@Columns.FirstOrDefault(column => column.Name == _field.Name)" OnChanged="OnChanged" />
+        }
+        else if (_section != null)
+        {
+            <h2 class="h6 mb-3">Section Properties</h2>
+            <h3 class="h6 border-bottom pb-2 mb-3">Content</h3>
+            <label class="form-label">Title</label><input class="form-control mb-3" @bind="_section.Name" @bind:after="Changed" />
+            <label class="form-label">Description</label><textarea class="form-control mb-3" rows="3" @bind="_section.Description" @bind:after="Changed"></textarea>
+            <h3 class="h6 border-bottom pb-2 mt-4 mb-3">Layout</h3>
+            <label class="form-label">Columns</label>
+            <select class="form-select mb-3" @bind="_section.MaxColumns" @bind:after="Reflow" aria-label="Section columns">
+                @foreach (var count in new[] { 1, 2, 3, 4, 6, 12 }) { <option value="@count">@count</option> }
+            </select>
+            <label class="form-label">Order</label><input class="form-control mb-3" type="number" min="1" @bind="_section.DisplayOrder" @bind:after="Changed" />
+            @if (!PresentationOnly) { <ConditionEditor Fields="Form.Fields" ExcludedSection="_section.Id" @bind-Value="_section.VisibilityCondition" @bind-Value:after="Changed" /> }
+            <button type="button" class="btn btn-outline-danger btn-sm" @onclick="RemoveSection" disabled="@(PresentationOnly && !string.IsNullOrWhiteSpace(_section.VisibilityCondition))"><i class="bi bi-trash me-1"></i>Remove section</button>
+        }
+        else { <h2 class="h6">Properties</h2><span class="text-muted small">No selection</span> }
+    </aside>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FormDefinition Form { get; set; } = default!;
+    [Parameter] public List<ColumnInfo> Columns { get; set; } = new();
+    [Parameter] public bool PresentationOnly { get; set; }
+    [Parameter] public EventCallback<ColumnInfo> OnAddField { get; set; }
+    [Parameter] public EventCallback OnAddSection { get; set; }
+    [Parameter] public EventCallback<FormField> OnRemoveField { get; set; }
+    [Parameter] public EventCallback<FormSection> OnRemoveSection { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    private FormField? _field;
+    private FormSection? _section;
+    private string _search = "";
+
+    protected override void OnParametersSet()
+    {
+        if (_field != null && !Form.Fields.Contains(_field))
+        {
+            _field = Form.Fields.FirstOrDefault(field => field.Name == _field.Name);
+            if (_field != null) _section = Form.Sections.FirstOrDefault(section => section.Id == _field.FormSectionId);
+        }
+        if (_section == null || !Form.Sections.Contains(_section)) _section = Form.Sections.OrderBy(section => section.DisplayOrder).FirstOrDefault();
+    }
+    private void SelectField(FormField field) { _field = field; _section = Form.Sections.FirstOrDefault(section => section.Id == field.FormSectionId); }
+    private void SelectSection(FormSection section) { _section = section; _field = null; }
+    private Task Changed() => OnChanged.InvokeAsync();
+    private async Task AddSection() { await OnAddSection.InvokeAsync(); SelectSection(Form.Sections.Last()); await Changed(); }
+    private async Task AddField(ColumnInfo column)
+    {
+        var target = _section;
+        await OnAddField.InvokeAsync(column);
+        var added = Form.Fields.LastOrDefault(field => field.Name == column.Name);
+        if (added == null) return;
+        if (target != null) { added.FormSectionId = target.Id; added.GridRow = Form.Fields.Where(field => field != added && field.FormSectionId == target.Id).Select(field => field.GridRow).DefaultIfEmpty(0).Max() + 1; added.GridColumn = 1; added.GridColumnSpan = target.MaxColumns; }
+        SelectField(added);
+        await Changed();
+    }
+    private async Task RemoveField() { if (_field == null) return; await OnRemoveField.InvokeAsync(_field); _field = null; await Changed(); }
+    private async Task RemoveSection() { if (_section == null) return; await OnRemoveSection.InvokeAsync(_section); _section = Form.Sections.FirstOrDefault(); _field = null; await Changed(); }
+    private async Task MoveSection(ChangeEventArgs args)
+    {
+        if (_field == null || !int.TryParse(args.Value?.ToString(), out var id)) return;
+        _section = Form.Sections.Single(section => section.Id == id);
+        _field.FormSectionId = id;
+        _field.GridRow = Form.Fields.Where(field => field != _field && field.FormSectionId == id).Select(field => field.GridRow).DefaultIfEmpty(0).Max() + 1;
+        _field.GridColumn = 1;
+        await FitWidth();
+    }
+    private async Task FitWidth()
+    {
+        if (_field == null || _section == null) return;
+        _field.GridColumnSpan = Math.Clamp(_field.GridColumnSpan, 1, _section.MaxColumns);
+        await Reflow();
+    }
+    private async Task MoveField(int direction)
+    {
+        if (_field == null || _section == null) return;
+        var fields = SectionFields();
+        var index = fields.IndexOf(_field);
+        var next = index + direction;
+        if (next < 0 || next >= fields.Count) return;
+        (fields[index], fields[next]) = (fields[next], fields[index]);
+        Arrange(fields);
+        await Changed();
+    }
+    private List<FormField> SectionFields() => Form.Fields.Where(field => field.FormSectionId == _section!.Id).OrderBy(field => field.GridRow).ThenBy(field => field.GridColumn).ToList();
+    private async Task Reflow() { if (_section == null) return; Arrange(SectionFields()); await Changed(); }
+    private void Arrange(List<FormField> fields)
+    {
+        var row = 1;
+        var column = 1;
+        foreach (var field in fields)
+        {
+            field.GridColumnSpan = Math.Clamp(field.GridColumnSpan, 1, _section!.MaxColumns);
+            if (column + field.GridColumnSpan - 1 > _section.MaxColumns) { row++; column = 1; }
+            field.GridRow = row; field.GridColumn = column; column += field.GridColumnSpan;
+        }
+    }
+}
