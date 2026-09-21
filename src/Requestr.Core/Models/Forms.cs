@@ -79,6 +79,8 @@ public class FormField : BaseEntity
     public string? LookupTable { get; set; }
     public string? LookupKeyColumn { get; set; }
     public string? LookupLabelColumn { get; set; }
+    public string? LookupParentField { get; set; }
+    public string? LookupFilterColumn { get; set; }
     public int DisplayOrder { get; set; }
     public bool TreatBlankAsNull { get; set; } = false;
     public string? HelpText { get; set; } // Tooltip text shown via info icon on the field label

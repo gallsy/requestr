@@ -87,6 +87,11 @@ public class UpdateFormDesignDto
 
             var controlType = string.IsNullOrEmpty(original.ControlType) ? original.DataType : original.ControlType;
             if (field.DropdownOptions != original.DropdownOptions &&
+                (current.Fields.Any(candidate => candidate.LookupParentField == original.Name ||
+                    Requestr.Core.Validation.FormConditions.Parse(candidate.VisibilityCondition)?.Field == original.Name) ||
+                 current.Sections.Any(candidate => Requestr.Core.Validation.FormConditions.Parse(candidate.VisibilityCondition)?.Field == original.Name)))
+                throw new ValidationException("Changing options referenced by conditions requires Admin access.");
+            if (field.DropdownOptions != original.DropdownOptions &&
                 (original.OptionSource != FieldOptionSource.Static || controlType is not ("select" or "searchable-select" or "radio")))
                 throw new ValidationException("Only static choice fields can have their options edited.");
         }

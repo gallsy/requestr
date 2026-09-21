@@ -13,6 +13,10 @@ public interface IFormLookupService
 {
     Task<IReadOnlyList<LookupOption>> SearchAsync(int formId, string fieldName, string? search, int? requestId = null, CancellationToken cancellationToken = default);
     Task<LookupOption?> ResolveAsync(int formId, string fieldName, string value, int? requestId = null, CancellationToken cancellationToken = default, int? bulkRequestId = null);
+    Task<IReadOnlyList<LookupOption>> SearchDependentAsync(int formId, string fieldName, string? search, string? parentValue, int? requestId = null, CancellationToken cancellationToken = default);
+    Task<LookupOption?> ResolveDependentAsync(int formId, string fieldName, string value, string? parentValue, int? requestId = null, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<LookupOption>> SearchPreviewAsync(FormDefinition form, string fieldName, string? search, string? parentValue, CancellationToken cancellationToken = default);
+    Task<LookupOption?> ResolvePreviewAsync(FormDefinition form, string fieldName, string value, string? parentValue, CancellationToken cancellationToken = default);
 }
 
 public class FormLookupService(AuthenticationStateProvider authentication, IFormAuthorizationService authorization,
@@ -31,6 +35,38 @@ public class FormLookupService(AuthenticationStateProvider authentication, IForm
         var (form, field) = await GetAuthorizedFieldAsync(formId, fieldName, requestId, bulkRequestId);
         cancellationToken.ThrowIfCancellationRequested();
         return await lookups.ResolveAsync(form, field, value, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<LookupOption>> SearchDependentAsync(int formId, string fieldName, string? search, string? parentValue, int? requestId = null, CancellationToken cancellationToken = default)
+    {
+        var (form, field) = await GetAuthorizedFieldAsync(formId, fieldName, requestId);
+        return await lookups.SearchDependentAsync(form, field, search, parentValue, cancellationToken);
+    }
+
+    public async Task<LookupOption?> ResolveDependentAsync(int formId, string fieldName, string value, string? parentValue, int? requestId = null, CancellationToken cancellationToken = default)
+    {
+        var (form, field) = await GetAuthorizedFieldAsync(formId, fieldName, requestId);
+        return await lookups.ResolveDependentAsync(form, field, value, parentValue, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<LookupOption>> SearchPreviewAsync(FormDefinition form, string fieldName, string? search, string? parentValue, CancellationToken cancellationToken = default)
+    {
+        var field = await GetPreviewFieldAsync(form, fieldName, cancellationToken);
+        return await lookups.SearchDependentAsync(form, field, search, parentValue, cancellationToken);
+    }
+
+    public async Task<LookupOption?> ResolvePreviewAsync(FormDefinition form, string fieldName, string value, string? parentValue, CancellationToken cancellationToken = default)
+    {
+        var field = await GetPreviewFieldAsync(form, fieldName, cancellationToken);
+        return await lookups.ResolveDependentAsync(form, field, value, parentValue, cancellationToken);
+    }
+
+    private async Task<FormField> GetPreviewFieldAsync(FormDefinition form, string fieldName, CancellationToken cancellationToken)
+    {
+        var user = (await authentication.GetAuthenticationStateAsync()).User;
+        if (user.Identity?.IsAuthenticated != true || !ClaimsHelper.GetUserRoles(user).Contains("Admin")) throw new UnauthorizedAccessException();
+        await lookups.ValidateConfigurationAsync(form, cancellationToken);
+        return form.Fields.Single(field => field.Name == fieldName && field.OptionSource == FieldOptionSource.DatabaseLookup);
     }
 
     private async Task<(FormDefinition, FormField)> GetAuthorizedFieldAsync(int formId, string fieldName, int? requestId, int? bulkRequestId = null)

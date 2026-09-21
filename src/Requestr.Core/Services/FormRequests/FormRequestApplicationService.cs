@@ -162,7 +162,7 @@ public class FormRequestApplicationService : IFormRequestApplicationService
             // Inject computed values based on field configuration and request type
             await InjectComputedValuesAsync(convertedFieldValues, formDefinition.Fields, formRequest);
             if (formRequest.RequestType != RequestType.Delete)
-                await _lookups.ValidateValuesAsync(formDefinition, convertedFieldValues);
+                await _lookups.ValidateSubmissionAsync(formDefinition, convertedFieldValues, formRequest.RequestType, convertedOriginalValues);
 
             bool success;
             object? recordKey = null;

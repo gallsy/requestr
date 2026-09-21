@@ -1329,7 +1329,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             await InjectComputedValuesAsync(fieldValues, fields, requestType, 
                 requestData.RequestedBy?.ToString(), requestData.RequestedByName?.ToString());
             if (requestType != RequestType.Delete && formDefinition != null)
-                await _lookups.ValidateValuesAsync(formDefinition, fieldValues);
+                await _lookups.ValidateSubmissionAsync(formDefinition, fieldValues, requestType, originalValues);
 
             bool result;
             string databaseConnectionName = (string)requestData.DatabaseConnectionName;
@@ -1515,7 +1515,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                     // Inject computed values (e.g. current datetime, user info, GUID)
                     await InjectComputedValuesAsync(fieldValues, bulkFields, requestType, requestedBy, requestedByName);
                     if (requestType != RequestType.Delete && bulkFormDefinition != null)
-                        await _lookups.ValidateValuesAsync(bulkFormDefinition, fieldValues);
+                        await _lookups.ValidateSubmissionAsync(bulkFormDefinition, fieldValues, requestType, originalValues);
 
                     bool itemSuccess = false;
                     string processingResult = "";

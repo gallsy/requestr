@@ -2,14 +2,27 @@
 @using Requestr.Core.Models
 @using BlazorBootstrap
 
-<Modal @ref="_modal" Title="@ModalTitle" Size="ModalSize.Large">
-    <BodyTemplate>
+@if (Inline)
+{
+    <div class="field-properties" @onchange="NotifyChanged" @oninput="NotifyChanged">@Properties</div>
+}
+else
+{
+    <Modal @ref="_modal" Title="@ModalTitle" Size="ModalSize.Large">
+        <BodyTemplate>@Properties</BodyTemplate>
+        <FooterTemplate><Button Color="ButtonColor.Secondary" @onclick="CloseAsync">Close</Button></FooterTemplate>
+    </Modal>
+}
+
+@code {
+    private RenderFragment Properties => @<div>
         @if (Field != null)
         {
+            @if (Inline) { <h3 class="h6 border-bottom pb-2 mb-3">Control</h3> }
             <div class="row mb-2">
                 <div class="col-md-6">
                     <label class="form-label">Field Name</label>
-                    <input type="text" class="form-control" @bind="Field.DisplayName" />
+                    <input type="text" class="form-control" @bind="Field.DisplayName" @bind:after="NotifyChanged" />
                 </div>
                 @if (!PresentationOnly)
                 {
@@ -27,6 +40,7 @@
             </div>
             @if (!PresentationOnly)
             {
+            @if (Inline) { <h3 class="h6 border-bottom pb-2 mt-4 mb-3">Defaults and Validation</h3> }
             <div class="row mb-2">
                 <div class="col-md-6">
                     @if (HasComputedValue)
@@ -38,14 +52,14 @@
                     else
                     {
                         <label class="form-label">Default Value</label>
-                        <input type="text" class="form-control" @bind="Field.DefaultValue" />
+                        <input type="text" class="form-control" @bind="Field.DefaultValue" @bind:after="NotifyChanged" />
                     }
                 </div>
                 @if (!HasComputedValue && SupportsValidation(Field.ControlType ?? Field.DataType))
                 {
                     <div class="col-md-6">
                         <label class="form-label">Validation Regex</label>
-                        <input type="text" class="form-control" @bind="Field.ValidationRegex" placeholder="Regex pattern" />
+                        <input type="text" class="form-control" @bind="Field.ValidationRegex" @bind:after="NotifyChanged" placeholder="Regex pattern" />
                     </div>
                 }
             </div>
@@ -54,18 +68,23 @@
                 <div class="row mb-2">
                     <div class="col-md-6">
                         <label class="form-label">Max Length</label>
-                        <input type="number" class="form-control" @bind="Field.MaxLength" min="0" />
+                        <input type="number" class="form-control" @bind="Field.MaxLength" @bind:after="NotifyChanged" min="0" />
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Validation Message</label>
-                        <input type="text" class="form-control" @bind="Field.ValidationMessage" placeholder="Custom error message" />
+                        <input type="text" class="form-control" @bind="Field.ValidationMessage" @bind:after="NotifyChanged" placeholder="Custom error message" />
                     </div>
                 </div>
             }
             }
+              @if (Inline && ((!PresentationOnly && Field.ControlType == "searchable-select") ||
+                  (Field.OptionSource == FieldOptionSource.Static && (Field.ControlType is "select" or "searchable-select" or "radio" || Field.DataType is "select" or "searchable-select" or "radio"))))
+              {
+                  <h3 class="h6 border-bottom pb-2 mt-4 mb-3">Options</h3>
+              }
               @if (!PresentationOnly && Field.ControlType == "searchable-select")
               {
-                <LookupConfigurationEditor Field="Field" DatabaseConnectionName="@DatabaseConnectionName" />
+                <LookupConfigurationEditor Field="Field" DatabaseConnectionName="@DatabaseConnectionName" Fields="Fields" OnChanged="NotifyChanged" />
               }
               @if (Field.OptionSource == FieldOptionSource.Static && (Field.ControlType == "select" || Field.ControlType == "searchable-select" || Field.ControlType == "radio" ||
                   Field.DataType == "select" || Field.DataType == "searchable-select" || Field.DataType == "radio"))
@@ -73,17 +92,18 @@
                 <div class="row mb-2">
                     <div class="col-12">
                         <label class="form-label">Options (one per line)</label>
-                        <textarea class="form-control" rows="3" @bind="Field.DropdownOptions" placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
+                        <textarea class="form-control" rows="3" @bind="Field.DropdownOptions" @bind:after="NotifyChanged" disabled="@(PresentationOnly && IsConditionParent)" placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
                         <small class="form-text text-muted">Enter each option on a new line</small>
                     </div>
                 </div>
             }
             @if (!PresentationOnly)
             {
+            @if (Inline) { <h3 class="h6 border-bottom pb-2 mt-4 mb-3">Behavior</h3> }
             <div class="row mb-2">
                 <div class="col-md-3">
                     <div class="form-check" title="@(HasComputedValue ? "Auto-generated fields cannot be required" : "")">
-                        <input class="form-check-input" type="checkbox" @bind="Field.IsRequired" disabled="@HasComputedValue" />
+                        <input class="form-check-input" type="checkbox" @bind="Field.IsRequired" @bind:after="NotifyChanged" disabled="@HasComputedValue" />
                         <label class="form-check-label">Required</label>
                         @if (HasComputedValue)
                         {
@@ -93,19 +113,19 @@
                 </div>
                 <div class="col-md-3">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" @bind="Field.IsReadOnly" />
+                        <input class="form-check-input" type="checkbox" @bind="Field.IsReadOnly" @bind:after="NotifyChanged" />
                         <label class="form-check-label">Read Only</label>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" @bind="Field.IsVisible" />
+                        <input class="form-check-input" type="checkbox" @bind="Field.IsVisible" @bind:after="NotifyChanged" />
                         <label class="form-check-label">Visible</label>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" @bind="Field.IsVisibleInDataView" />
+                        <input class="form-check-input" type="checkbox" @bind="Field.IsVisibleInDataView" @bind:after="NotifyChanged" />
                         <label class="form-check-label">Visible in Data View</label>
                     </div>
                 </div>
@@ -119,13 +139,13 @@
                         }
                     }
                     <div class="form-check" title="Treat blank input as NULL when saved (only for nullable, non-required fields)">
-                        <input class="form-check-input" type="checkbox" @bind="Field.TreatBlankAsNull" disabled="@(!eligibleForBlankAsNull)" />
+                        <input class="form-check-input" type="checkbox" @bind="Field.TreatBlankAsNull" @bind:after="NotifyChanged" disabled="@(!eligibleForBlankAsNull)" />
                         <label class="form-check-label">Blank is NULL</label>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="form-check" title="Values in this field must be unique across all records">
-                        <input class="form-check-input" type="checkbox" @bind="Field.IsUnique" />
+                        <input class="form-check-input" type="checkbox" @bind="Field.IsUnique" @bind:after="NotifyChanged" />
                         <label class="form-check-label">Unique</label>
                         @if (ColumnInfo?.IsUnique == true)
                         {
@@ -135,15 +155,18 @@
                 </div>
             </div>
             }
+            @if (Inline) { <h3 class="h6 border-bottom pb-2 mt-4 mb-3">Help</h3> }
             <div class="row mb-2">
                 <div class="col-12">
                     <label class="form-label">Help Text (Tooltip)</label>
-                    <textarea class="form-control" rows="2" @bind="Field.HelpText" placeholder="Optional tooltip shown via info icon next to field label"></textarea>
+                    <textarea class="form-control" rows="2" @bind="Field.HelpText" @bind:after="NotifyChanged" placeholder="Optional tooltip shown via info icon next to field label"></textarea>
                     <small class="form-text text-muted">When provided, an info icon will appear next to the field label</small>
                 </div>
             </div>
             @if (!PresentationOnly)
             {
+            <ConditionEditor Fields="Fields" ExcludedField="@Field.Name" @bind-Value="Field.VisibilityCondition" @bind-Value:after="NotifyChanged" />
+            @if (Inline) { <h3 class="h6 border-bottom pb-2 mt-4 mb-3">Generated Value</h3> }
             <div class="row mb-2">
                 <div class="col-md-6">
                     <label class="form-label">Computed Value</label>
@@ -160,7 +183,7 @@
                 {
                     <div class="col-md-6">
                         <label class="form-label">Apply On</label>
-                        <select class="form-select" @bind="Field.ComputedValueApplyMode">
+                        <select class="form-select" @bind="Field.ComputedValueApplyMode" @bind:after="NotifyChanged">
                             <option value="@ComputedValueApplyMode.InsertAndUpdate">Insert &amp; Update</option>
                             <option value="@ComputedValueApplyMode.InsertOnly">Insert Only</option>
                             <option value="@ComputedValueApplyMode.UpdateOnly">Update Only</option>
@@ -171,11 +194,8 @@
             </div>
             }
         }
-    </BodyTemplate>
-    <FooterTemplate>
-        <Button Color="ButtonColor.Secondary" @onclick="CloseAsync">Close</Button>
-    </FooterTemplate>
-</Modal>
+    </div>;
+}
 
 @code {
     private Modal _modal = default!;
@@ -184,6 +204,10 @@
     /// The field being configured
     /// </summary>
     [Parameter] public FormField? Field { get; set; }
+    [Parameter] public bool Inline { get; set; }
+    [Parameter] public List<FormField> Fields { get; set; } = new();
+    [Parameter] public EventCallback OnChanged { get; set; }
+    private Task NotifyChanged() => OnChanged.InvokeAsync();
     [Parameter] public bool PresentationOnly { get; set; }
     [Parameter] public string DatabaseConnectionName { get; set; } = "";
 
@@ -207,6 +231,9 @@
     private List<(string Value, string Text)> AvailableControlTypes => GetAvailableControlTypes();
 
     private bool HasComputedValue => Field?.ComputedValueType != null && Field.ComputedValueType != ComputedValueType.None;
+    [Parameter] public List<FormSection> Sections { get; set; } = new();
+    private bool IsConditionParent => Fields.Any(candidate => candidate.LookupParentField == Field?.Name || Requestr.Core.Validation.FormConditions.Parse(candidate.VisibilityCondition)?.Field == Field?.Name)
+        || Sections.Any(section => Requestr.Core.Validation.FormConditions.Parse(section.VisibilityCondition)?.Field == Field?.Name);
     
     private int ComputedValueTypeInt => Field?.ComputedValueType != null ? (int)Field.ComputedValueType : 0;
 
@@ -221,10 +248,14 @@
         await OnClosed.InvokeAsync();
     }
 
-    private void OnControlTypeChanged()
+    private async Task OnControlTypeChanged()
     {
         if (Field == null || PresentationOnly) return;
-        if (Field.ControlType != "searchable-select") Field.OptionSource = FieldOptionSource.Static;
+        if (Field.ControlType != "searchable-select")
+        {
+            Field.OptionSource = FieldOptionSource.Static;
+            Field.LookupParentField = Field.LookupFilterColumn = null;
+        }
 
         // Clear validation regex if control type doesn't support it
         if (!SupportsValidation(Field.ControlType ?? ""))
@@ -251,6 +282,7 @@
                 _ => ""
             };
         }
+        await NotifyChanged();
     }
 
     private bool SupportsValidation(string controlType)
@@ -351,7 +383,7 @@
         return options;
     }
 
-    private void OnComputedValueTypeChanged(ChangeEventArgs e)
+    private async Task OnComputedValueTypeChanged(ChangeEventArgs e)
     {
         if (Field == null || PresentationOnly) return;
         var intValue = int.Parse(e.Value?.ToString() ?? "0");
@@ -366,6 +398,7 @@
             // Auto-generated fields cannot be required
             Field.IsRequired = false;
         }
+        await NotifyChanged();
     }
 
     private List<(ComputedValueType Value, string Label)> GetComputedValueOptions()

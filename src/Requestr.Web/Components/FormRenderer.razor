@@ -19,6 +19,7 @@ else
     {
         @foreach (var formSection in FormDefinition.Sections.OrderBy(s => s.DisplayOrder))
         {
+            if (!GetVisibleFields(FormDefinition.Fields.Where(field => field.FormSectionId == formSection.Id)).Any()) { continue; }
             <div class="form-section mb-4">
                 @if (!string.IsNullOrEmpty(formSection.Name))
                 {
@@ -34,7 +35,7 @@ else
                 @* Grid layout for form fields *@
                 <div class="form-grid" style="display: grid; grid-template-columns: repeat(@formSection.MaxColumns, 1fr); gap: 1rem; margin-bottom: 1rem;">
                     @{
-                        var sectionFields = GetVisibleFields(formSection.Fields).ToList();
+                        var sectionFields = GetVisibleFields(FormDefinition.Fields.Where(field => field.FormSectionId == formSection.Id)).ToList();
                         var maxRow = sectionFields.Any() ? sectionFields.Max(f => f.GridRow) : 0;
                     }
                     @for (int row = 1; row <= maxRow; row++)
@@ -44,7 +45,7 @@ else
                             .OrderBy(f => f.GridColumn))
                         {
                             <div class="form-field-container" 
-                                 style="grid-row: @row; grid-column: @field.GridColumn / span @field.GridColumnSpan;">
+                                 style="grid-row: @(sectionFields.Select(item => item.GridRow).Distinct().Order().ToList().IndexOf(row) + 1); grid-column: @field.GridColumn / span @field.GridColumnSpan;">
                                 
                                 <label class="form-label">
                                     @field.DisplayName
@@ -111,11 +112,12 @@ else
                                     <FormFieldSelect Value="@GetFieldStringValue(field.Name)"
                                                       ValueChanged="@((string? value) => HandleFieldValueChange(field.Name, value))"
                                                       Field="field" FormId="FormDefinition.Id" RequestId="RequestId"
+                                                      ParentValue="@GetParentValue(field)"
                                                       Disabled="@isReadOnly"
                                                       Required="@IsFieldRequired(field)"
                                                       Placeholder="Type to search options..." />
                                 }
-                                else if (controlType == "suggested-text")
+                                else if (controlType == "suggested-text" && !IsPreview)
                                 {
                                     <SuggestedTextInput Value="@GetFieldStringValue(field.Name)"
                                                         ValueChanged="@((string? value) => HandleFieldValueChange(field.Name, value))"
@@ -250,11 +252,12 @@ else
                         <FormFieldSelect Value="@GetFieldStringValue(field.Name)"
                                           ValueChanged="@((string? value) => HandleFieldValueChange(field.Name, value))"
                                           Field="field" FormId="FormDefinition.Id" RequestId="RequestId"
+                                          ParentValue="@GetParentValue(field)"
                                           Disabled="@isReadOnly"
                                           Required="@IsFieldRequired(field)"
                                           Placeholder="Type to search options..." />
                     }
-                    else if (controlType == "suggested-text")
+                    else if (controlType == "suggested-text" && !IsPreview)
                     {
                         <SuggestedTextInput Value="@GetFieldStringValue(field.Name)"
                                             ValueChanged="@((string? value) => HandleFieldValueChange(field.Name, value))"
@@ -298,6 +301,7 @@ else
 
 @code {
     [Parameter] public FormDefinition? FormDefinition { get; set; }
+    [Parameter] public bool IsPreview { get; set; }
     [Parameter] public int? RequestId { get; set; }
     [Parameter] public Dictionary<string, object?> FieldValues { get; set; } = new();
     [Parameter] public Dictionary<string, bool> CheckboxValues { get; set; } = new();
@@ -353,9 +357,19 @@ else
             if (ShouldHideFieldOnCreate(field))
                 return false;
 
-            return true;
+            return DisplayMode == FormDisplayMode.ReadOnly || Requestr.Core.Validation.FormConditions.IsApplicable(FormDefinition!, field, ConditionValues());
         });
     }
+
+    private Dictionary<string, object?> ConditionValues()
+    {
+        var values = new Dictionary<string, object?>(FieldValues);
+        foreach (var pair in CheckboxValues) values[pair.Key] = pair.Value;
+        return values;
+    }
+
+    private string? GetParentValue(FormField field) => string.IsNullOrEmpty(field.LookupParentField) ? null :
+        Requestr.Core.Validation.FormConditions.Text(Requestr.Core.Validation.FormConditions.Value(ConditionValues(), field.LookupParentField));
 
     private bool ShouldHideFieldOnCreate(FormField field)
     {

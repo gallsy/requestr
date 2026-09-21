@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Bunit;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
@@ -80,18 +81,24 @@ public class FormDelegationTests : TestContext
         _design.Setup(service => service.SaveAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<UpdateFormDesignDto>()))
             .Callback<ClaimsPrincipal, UpdateFormDesignDto>((user, update) => submitted = update).Returns(Task.CompletedTask);
         var cut = RenderComponent<FormBuilder>(parameters => parameters.Add(component => component.FormId, 1));
-        cut.WaitForAssertion(() => Assert.Single(cut.FindAll("button[title='Configure Field']")));
-        cut.Find("button[title='Configure Field']").Click();
-        var modal = cut.FindComponent<FieldConfigurationModal>();
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".canvas-field")));
+        cut.Find(".canvas-field").Click();
+        var modal = cut.FindComponents<FieldConfigurationModal>().Single(component => component.Instance.Inline);
         modal.WaitForAssertion(() => Assert.NotEmpty(modal.FindAll("textarea")));
         Assert.DoesNotContain("Validation Regex", modal.Markup);
         Assert.DoesNotContain("Computed Value", modal.Markup);
         Assert.DoesNotContain("Read Only", modal.Markup);
         modal.Find("textarea").Change("North\nSouth\nWest");
-        cut.FindAll("button").Single(button => button.TextContent.Trim() == "Save Form").Click();
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        var originalUri = navigation.Uri;
+        cut.FindAll("button").Single(button => button.TextContent.Trim() == "Save").Click();
         cut.WaitForAssertion(() => Assert.NotNull(submitted));
         Assert.Equal("North\nSouth\nWest", submitted!.Fields[0].DropdownOptions);
         Assert.Equal(1, submitted.FormDefinitionId);
+        Assert.Equal(originalUri, navigation.Uri);
+        Assert.Contains("Saved", cut.Find(".builder-savebar [role='status']").TextContent);
+        cut.FindAll("button").Single(button => button.TextContent.Trim() == "Save and close").Click();
+        cut.WaitForAssertion(() => Assert.EndsWith("/admin/forms", navigation.Uri));
         _definitions.VerifyNoOtherCalls();
         _database.VerifyNoOtherCalls();
         _permissions.VerifyNoOtherCalls();
@@ -108,7 +115,7 @@ public class FormDelegationTests : TestContext
         cut.SetParametersAndRender(parameters => parameters.Add(component => component.FormId, 2));
         cut.WaitForAssertion(() => Assert.Contains("Not allowed", cut.Markup));
         Assert.Empty(cut.FindAll("#formBuilderTabs"));
-        Assert.True(cut.FindAll("button").Single(button => button.TextContent.Trim() == "Save Form").HasAttribute("disabled"));
+        Assert.True(cut.FindAll("button").Single(button => button.TextContent.Trim() == "Save").HasAttribute("disabled"));
     }
 
     [Fact]
@@ -149,6 +156,8 @@ public class FormDelegationTests : TestContext
         Assert.Contains("Permissions", cut.Markup);
         Assert.Contains("Workflow", cut.Markup);
         Assert.Contains("Notifications", cut.Markup);
+        cut.Find("input[placeholder='Enter form name']").Change("Renamed form");
+        cut.WaitForAssertion(() => Assert.Contains("Unsaved changes", cut.Markup));
         _design.VerifyNoOtherCalls();
     }
 
@@ -184,5 +193,21 @@ public class FormDelegationTests : TestContext
         public string Role { get; set; } = "FormEditors";
         public override Task<AuthenticationState> GetAuthenticationStateAsync() => Task.FromResult(new AuthenticationState(
             new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim("roles", Role), new Claim("oid", "editor-id") }, "Test"))));
+    }
+
+    [Fact]
+    public void UnsavedNavigationCanBeCancelled()
+    {
+        AllowForm();
+        JSInterop.Setup<bool>("confirm", _ => true).SetResult(false);
+        var cut = RenderComponent<FormBuilder>(parameters => parameters.Add(component => component.FormId, 1));
+        cut.Find(".canvas-field").Click();
+        cut.Find(".field-properties input").Change("Changed label");
+        cut.WaitForAssertion(() => Assert.Contains("Unsaved changes", cut.Markup));
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        var originalUri = navigation.Uri;
+        cut.FindAll(".builder-savebar button").Single(button => button.TextContent.Trim() == "Close").Click();
+        Assert.Equal(originalUri, navigation.Uri);
+        Assert.Single(JSInterop.Invocations["confirm"]);
     }
 }

@@ -14,6 +14,25 @@ public class LookupDataService(IConfiguration configuration) : ILookupDataServic
 {
     public async Task ValidateConfigurationAsync(FormDefinition form, CancellationToken cancellationToken = default)
     {
+        FormConditions.ValidateConfiguration(form);
+        if (HasConditions(form))
+        {
+            using var destination = CreateConnection(form.DatabaseConnectionName);
+            var columns = (await destination.QueryAsync<DestinationColumn>(new CommandDefinition("""
+                SELECT c.name AS Name, c.is_nullable AS IsNullable, c.default_object_id AS DefaultId,
+                    c.is_identity AS IsIdentity, c.is_computed AS IsComputed
+                FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id JOIN sys.schemas s ON s.schema_id = t.schema_id
+                WHERE s.name = @Schema AND t.name = @TableName
+                """, new { form.Schema, form.TableName }, cancellationToken: cancellationToken))).ToList();
+            foreach (var field in form.Fields.Where(field => !string.IsNullOrWhiteSpace(field.VisibilityCondition) ||
+                !string.IsNullOrWhiteSpace(form.Sections.FirstOrDefault(section => section.Id == field.FormSectionId)?.VisibilityCondition)))
+            {
+                var column = columns.SingleOrDefault(column => column.Name == field.Name);
+                if (column == null || column.IsIdentity || column.IsComputed || field.ComputedValueType is not (null or ComputedValueType.None) ||
+                    (!column.IsNullable && column.DefaultId == 0))
+                    throw new ValidationException($"{field.DisplayName}: conditional visibility requires a nullable column or a database default, and cannot target generated columns.");
+            }
+        }
         foreach (var field in form.Fields.DistinctBy(field => field.Name))
         {
             LookupConfigurationValidator.Validate(field);
@@ -25,11 +44,17 @@ public class LookupDataService(IConfiguration configuration) : ILookupDataServic
     }
 
     public async Task<IReadOnlyList<LookupOption>> SearchAsync(FormDefinition form, FormField field, string? search, CancellationToken cancellationToken = default)
+        => await SearchDependentAsync(form, field, search, null, cancellationToken);
+
+    public async Task<IReadOnlyList<LookupOption>> SearchDependentAsync(FormDefinition form, FormField field, string? search, string? parentValue, CancellationToken cancellationToken = default)
     {
         LookupConfigurationValidator.Validate(field);
+        if (!string.IsNullOrEmpty(field.LookupParentField) && string.IsNullOrEmpty(parentValue)) return Array.Empty<LookupOption>();
         using var connection = CreateConnection(LookupConnectionName(form, field));
         await connection.OpenAsync(cancellationToken);
-        await GetKeyAsync(connection, form, field, cancellationToken);
+        var key = await GetKeyAsync(connection, form, field, cancellationToken);
+        var parent = key.Filter == null ? null : ParseKey(parentValue!, key.Filter);
+        var filter = key.Filter == null ? "" : $"AND {Quote(field.LookupFilterColumn!)} = @Parent";
         var pattern = (search ?? "").Trim();
         if (pattern.Length > 200) pattern = pattern[..200];
         pattern = pattern.Replace("~", "~~").Replace("%", "~%").Replace("_", "~_").Replace("[", "~[");
@@ -39,27 +64,42 @@ public class LookupDataService(IConfiguration configuration) : ILookupDataServic
             FROM {Quote(field.LookupSchema!)}.{Quote(field.LookupTable!)}
             WHERE (@Pattern = N'' OR CONVERT(nvarchar(4000), {Quote(field.LookupLabelColumn!)}) LIKE @Pattern + N'%' ESCAPE N'~'
                 OR CONVERT(nvarchar(4000), {Quote(field.LookupKeyColumn!)}) LIKE @Pattern + N'%' ESCAPE N'~')
+            {filter}
             ORDER BY {Quote(field.LookupLabelColumn!)}, {Quote(field.LookupKeyColumn!)}
             """;
-        var rows = await connection.QueryAsync<LookupRow>(new CommandDefinition(sql, new { Pattern = pattern }, commandTimeout: 10, cancellationToken: cancellationToken));
+        var rows = await connection.QueryAsync<LookupRow>(new CommandDefinition(sql, new { Pattern = pattern, Parent = parent }, commandTimeout: 10, cancellationToken: cancellationToken));
         return rows.Select(ToOption).ToList();
     }
 
     public async Task<LookupOption?> ResolveAsync(FormDefinition form, FormField field, string value, CancellationToken cancellationToken = default)
+        => await ResolveCoreAsync(form, field, value, null, false, cancellationToken);
+
+    public Task<LookupOption?> ResolveDependentAsync(FormDefinition form, FormField field, string value, string? parentValue, CancellationToken cancellationToken = default)
+        => ResolveCoreAsync(form, field, value, parentValue, true, cancellationToken);
+
+    private async Task<LookupOption?> ResolveCoreAsync(FormDefinition form, FormField field, string value, string? parentValue, bool enforceParent, CancellationToken cancellationToken)
     {
         LookupConfigurationValidator.Validate(field);
+        if (enforceParent && !string.IsNullOrEmpty(field.LookupParentField) && string.IsNullOrEmpty(parentValue)) return null;
         using var connection = CreateConnection(LookupConnectionName(form, field));
         await connection.OpenAsync(cancellationToken);
         var key = await GetKeyAsync(connection, form, field, cancellationToken);
         object typedValue;
-        try { typedValue = ParseKey(value, key); }
+        object? parent = null;
+        try
+        {
+            typedValue = ParseKey(value, key);
+            if (enforceParent && key.Filter != null) parent = ParseKey(parentValue!, key.Filter);
+        }
         catch (Exception exception) when (exception is FormatException or OverflowException or ValidationException)
         { return null; }
+        var filter = enforceParent && key.Filter != null ? $"AND {Quote(field.LookupFilterColumn!)} = @Parent" : "";
         var sql = $"""
             SELECT {Quote(field.LookupKeyColumn!)} AS [Key], CONVERT(nvarchar(4000), {Quote(field.LookupLabelColumn!)}) AS Label
             FROM {Quote(field.LookupSchema!)}.{Quote(field.LookupTable!)} WHERE {Quote(field.LookupKeyColumn!)} = @Value
+            {filter}
             """;
-        var row = await connection.QuerySingleOrDefaultAsync<LookupRow>(new CommandDefinition(sql, new { Value = typedValue }, commandTimeout: 10, cancellationToken: cancellationToken));
+        var row = await connection.QuerySingleOrDefaultAsync<LookupRow>(new CommandDefinition(sql, new { Value = typedValue, Parent = parent }, commandTimeout: 10, cancellationToken: cancellationToken));
         return row == null ? null : ToOption(row);
     }
 
@@ -75,15 +115,67 @@ public class LookupDataService(IConfiguration configuration) : ILookupDataServic
             var text = Convert.ToString(SqlTypeConverter.UnwrapJsonElement(value), CultureInfo.InvariantCulture);
             if (string.IsNullOrEmpty(text))
             {
-                if (field.IsRequired) throw new ValidationException($"{field.DisplayName} is required.");
+                if (field.IsRequired && FormConditions.IsApplicable(form, field, values)) throw new ValidationException($"{field.DisplayName} is required.");
                 values[valueName] = null;
                 continue;
             }
-            var option = await ResolveAsync(form, field, text, cancellationToken)
+            var option = await ResolveDependentAsync(form, field, text,
+                string.IsNullOrEmpty(field.LookupParentField) ? null : FormConditions.Text(FormConditions.Value(values, field.LookupParentField)), cancellationToken)
                 ?? throw new ValidationException($"{field.DisplayName}: the selected lookup key is unavailable. Choose an available value.");
             values[valueName] = SqlTypeConverter.ConvertToSqlType(option.Value, field.SqlDataType ?? field.DataType);
         }
     }
+
+    public async Task ValidateSubmissionAsync(FormDefinition form, Dictionary<string, object?> values, RequestType requestType, IReadOnlyDictionary<string, object?>? originalValues = null, CancellationToken cancellationToken = default)
+    {
+        if (requestType == RequestType.Delete) return;
+        if (!HasConditions(form)) { await ValidateValuesAsync(form, values, cancellationToken); return; }
+        FormConditions.ValidateConfiguration(form);
+        var effective = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in values.Keys) FormConditions.Value(values, name);
+        if (requestType == RequestType.Update)
+        {
+            using var connection = CreateConnection(form.DatabaseConnectionName);
+            var keys = (await connection.QueryAsync<string>(new CommandDefinition("""
+                SELECT c.name FROM sys.indexes i JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id
+                JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id
+                JOIN sys.tables t ON t.object_id=i.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id
+                WHERE i.is_primary_key=1 AND s.name=@Schema AND t.name=@TableName ORDER BY ic.key_ordinal
+                """, new { form.Schema, form.TableName }, cancellationToken: cancellationToken))).ToList();
+            if (keys.Count == 0 || originalValues == null) throw new ValidationException("Conditional updates require the original record key.");
+            var parameters = new DynamicParameters();
+            var predicates = keys.Select((name, index) =>
+            {
+                var value = FormConditions.Value(originalValues, name) ?? throw new ValidationException("The original record key is missing.");
+                parameters.Add($"Key{index}", value);
+                return $"{Quote(name)} = @Key{index}";
+            });
+            var record = await connection.QuerySingleOrDefaultAsync(new CommandDefinition(
+                $"SELECT * FROM {Quote(form.Schema)}.{Quote(form.TableName)} WHERE {string.Join(" AND ", predicates)}", parameters, cancellationToken: cancellationToken));
+            if (record == null) throw new ValidationException("The record being updated no longer exists.");
+            foreach (var pair in (IDictionary<string, object>)record) effective[pair.Key] = pair.Value;
+        }
+        var baseline = new Dictionary<string, object?>(effective, StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in values) effective[pair.Key] = SqlTypeConverter.UnwrapJsonElement(pair.Value);
+        var hidden = form.Fields.Where(field => !FormConditions.IsApplicable(form, field, effective)).ToList();
+        foreach (var field in hidden)
+        {
+            foreach (var name in values.Keys.Where(name => string.Equals(name, field.Name, StringComparison.OrdinalIgnoreCase)).ToList()) values.Remove(name);
+            if (baseline.TryGetValue(field.Name, out var original)) effective[field.Name] = original;
+            else effective.Remove(field.Name);
+        }
+        foreach (var field in form.Fields.Where(field => field.IsVisible && !field.IsReadOnly && field.ComputedValueType is null or ComputedValueType.None))
+        {
+            if (!FormConditions.IsApplicable(form, field, effective)) continue;
+            var validation = InputValidator.ValidateInput(FormConditions.Text(FormConditions.Value(effective, field.Name)), field);
+            if (!validation.IsValid) throw new ValidationException(string.Join("; ", validation.Errors));
+        }
+        await ValidateValuesAsync(form, effective, cancellationToken);
+        foreach (var name in values.Keys.ToList())
+            if (effective.TryGetValue(name, out var value)) values[name] = value;
+    }
+
+    private static bool HasConditions(FormDefinition form) => form.Fields.Any(field => !string.IsNullOrWhiteSpace(field.VisibilityCondition) || !string.IsNullOrWhiteSpace(field.LookupParentField)) || form.Sections.Any(section => !string.IsNullOrWhiteSpace(section.VisibilityCondition));
 
     private static string LookupConnectionName(FormDefinition form, FormField field) =>
         string.IsNullOrWhiteSpace(field.LookupDatabaseConnectionName) ? form.DatabaseConnectionName : field.LookupDatabaseConnectionName;
@@ -125,11 +217,19 @@ public class LookupDataService(IConfiguration configuration) : ILookupDataServic
         using var destinationConnection = string.Equals(LookupConnectionName(form, field), form.DatabaseConnectionName, StringComparison.OrdinalIgnoreCase)
             ? null : CreateConnection(form.DatabaseConnectionName);
         if (destinationConnection != null) await destinationConnection.OpenAsync(cancellationToken);
-        var destination = (await (destinationConnection ?? connection).QueryAsync<LookupColumn>(new CommandDefinition(sql,
+        var destinationColumns = (await (destinationConnection ?? connection).QueryAsync<LookupColumn>(new CommandDefinition(sql,
             new { Schema = form.Schema, Table = form.TableName }, commandTimeout: 10, cancellationToken: cancellationToken)))
-            .SingleOrDefault(column => column.Name == field.Name);
+            .ToList();
+        var destination = destinationColumns.SingleOrDefault(column => column.Name == field.Name);
         if (destination == null || !Compatible(key, destination))
             throw new ValidationException($"{field.DisplayName}: the lookup key type or length is incompatible with the destination column.");
+        if (!string.IsNullOrEmpty(field.LookupParentField))
+        {
+            var parent = destinationColumns.SingleOrDefault(column => column.Name == field.LookupParentField);
+            key.Filter = columns.SingleOrDefault(column => column.Name == field.LookupFilterColumn);
+            if (parent == null || key.Filter == null || !SupportedKey(parent.DataType) || !Compatible(parent, key.Filter))
+                throw new ValidationException($"{field.DisplayName}: the parent field and lookup filter column have incompatible types or lengths.");
+        }
         return key;
     }
 
@@ -172,10 +272,20 @@ public class LookupDataService(IConfiguration configuration) : ILookupDataServic
 
     private sealed class LookupColumn
     {
+        public LookupColumn? Filter { get; set; }
         public string Name { get; set; } = "";
         public string DataType { get; set; } = "";
         public short MaxLength { get; set; }
         public bool IsNullable { get; set; }
         public bool IsUnique { get; set; }
+    }
+
+    private sealed class DestinationColumn
+    {
+        public string Name { get; set; } = "";
+        public bool IsNullable { get; set; }
+        public int DefaultId { get; set; }
+        public bool IsIdentity { get; set; }
+        public bool IsComputed { get; set; }
     }
 }

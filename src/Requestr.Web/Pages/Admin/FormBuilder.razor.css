@@ -1,0 +1,4 @@
+.builder-savebar { position: sticky; top: 0; z-index: 100; background: var(--bg-color); padding-block: .5rem; border-bottom: 1px solid var(--border-color); margin-bottom: 1rem; }
+.builder-savebar ::deep .page-header { margin-bottom: 0; }
+.builder-savebar ::deep h1 { font-size: 1.5rem; overflow-wrap: anywhere; }
+@media (max-width: 767px) { .builder-savebar { position: static; } .builder-savebar ::deep .page-header { flex-wrap: wrap; gap: .75rem; } .builder-savebar ::deep button { margin-block: .25rem; } }

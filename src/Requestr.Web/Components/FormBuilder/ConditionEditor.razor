@@ -1,0 +1,80 @@
+@using Requestr.Core.Models
+@using Requestr.Core.Validation
+@using Requestr.Core.Utilities
+
+<fieldset class="mb-3 condition-editor">
+    <legend class="fs-6">Visibility</legend>
+    <label class="form-label" for="@(_id + "field")">Show when</label>
+    <select id="@(_id + "field")" class="form-select mb-2" value="@_condition?.Field" @onchange="SetParent">
+        <option value="">Always</option>
+        @foreach (var field in Fields.Where(field => field.Name != ExcludedField && (!ExcludedSection.HasValue || field.FormSectionId != ExcludedSection) && field.ComputedValueType is null or ComputedValueType.None))
+        { <option value="@field.Name">@field.DisplayName</option> }
+    </select>
+    @if (_condition != null)
+    {
+        <label class="form-label" for="@(_id + "operator")">Comparison</label>
+        <select id="@(_id + "operator")" class="form-select mb-2" @bind="_condition.Operator" @bind:after="Changed">
+            <option value="@FormConditionOperator.Equals">Equals</option>
+            <option value="@FormConditionOperator.NotEquals">Does not equal</option>
+            <option value="@FormConditionOperator.IsEmpty">Is empty</option>
+            <option value="@FormConditionOperator.IsNotEmpty">Is not empty</option>
+        </select>
+        @if (_condition.Operator is FormConditionOperator.Equals or FormConditionOperator.NotEquals)
+        {
+            var parent = Fields.FirstOrDefault(field => field.Name == _condition.Field);
+            <label class="form-label" for="@(_id + "value")">Value</label>
+            @if (parent?.SqlDataType == "bit" || parent?.ControlType == "checkbox")
+            {
+                <select id="@(_id + "value")" class="form-select" @bind="_condition.Value" @bind:after="Changed">
+                    <option value="">Select value</option><option value="true">Yes</option><option value="false">No</option>
+                </select>
+            }
+            else if (parent?.OptionSource == FieldOptionSource.Static && !string.IsNullOrWhiteSpace(parent.DropdownOptions))
+            {
+                <select id="@(_id + "value")" class="form-select" @bind="_condition.Value" @bind:after="Changed">
+                    <option value="">Select value</option>
+                    @foreach (var option in DropdownOptionParser.Parse(parent.DropdownOptions)) { <option value="@option.Value">@option.Text</option> }
+                </select>
+            }
+            else
+            {
+                <input id="@(_id + "value")" class="form-control" @bind="_condition.Value" @bind:after="Changed" aria-label="Comparison value" />
+            }
+        }
+    }
+    @if (_error != null) { <div class="text-danger small" role="alert">@_error</div> }
+</fieldset>
+
+@code {
+    [Parameter] public List<FormField> Fields { get; set; } = new();
+    [Parameter] public string? ExcludedField { get; set; }
+    [Parameter] public int? ExcludedSection { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    private readonly string _id = "condition-" + Guid.NewGuid().ToString("N");
+    private FormCondition? _condition;
+    private string? _loaded;
+    private string? _error;
+
+    protected override void OnParametersSet()
+    {
+        if (_loaded == Value) return;
+        _loaded = Value;
+        try { _condition = FormConditions.Parse(Value); _error = null; }
+        catch (System.ComponentModel.DataAnnotations.ValidationException exception) { _condition = null; _error = exception.Message; }
+    }
+
+    private async Task SetParent(ChangeEventArgs args)
+    {
+        var name = args.Value?.ToString();
+        _condition = string.IsNullOrEmpty(name) ? null : new() { Field = name };
+        await Changed();
+    }
+
+    private async Task Changed()
+    {
+        _error = null;
+        _loaded = FormConditions.Serialize(_condition);
+        await ValueChanged.InvokeAsync(_loaded);
+    }
+}
