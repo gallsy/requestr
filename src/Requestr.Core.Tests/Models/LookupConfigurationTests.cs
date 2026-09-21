@@ -34,6 +34,23 @@ public class LookupConfigurationTests
     }
 
     [Theory]
+    [InlineData(null, true)]
+    [InlineData(0, true)]
+    [InlineData(128, true)]
+    [InlineData(129, false)]
+    public void FinalSelectionLabelIsOptionalAndFitsStoredLength(int? length, bool valid)
+    {
+        var field = new FormField
+        {
+            OptionSource = FieldOptionSource.DatabaseLookup, ControlType = "searchable-select",
+            LookupSchema = "dbo", LookupTable = "Programs", LookupKeyColumn = "Id", LookupLabelColumn = "Name",
+            LookupSelectionLabel = length.HasValue ? new string('L', length.Value) : null
+        };
+        if (valid) LookupConfigurationValidator.Validate(field);
+        else Assert.Throws<ValidationException>(() => LookupConfigurationValidator.Validate(field));
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(255)]
     [InlineData(256)]

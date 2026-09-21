@@ -89,6 +89,9 @@ public class FormDesignSqlTests : IAsyncLifetime
         var filterMigration = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "030_LookupFilterLevels.sql"));
         await connection.ExecuteAsync(filterMigration);
         await connection.ExecuteAsync(filterMigration);
+        var labelMigration = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "031_LookupSelectionLabel.sql"));
+        await connection.ExecuteAsync(labelMigration);
+        await connection.ExecuteAsync(labelMigration);
         var factory = new Mock<IDbConnectionFactory>();
         factory.Setup(connectionFactory => connectionFactory.CreateConnectionAsync()).Returns(OpenAsync);
         _repository = new FormDesignRepository(factory.Object);
@@ -494,6 +497,7 @@ public class FormDesignSqlTests : IAsyncLifetime
         var (service, form) = await CreateLookupAsync();
         form.Fields[0].LookupFilterLevels = new() { new() { Column = "Name", Label = "Country group" } };
         form.Fields[0].LookupDatabaseConnectionName = "DefaultConnection";
+        form.Fields[0].LookupSelectionLabel = "Country selection";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         { ["ConnectionStrings:DefaultConnection"] = ConnectionString }).Build();
         var definitions = new FormDefinitionService(configuration, NullLogger<FormDefinitionService>.Instance, service);
@@ -506,15 +510,18 @@ public class FormDesignSqlTests : IAsyncLifetime
         Assert.Equal(FieldOptionSource.DatabaseLookup, loaded.Fields[0].OptionSource);
         Assert.Equal("DefaultConnection", loaded.Fields[0].LookupDatabaseConnectionName);
         Assert.Equal("Country group", Assert.Single(loaded.Fields[0].LookupFilterLevels).Label);
+        Assert.Equal("Country selection", loaded.Fields[0].LookupSelectionLabel);
         var update = UpdateFormDesignDto.FromForm(loaded);
         update.Fields[0].DisplayName = "Country label";
         await _repository.SaveAsync(update, new(), true, "Admin");
         loaded = (await definitions.GetFormDefinitionAsync(form.Id))!;
         Assert.Equal("LookupCountries", loaded.Fields[0].LookupTable);
         Assert.Equal("Country label", loaded.Fields[0].DisplayName);
+        Assert.Equal("Country selection", loaded.Fields[0].LookupSelectionLabel);
         Assert.Equal("Name", Assert.Single(loaded.Fields[0].LookupFilterLevels).Column);
         Assert.Equal("DefaultConnection", loaded.Fields[0].LookupDatabaseConnectionName);
         loaded.Fields[0].LookupDatabaseConnectionName = "ReferenceData";
+        loaded.Fields[0].LookupSelectionLabel = "Country name";
         await definitions.UpdateFormDefinitionAsync(loaded);
         Assert.Equal("Id", (await definitions.GetFormDefinitionAsync(form.Id))!.Fields[0].LookupKeyColumn);
         Assert.Equal("ReferenceData", (await definitions.GetFormDefinitionAsync(form.Id))!.Fields[0].LookupDatabaseConnectionName);
@@ -525,6 +532,13 @@ public class FormDesignSqlTests : IAsyncLifetime
         Assert.Single(Assert.Single(await definitions.GetFormDefinitionsAsync()).Fields[0].LookupFilterLevels);
         Assert.Single(Assert.Single(await definitions.GetActiveAsync()).Fields[0].LookupFilterLevels);
         Assert.Single(Assert.Single(await definitions.GetFormDefinitionsForUserAsync("Admin", new() { "Admin" })).Fields[0].LookupFilterLevels);
+        Assert.Equal("Country name", (await definitions.GetFormDefinitionAsync(form.Id))!.Fields[0].LookupSelectionLabel);
+        Assert.Equal("Country name", Assert.Single(await definitions.GetFormDefinitionsAsync()).Fields[0].LookupSelectionLabel);
+        Assert.Equal("Country name", Assert.Single(await definitions.GetActiveAsync()).Fields[0].LookupSelectionLabel);
+        Assert.Equal("Country name", Assert.Single(await definitions.GetFormDefinitionsForUserAsync("Admin", new() { "Admin" })).Fields[0].LookupSelectionLabel);
+        loaded.Fields[0].LookupSelectionLabel = null;
+        await definitions.UpdateFormDefinitionAsync(loaded);
+        Assert.Null((await definitions.GetFormDefinitionAsync(form.Id))!.Fields[0].LookupSelectionLabel);
     }
 
     [LocalDbFact]

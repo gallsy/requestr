@@ -79,6 +79,7 @@ public class FormField : BaseEntity
     public string? LookupTable { get; set; }
     public string? LookupKeyColumn { get; set; }
     public string? LookupLabelColumn { get; set; }
+    public string? LookupSelectionLabel { get; set; }
     public string? LookupParentField { get; set; }
     public string? LookupFilterColumn { get; set; }
     public List<LookupFilterLevel> LookupFilterLevels { get; set; } = new();

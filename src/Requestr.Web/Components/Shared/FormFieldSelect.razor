@@ -9,7 +9,7 @@
     @if (Field.LookupFilterLevels.Count > 0)
     {
         <HierarchicalLookupSelect Field="Field" FormId="FormId" RequestId="RequestId" Value="@Value" ParentValue="@ParentValue"
-            ValueChanged="ValueChanged" Disabled="Disabled" Required="Required" Placeholder="@Placeholder" SelectionValidChanged="SelectionChangedAsync" />
+            ValueChanged="ValueChanged" Disabled="Disabled" Required="Required" SelectionValidChanged="SelectionChangedAsync" />
     }
     else
     {
