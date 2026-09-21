@@ -19,6 +19,28 @@ public class LookupComponentTests : TestContext
     public LookupComponentTests() => JSInterop.Mode = JSRuntimeMode.Loose;
 
     [Fact]
+    public async Task FilterChoicesCanLoadMoreAndSearchRestartsPaging()
+    {
+        var calls = new List<(string Query, int Offset)>();
+        var cut = RenderComponent<SearchableSelect>(parameters => parameters
+            .Add(component => component.AccessibleLabel, "Category")
+            .Add(component => component.ShowOptionValues, false)
+            .Add(component => component.PagedSearchOptions, (query, offset, token) =>
+            {
+                calls.Add((query, offset));
+                return Task.FromResult(new LookupFilterPage(new[] { new LookupOption($"token-{offset}", $"Category {offset}") }, offset == 0));
+            }));
+        cut.Find("input[aria-label='Category']").Focus();
+        cut.Find("button[aria-label='Load more options']").Click();
+        Assert.Equal(2, cut.FindAll("[role='option']").Count);
+        Assert.Empty(cut.FindAll("button[aria-label='Load more options']"));
+        Assert.DoesNotContain("token-", cut.Markup);
+        await cut.Find("input").InputAsync(new() { Value = "New" });
+        Assert.Equal(new[] { ("", 0), ("", 1), ("New", 0) }, calls);
+        Assert.Single(cut.FindAll("[role='option']"));
+    }
+
+    [Fact]
     public async Task LookupTypingNeverEmitsLabelAndDuplicateLabelsSelectCorrectKey()
     {
         string? emitted = "initial";

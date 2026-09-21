@@ -109,6 +109,32 @@ public class FormLookupTests
         _data.Verify(service => service.ValidateConfigurationAsync(_form, default), Times.Once);
     }
 
+    [Fact]
+    public async Task HierarchyQueriesEnforcePermissionsAndUseSavedMetadata()
+    {
+        var filters = new[] { "\"Online\"" };
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Service.SearchFilterLevelAsync(1, "CountryId", 0, Array.Empty<string>(), null, ""));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Service.SearchFilteredAsync(1, "CountryId", "", null, filters));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Service.ResolveFilteredAsync(1, "CountryId", "1", null, filters));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Service.ResolvePathAsync(1, "CountryId", "1", null));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Service.SearchFilterLevelAsync(1, "CountryId", 0, Array.Empty<string>(), null, "", draft: _form));
+        _data.VerifyNoOtherCalls();
+        _authentication.Role = "Admin";
+        _data.Setup(service => service.SearchFilterLevelAsync(_form, _form.Fields[0], 0, It.IsAny<IReadOnlyList<string>>(), null, "", 50, default))
+            .ReturnsAsync(new LookupFilterPage(new[] { new LookupOption("\"Online\"", "Online") }, false));
+        Assert.Single((await Service.SearchFilterLevelAsync(1, "CountryId", 0, Array.Empty<string>(), null, "", 50)).Options);
+        _data.Setup(service => service.SearchFilteredAsync(_form, _form.Fields[0], "", null, filters, default)).ReturnsAsync(new[] { new LookupOption("1", "Country") });
+        Assert.Single(await Service.SearchFilteredAsync(1, "CountryId", "", null, filters));
+        _data.Setup(service => service.ResolveFilteredAsync(_form, _form.Fields[0], "1", null, filters, default)).ReturnsAsync(new LookupOption("1", "Country"));
+        Assert.NotNull(await Service.ResolveFilteredAsync(1, "CountryId", "1", null, filters));
+        _data.Setup(service => service.ResolvePathAsync(_form, _form.Fields[0], "1", null, true, default)).ReturnsAsync(new LookupSelectionPath(new("1", "Country"), filters));
+        Assert.Equal(filters, (await Service.ResolvePathAsync(1, "CountryId", "1", null))!.Filters);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Service.SearchFilterLevelAsync(1, "Secret", 0, Array.Empty<string>(), null, ""));
+        _data.Setup(service => service.ValidateConfigurationAsync(_form, default)).Returns(Task.CompletedTask);
+        Assert.Single((await Service.SearchFilterLevelAsync(1, "CountryId", 0, Array.Empty<string>(), null, "", 50, draft: _form)).Options);
+        _data.Verify(service => service.ValidateConfigurationAsync(_form, default), Times.Once);
+    }
+
     private sealed class LookupAuthentication : AuthenticationStateProvider
     {
         public bool Authenticated { get; set; } = true;

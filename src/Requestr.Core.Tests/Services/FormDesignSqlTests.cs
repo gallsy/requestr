@@ -86,6 +86,9 @@ public class FormDesignSqlTests : IAsyncLifetime
         var conditionMigration = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "029_FormConditionals.sql"));
         await connection.ExecuteAsync(conditionMigration);
         await connection.ExecuteAsync(conditionMigration);
+        var filterMigration = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "030_LookupFilterLevels.sql"));
+        await connection.ExecuteAsync(filterMigration);
+        await connection.ExecuteAsync(filterMigration);
         var factory = new Mock<IDbConnectionFactory>();
         factory.Setup(connectionFactory => connectionFactory.CreateConnectionAsync()).Returns(OpenAsync);
         _repository = new FormDesignRepository(factory.Object);
@@ -335,6 +338,58 @@ public class FormDesignSqlTests : IAsyncLifetime
     }
 
     [LocalDbFact]
+    public async Task HierarchicalLookupFiltersPagesRestoresAndStoresOnlyKey()
+    {
+        var (service, form) = await CreateLookupAsync();
+        using var connection = await OpenAsync();
+        await connection.ExecuteAsync("ALTER TABLE LookupCountries ADD Department nvarchar(50) NULL, Category nvarchar(50) NULL, Region varchar(3) NULL;");
+        await connection.ExecuteAsync("""
+            INSERT INTO LookupCountries (Id, Name, Department, Category, Region) VALUES
+                (1, 'Program A', 'Community', 'Online', 'OCE'), (2, 'Program B', 'Community', 'Onsite', 'OCE'),
+                (3, 'Program C', 'Education', 'Online', 'NAM'), (4, 'Program D', NULL, '', 'OCE');
+            """);
+        var field = form.Fields[0];
+        field.LookupFilterLevels = new() { new() { Column = "Department", Label = "Department" }, new() { Column = "Category", Label = "Category" } };
+        await service.ValidateConfigurationAsync(form);
+        var departments = await service.SearchFilterLevelAsync(form, field, 0, Array.Empty<string>(), null, "");
+        Assert.Equal(3, departments.Options.Count);
+        Assert.Contains(departments.Options, option => option.Value == "null");
+        var community = new[] { "\"Community\"" };
+        Assert.Equal(2, (await service.SearchFilterLevelAsync(form, field, 1, community, null, "")).Options.Count);
+        var path = new[] { "\"Community\"", "\"Online\"" };
+        Assert.Equal("1", Assert.Single(await service.SearchFilteredAsync(form, field, "Program", null, path)).Value);
+        Assert.Null(await service.ResolveFilteredAsync(form, field, "3", null, path));
+        Assert.Equal("1", (await service.ResolveFilteredAsync(form, field, "1", null, path))!.Value);
+        Assert.Equal(path, (await service.ResolvePathAsync(form, field, "1", null))!.Filters);
+        Assert.Equal("4", Assert.Single(await service.SearchFilteredAsync(form, field, "", null, new[] { "null", "\"\"" })).Value);
+        Assert.Empty(await service.SearchFilteredAsync(form, field, "", null, new[] { "\"' OR 1=1--\"", "\"Online\"" }));
+        await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => service.SearchFilteredAsync(form, field, "", null, community));
+        var values = new Dictionary<string, object?> { [field.Name] = "1" };
+        await service.ValidateValuesAsync(form, values);
+        Assert.Single(values);
+        Assert.Equal(1, values[field.Name]);
+        await connection.ExecuteAsync("INSERT INTO LookupCountries (Id, Name, Department, Category) VALUES (@Id, 'Program', @Department, 'Online')",
+            Enumerable.Range(10, 60).Select(number => new { Id = number, Department = $"Team{number}" }));
+        var first = await service.SearchFilterLevelAsync(form, field, 0, Array.Empty<string>(), null, "Team");
+        Assert.Equal(50, first.Options.Count);
+        Assert.True(first.HasMore);
+        var second = await service.SearchFilterLevelAsync(form, field, 0, Array.Empty<string>(), null, "Team", 50);
+        Assert.Equal(10, second.Options.Count);
+        Assert.False(second.HasMore);
+        Assert.Empty(first.Options.Intersect(second.Options));
+        await connection.ExecuteAsync("ALTER TABLE LookupDestination ADD Region varchar(3) NULL;");
+        form.Fields.Add(new() { Name = "Region", DataType = "varchar" });
+        field.LookupParentField = "Region";
+        field.LookupFilterColumn = "Region";
+        Assert.Empty((await service.SearchFilterLevelAsync(form, field, 0, Array.Empty<string>(), null, "")).Options);
+        Assert.Empty(await service.SearchFilteredAsync(form, field, "", "NAM", path));
+        Assert.Null(await service.ResolvePathAsync(form, field, "1", "NAM"));
+        Assert.NotNull(await service.ResolvePathAsync(form, field, "1", "NAM", false));
+        field.LookupFilterLevels[0].Column = "Missing";
+        await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => service.ValidateConfigurationAsync(form));
+    }
+
+    [LocalDbFact]
     public async Task LookupUsesSeparateSourceConnectionAndValidatesActualDestination()
     {
         var (_, form) = await CreateLookupAsync();
@@ -437,6 +492,7 @@ public class FormDesignSqlTests : IAsyncLifetime
     public async Task LookupMetadataRoundTripsAndSurvivesDelegatedSave()
     {
         var (service, form) = await CreateLookupAsync();
+        form.Fields[0].LookupFilterLevels = new() { new() { Column = "Name", Label = "Country group" } };
         form.Fields[0].LookupDatabaseConnectionName = "DefaultConnection";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         { ["ConnectionStrings:DefaultConnection"] = ConnectionString }).Build();
@@ -449,12 +505,14 @@ public class FormDesignSqlTests : IAsyncLifetime
         Assert.Equal("LookupCountries", Assert.Single(loaded.Fields).LookupTable);
         Assert.Equal(FieldOptionSource.DatabaseLookup, loaded.Fields[0].OptionSource);
         Assert.Equal("DefaultConnection", loaded.Fields[0].LookupDatabaseConnectionName);
+        Assert.Equal("Country group", Assert.Single(loaded.Fields[0].LookupFilterLevels).Label);
         var update = UpdateFormDesignDto.FromForm(loaded);
         update.Fields[0].DisplayName = "Country label";
         await _repository.SaveAsync(update, new(), true, "Admin");
         loaded = (await definitions.GetFormDefinitionAsync(form.Id))!;
         Assert.Equal("LookupCountries", loaded.Fields[0].LookupTable);
         Assert.Equal("Country label", loaded.Fields[0].DisplayName);
+        Assert.Equal("Name", Assert.Single(loaded.Fields[0].LookupFilterLevels).Column);
         Assert.Equal("DefaultConnection", loaded.Fields[0].LookupDatabaseConnectionName);
         loaded.Fields[0].LookupDatabaseConnectionName = "ReferenceData";
         await definitions.UpdateFormDefinitionAsync(loaded);
@@ -463,12 +521,17 @@ public class FormDesignSqlTests : IAsyncLifetime
         Assert.Equal("ReferenceData", Assert.Single(await definitions.GetFormDefinitionsAsync()).Fields[0].LookupDatabaseConnectionName);
         Assert.Equal("ReferenceData", Assert.Single(await definitions.GetActiveAsync()).Fields[0].LookupDatabaseConnectionName);
         Assert.Equal("ReferenceData", Assert.Single(await definitions.GetFormDefinitionsForUserAsync("Admin", new() { "Admin" })).Fields[0].LookupDatabaseConnectionName);
+        Assert.Single((await definitions.GetFormDefinitionAsync(form.Id))!.Fields[0].LookupFilterLevels);
+        Assert.Single(Assert.Single(await definitions.GetFormDefinitionsAsync()).Fields[0].LookupFilterLevels);
+        Assert.Single(Assert.Single(await definitions.GetActiveAsync()).Fields[0].LookupFilterLevels);
+        Assert.Single(Assert.Single(await definitions.GetFormDefinitionsForUserAsync("Admin", new() { "Admin" })).Fields[0].LookupFilterLevels);
     }
 
     [LocalDbFact]
     public async Task RequestApplicationStoresKeyAndRejectsDeletedReference()
     {
         var (lookups, form) = await CreateLookupAsync();
+        form.Fields[0].LookupFilterLevels = new() { new() { Column = "Name", Label = "Category" } };
         using var connection = await OpenAsync();
         await connection.ExecuteAsync("INSERT INTO LookupCountries VALUES (12, 'Australia')");
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -482,6 +545,7 @@ public class FormDesignSqlTests : IAsyncLifetime
             NullLogger<FormRequestApplicationService>.Instance, lookups);
         var request = new FormRequest { FormDefinitionId = 1, RequestType = RequestType.Insert, FieldValues = new() { ["CountryId"] = "12" } };
         Assert.True((await application.ApplyChangesToDatabaseAsync(request)).Success);
+        Assert.Single(request.FieldValues);
         Assert.Equal(12, await connection.QuerySingleAsync<int>("SELECT CountryId FROM LookupDestination"));
         await connection.ExecuteAsync("INSERT INTO LookupCountries VALUES (1, 'Boolean-like label')");
         request.FieldValues["CountryId"] = "True";

@@ -81,6 +81,7 @@ public class FormField : BaseEntity
     public string? LookupLabelColumn { get; set; }
     public string? LookupParentField { get; set; }
     public string? LookupFilterColumn { get; set; }
+    public List<LookupFilterLevel> LookupFilterLevels { get; set; } = new();
     public int DisplayOrder { get; set; }
     public bool TreatBlankAsNull { get; set; } = false;
     public string? HelpText { get; set; } // Tooltip text shown via info icon on the field label
@@ -117,6 +118,12 @@ public class FormPermission : AuditableEntity
 /// <summary>
 /// Types of permissions that can be granted for a form
 /// </summary>
+public sealed class LookupFilterLevel
+{
+    public string Column { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+}
+
 public enum FieldOptionSource
 {
     Static = 0,

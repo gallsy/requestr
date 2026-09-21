@@ -1,4 +1,5 @@
 @implements IAsyncDisposable
+@using Requestr.Core.Interfaces
 @inject IJSRuntime JSRuntime
 
 <div class="position-relative" style="min-width: 0;">
@@ -11,6 +12,7 @@
                disabled="@Disabled"
                autocomplete="off"
                role="combobox"
+               aria-label="@AccessibleLabel"
                aria-autocomplete="list"
                aria-expanded="@_isOpen"
                aria-controls="@_listboxId"
@@ -64,11 +66,16 @@
                             @onmousedown:preventDefault
                             @onclick="@(() => SelectOptionAsync(option))">
                         @option.Text
-                        @if (SearchOptions != null)
+                        @if (IsRemote && ShowOptionValues)
                         {
                             <small class="text-muted ms-2">(@option.Value)</small>
                         }
                     </button>
+                }
+                @if (_hasMore)
+                {
+                    <button type="button" class="dropdown-item text-primary" aria-label="Load more options"
+                            @onmousedown:preventDefault @onclick="LoadMoreAsync">Load more</button>
                 }
             }
             else
@@ -89,10 +96,13 @@
     [Parameter] public IReadOnlyList<(string Value, string Text)> Options { get; set; } = Array.Empty<(string, string)>();
     [Parameter] public string Placeholder { get; set; } = "Type to search...";
     [Parameter] public string EmptyText { get; set; } = "No matching options found.";
+    [Parameter] public string? AccessibleLabel { get; set; }
+    [Parameter] public bool ShowOptionValues { get; set; } = true;
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool Required { get; set; }
     [Parameter] public int MaxSuggestions { get; set; } = 50;
     [Parameter] public Func<string, CancellationToken, Task<IReadOnlyList<(string Value, string Text)>>>? SearchOptions { get; set; }
+    [Parameter] public Func<string, int, CancellationToken, Task<LookupFilterPage>>? PagedSearchOptions { get; set; }
     [Parameter] public Func<string, CancellationToken, Task<(string Value, string Text)?>>? ResolveOption { get; set; }
     [Parameter] public string? SourceIdentity { get; set; }
     [Parameter] public EventCallback<bool> SelectionValidChanged { get; set; }
@@ -112,6 +122,9 @@
     private bool _loading;
     private string? _error;
     private string? _loadedSource;
+    private bool IsRemote => SearchOptions != null || PagedSearchOptions != null;
+    private bool _hasMore;
+    private string _pageQuery = string.Empty;
 
     private string InputCssClass
     {
@@ -132,7 +145,7 @@
 
     private bool HasValidSelection =>
         !string.IsNullOrEmpty(_selectedValue) &&
-        (SearchOptions != null || _options.Any(option =>
+        (IsRemote || _options.Any(option =>
             string.Equals(option.Value, _selectedValue, StringComparison.Ordinal) &&
             string.Equals(option.Text, _searchText, StringComparison.Ordinal)));
 
@@ -140,7 +153,7 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (SearchOptions != null)
+        if (IsRemote)
         {
             var external = Value ?? string.Empty;
             if (_initialized && _loadedSource == SourceIdentity && external == _currentValue) return;
@@ -221,7 +234,7 @@
 
     private List<SearchableSelectOption> GetFilteredOptions()
     {
-        if (SearchOptions != null) return _options;
+        if (IsRemote) return _options;
         var query = _filterOnInput ? _searchText.Trim() : string.Empty;
         return _options
             .Where(option => string.IsNullOrEmpty(query) ||
@@ -236,7 +249,7 @@
         _isOpen = true;
         _filterOnInput = false;
         _highlightedIndex = -1;
-        if (SearchOptions != null) await SearchAsync(string.Empty, false);
+        if (IsRemote) await SearchAsync(string.Empty, false);
     }
 
     private void HandleBlur(FocusEventArgs args)
@@ -253,7 +266,7 @@
         _wasInteractedWith = true;
         _highlightedIndex = -1;
 
-        if (SearchOptions != null)
+        if (IsRemote)
         {
             _selectedValue = string.Empty;
             _currentValue = string.Empty;
@@ -293,7 +306,7 @@
         _isOpen = false;
         _highlightedIndex = -1;
         await ValueChanged.InvokeAsync(_selectedValue);
-        if (SearchOptions != null) await SelectionValidChanged.InvokeAsync(true);
+        if (IsRemote) await SelectionValidChanged.InvokeAsync(true);
         await _input.FocusAsync();
     }
 
@@ -310,8 +323,8 @@
         _isOpen = true;
         _highlightedIndex = -1;
         await ValueChanged.InvokeAsync(string.Empty);
-        if (SearchOptions != null) await SelectionValidChanged.InvokeAsync(!Required);
-        if (SearchOptions != null) await SearchAsync(string.Empty, false);
+        if (IsRemote) await SelectionValidChanged.InvokeAsync(!Required);
+        if (IsRemote) await SearchAsync(string.Empty, false);
         await _input.FocusAsync();
     }
 
@@ -392,18 +405,32 @@
         return _operation = new CancellationTokenSource();
     }
 
-    private async Task SearchAsync(string query, bool debounce)
+    private Task LoadMoreAsync() => SearchAsync(_pageQuery, false, true);
+
+    private async Task SearchAsync(string query, bool debounce, bool append = false)
     {
-        if (SearchOptions == null) return;
+        if (!IsRemote) return;
         var operation = BeginOperation();
         _loading = true;
         _error = null;
+        _hasMore = false;
         try
         {
             if (debounce) await Task.Delay(250, operation.Token);
-            var options = await SearchOptions(query, operation.Token);
+            IReadOnlyList<(string Value, string Text)> options;
+            var hasMore = false;
+            if (PagedSearchOptions != null)
+            {
+                var result = await PagedSearchOptions(query, append ? _options.Count : 0, operation.Token);
+                options = result.Options.Select(option => (option.Value, option.Text)).ToList();
+                hasMore = result.HasMore;
+            }
+            else options = await SearchOptions!(query, operation.Token);
             if (operation.IsCancellationRequested) return;
-            _options = options.Select(option => new SearchableSelectOption(option.Value, option.Text)).ToList();
+            if (!append) _options.Clear();
+            _options.AddRange(options.Select(option => new SearchableSelectOption(option.Value, option.Text)));
+            _hasMore = hasMore;
+            _pageQuery = query;
         }
         catch (OperationCanceledException) { }
         catch { if (!operation.IsCancellationRequested) _error = "Unable to load lookup options."; }

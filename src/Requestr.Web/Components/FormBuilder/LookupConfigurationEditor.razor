@@ -8,7 +8,7 @@
 <div class="row g-2 mb-3">
     <div class="col-12">
         <label class="form-label">Option source</label>
-        <select class="form-select" @bind="Field.OptionSource" @bind:after="LoadAsync" disabled="@(!_isAdmin || _loading)">
+        <select class="form-select" aria-label="Option source" @bind="Field.OptionSource" @bind:after="LoadAsync" disabled="@(!_isAdmin || _loading)">
             <option value="@FieldOptionSource.Static">Static options</option>
             <option value="@FieldOptionSource.DatabaseLookup">Database lookup</option>
         </select>
@@ -60,6 +60,41 @@
     @if (!string.IsNullOrEmpty(_error)) { <div class="col-12 text-danger" role="alert">@_error</div> }
     @if (_isAdmin && Field.OptionSource == FieldOptionSource.DatabaseLookup)
     {
+        <fieldset class="col-12 mt-3">
+            <legend class="h6 border-bottom pb-2">Filter levels</legend>
+            @for (var index = 0; index < Field.LookupFilterLevels.Count; index++)
+            {
+                var levelIndex = index;
+                var level = Field.LookupFilterLevels[levelIndex];
+                <div class="lookup-level-editor border-bottom pb-3 mb-3" @key="level">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="small fw-semibold">Level @(levelIndex + 1)</span>
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-outline-secondary" disabled="@(_loading || levelIndex == 0)"
+                                    aria-label="Move filter level up" title="Move filter level up" @onclick="@(() => MoveLevelAsync(levelIndex, -1))"><i class="bi bi-arrow-up" aria-hidden="true"></i></button>
+                            <button type="button" class="btn btn-outline-secondary" disabled="@(_loading || levelIndex == Field.LookupFilterLevels.Count - 1)"
+                                    aria-label="Move filter level down" title="Move filter level down" @onclick="@(() => MoveLevelAsync(levelIndex, 1))"><i class="bi bi-arrow-down" aria-hidden="true"></i></button>
+                            <button type="button" class="btn btn-outline-danger" disabled="@_loading"
+                                    aria-label="Remove filter level" title="Remove filter level" @onclick="@(() => RemoveLevelAsync(level))"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                        </div>
+                    </div>
+                    <label class="form-label">Source column</label>
+                    <select class="form-select mb-2" aria-label="@($"Filter level {levelIndex + 1} column")" value="@level.Column" disabled="@_loading"
+                            @onchange="@(args => ChangeLevelColumnAsync(level, args.Value?.ToString() ?? ""))">
+                        <option value="">Select column</option>
+                        @foreach (var column in FilterColumns.Where(column => column.Name == level.Column || !Field.LookupFilterLevels.Any(other => other.Column == column.Name)))
+                        {
+                            <option value="@column.Name">@column.Name (@column.DataType)</option>
+                        }
+                    </select>
+                    <label class="form-label">Label</label>
+                    <input class="form-control" aria-label="@($"Filter level {levelIndex + 1} label")" maxlength="128" @bind="level.Label" @bind:after="Changed" disabled="@_loading" />
+                </div>
+            }
+            <button type="button" class="btn btn-sm btn-outline-primary" disabled="@(_loading || !AvailableFilterColumns.Any())" @onclick="AddLevelAsync">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i> Add filter level
+            </button>
+        </fieldset>
         <div class="col-12">
             <label class="form-label">Filter by field</label>
             <select class="form-select" aria-label="Filter by field" @bind="Field.LookupParentField" @bind:after="ParentChanged">
@@ -98,6 +133,39 @@
     private List<string> _schemas = new();
     private List<string> _tables = new();
     private List<ColumnInfo> _columns = new();
+    private IEnumerable<ColumnInfo> FilterColumns => _columns.Where(column => column.MaxLength != -1 &&
+        column.DataType is "tinyint" or "smallint" or "int" or "bigint" or "uniqueidentifier" or "varchar" or "nvarchar" or "char" or "nchar");
+    private IEnumerable<ColumnInfo> AvailableFilterColumns => FilterColumns.Where(column => !Field.LookupFilterLevels.Any(level => level.Column == column.Name));
+
+    private async Task AddLevelAsync()
+    {
+        var column = AvailableFilterColumns.FirstOrDefault();
+        if (!_isAdmin || column == null) return;
+        Field.LookupFilterLevels.Add(new() { Column = column.Name, Label = column.Name });
+        await Changed();
+    }
+
+    private async Task MoveLevelAsync(int index, int direction)
+    {
+        if (!_isAdmin || index + direction < 0 || index + direction >= Field.LookupFilterLevels.Count) return;
+        (Field.LookupFilterLevels[index], Field.LookupFilterLevels[index + direction]) = (Field.LookupFilterLevels[index + direction], Field.LookupFilterLevels[index]);
+        await Changed();
+    }
+
+    private async Task RemoveLevelAsync(LookupFilterLevel level)
+    {
+        if (!_isAdmin) return;
+        Field.LookupFilterLevels.Remove(level);
+        await Changed();
+    }
+
+    private async Task ChangeLevelColumnAsync(LookupFilterLevel level, string column)
+    {
+        if (!_isAdmin) return;
+        if (string.IsNullOrWhiteSpace(level.Label) || level.Label == level.Column) level.Label = column;
+        level.Column = column;
+        await Changed();
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -109,6 +177,7 @@
 
     private async Task ConnectionChangedAsync()
     {
+        Field.LookupFilterLevels.Clear();
         Field.LookupFilterColumn = null;
         Field.LookupSchema = Field.LookupTable = Field.LookupKeyColumn = Field.LookupLabelColumn = null;
         _schemas = new();
@@ -119,6 +188,7 @@
 
     private async Task SchemaChangedAsync()
     {
+        Field.LookupFilterLevels.Clear();
         Field.LookupFilterColumn = null;
         Field.LookupTable = Field.LookupKeyColumn = Field.LookupLabelColumn = null;
         _tables = new();
@@ -128,6 +198,7 @@
 
     private async Task TableChangedAsync()
     {
+        Field.LookupFilterLevels.Clear();
         Field.LookupFilterColumn = null;
         Field.LookupKeyColumn = Field.LookupLabelColumn = null;
         _columns = new();
@@ -153,7 +224,11 @@
         _loading = false;
         if (!_isAdmin || field.OptionSource != FieldOptionSource.DatabaseLookup)
         {
-            if (_isAdmin) field.LookupParentField = field.LookupFilterColumn = null;
+            if (_isAdmin)
+            {
+                field.LookupParentField = field.LookupFilterColumn = null;
+                field.LookupFilterLevels.Clear();
+            }
             await Changed();
             return;
         }

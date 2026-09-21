@@ -17,6 +17,10 @@ public interface IFormLookupService
     Task<LookupOption?> ResolveDependentAsync(int formId, string fieldName, string value, string? parentValue, int? requestId = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<LookupOption>> SearchPreviewAsync(FormDefinition form, string fieldName, string? search, string? parentValue, CancellationToken cancellationToken = default);
     Task<LookupOption?> ResolvePreviewAsync(FormDefinition form, string fieldName, string value, string? parentValue, CancellationToken cancellationToken = default);
+    Task<LookupFilterPage> SearchFilterLevelAsync(int formId, string fieldName, int level, IReadOnlyList<string> filters, string? parentValue, string? search, int offset = 0, int? requestId = null, FormDefinition? draft = null, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<LookupOption>> SearchFilteredAsync(int formId, string fieldName, string? search, string? parentValue, IReadOnlyList<string> filters, int? requestId = null, FormDefinition? draft = null, CancellationToken cancellationToken = default);
+    Task<LookupOption?> ResolveFilteredAsync(int formId, string fieldName, string value, string? parentValue, IReadOnlyList<string> filters, int? requestId = null, FormDefinition? draft = null, CancellationToken cancellationToken = default);
+    Task<LookupSelectionPath?> ResolvePathAsync(int formId, string fieldName, string value, string? parentValue, bool enforceParent = true, int? requestId = null, FormDefinition? draft = null, CancellationToken cancellationToken = default);
 }
 
 public class FormLookupService(AuthenticationStateProvider authentication, IFormAuthorizationService authorization,
@@ -59,6 +63,37 @@ public class FormLookupService(AuthenticationStateProvider authentication, IForm
     {
         var field = await GetPreviewFieldAsync(form, fieldName, cancellationToken);
         return await lookups.ResolveDependentAsync(form, field, value, parentValue, cancellationToken);
+    }
+
+    public async Task<LookupFilterPage> SearchFilterLevelAsync(int formId, string fieldName, int level, IReadOnlyList<string> filters, string? parentValue, string? search, int offset = 0, int? requestId = null, FormDefinition? draft = null, CancellationToken cancellationToken = default)
+    {
+        var (form, field) = await GetFilterFieldAsync(formId, fieldName, requestId, draft, cancellationToken);
+        return await lookups.SearchFilterLevelAsync(form, field, level, filters, parentValue, search, offset, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<LookupOption>> SearchFilteredAsync(int formId, string fieldName, string? search, string? parentValue, IReadOnlyList<string> filters, int? requestId = null, FormDefinition? draft = null, CancellationToken cancellationToken = default)
+    {
+        var (form, field) = await GetFilterFieldAsync(formId, fieldName, requestId, draft, cancellationToken);
+        return await lookups.SearchFilteredAsync(form, field, search, parentValue, filters, cancellationToken);
+    }
+
+    public async Task<LookupOption?> ResolveFilteredAsync(int formId, string fieldName, string value, string? parentValue, IReadOnlyList<string> filters, int? requestId = null, FormDefinition? draft = null, CancellationToken cancellationToken = default)
+    {
+        var (form, field) = await GetFilterFieldAsync(formId, fieldName, requestId, draft, cancellationToken);
+        return await lookups.ResolveFilteredAsync(form, field, value, parentValue, filters, cancellationToken);
+    }
+
+    public async Task<LookupSelectionPath?> ResolvePathAsync(int formId, string fieldName, string value, string? parentValue, bool enforceParent = true, int? requestId = null, FormDefinition? draft = null, CancellationToken cancellationToken = default)
+    {
+        var (form, field) = await GetFilterFieldAsync(formId, fieldName, requestId, draft, cancellationToken);
+        return await lookups.ResolvePathAsync(form, field, value, parentValue, enforceParent, cancellationToken);
+    }
+
+    private async Task<(FormDefinition, FormField)> GetFilterFieldAsync(int formId, string fieldName, int? requestId, FormDefinition? draft, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (draft != null) return (draft, await GetPreviewFieldAsync(draft, fieldName, cancellationToken));
+        return await GetAuthorizedFieldAsync(formId, fieldName, requestId);
     }
 
     private async Task<FormField> GetPreviewFieldAsync(FormDefinition form, string fieldName, CancellationToken cancellationToken)
