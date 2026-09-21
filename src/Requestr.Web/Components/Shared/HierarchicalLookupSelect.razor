@@ -1,0 +1,167 @@
+@using System.Text.Json
+@using Requestr.Core.Interfaces
+@using Requestr.Core.Models
+@implements IDisposable
+@inject Requestr.Web.Services.IFormLookupService LookupService
+
+<div class="lookup-hierarchy d-flex flex-column gap-2" role="group" aria-label="@Field.DisplayName">
+    @if (_restoring)
+    {
+        <span class="small text-muted" role="status">Loading...</span>
+    }
+    else
+    {
+        @for (var index = 0; index < Field.LookupFilterLevels.Count; index++)
+        {
+            var level = index;
+            var definition = Field.LookupFilterLevels[level];
+            <div class="lookup-filter-level" @key="LevelIdentity(level)">
+                <div class="form-label mb-1">@definition.Label</div>
+                <SearchableSelect Value="@_filters[level]" ValueChanged="@(value => FilterChangedAsync(level, value))"
+                    Disabled="@(Disabled || !CanQuery || MissingParent || _filters.Take(level).Any(value => value == null))"
+                    AccessibleLabel="@definition.Label" Placeholder="@($"Select {definition.Label}")" ShowOptionValues="false"
+                    PagedSearchOptions="@((query, offset, token) => SearchLevelAsync(level, query, offset, token))"
+                    ResolveOption="ResolveFilterAsync" SourceIdentity="@LevelIdentity(level)" />
+            </div>
+        }
+        <div class="lookup-final-selection" @key="FinalIdentity">
+            <div class="form-label mb-1">@Field.DisplayName</div>
+            <SearchableSelect Value="@_value" ValueChanged="FinalChangedAsync" Disabled="@(Disabled || !CanQuery || MissingParent || !Complete)"
+                Required="Required" AccessibleLabel="@Field.DisplayName" Placeholder="@Placeholder"
+                SearchOptions="SearchAsync" ResolveOption="ResolveAsync" SourceIdentity="@FinalIdentity"
+                SelectionValidChanged="ReportValidityAsync" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FormField Field { get; set; } = default!;
+    [Parameter] public int FormId { get; set; }
+    [Parameter] public int? RequestId { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public string? ParentValue { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Type to search...";
+    [Parameter] public EventCallback<bool> SelectionValidChanged { get; set; }
+    [CascadingParameter(Name = "DraftForm")] public FormDefinition? DraftForm { get; set; }
+    [CascadingParameter(Name = "PreviewCanQuery")] public bool PreviewCanQuery { get; set; }
+
+    private string?[] _filters = Array.Empty<string?>();
+    private string? _value;
+    private string? _lastValue;
+    private string? _context;
+    private string? _lastParent;
+    private bool _restoring;
+    private bool _restoreFailed;
+    private int _version;
+    private CancellationTokenSource? _restoreOperation;
+    private bool CanQuery => DraftForm == null || PreviewCanQuery;
+    private bool MissingParent => !string.IsNullOrEmpty(Field.LookupParentField) && string.IsNullOrEmpty(ParentValue);
+    private bool Complete => _filters.Length == Field.LookupFilterLevels.Count && _filters.All(value => value != null);
+    private string ContextIdentity => JsonSerializer.Serialize(new { FormId, Field.Name, RequestId, ParentValue, Disabled, CanQuery,
+        Field.LookupDatabaseConnectionName, Field.LookupSchema, Field.LookupTable, Field.LookupKeyColumn, Field.LookupLabelColumn, Field.LookupParentField, Field.LookupFilterColumn, Field.LookupFilterLevels });
+    private string LevelIdentity(int level) => $"{_context}:{level}:{JsonSerializer.Serialize(_filters.Take(level))}";
+    private string FinalIdentity => $"{_context}:{JsonSerializer.Serialize(_filters)}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var context = ContextIdentity;
+        var externalValue = string.IsNullOrEmpty(Value) ? null : Value;
+        if (_context == context && _lastValue == externalValue) return;
+        var parentChanged = _context != null && _lastParent != ParentValue;
+        _lastParent = ParentValue;
+        _context = context;
+        _value = _lastValue = externalValue;
+        _filters = new string?[Field.LookupFilterLevels.Count];
+        _restoreFailed = false;
+        var version = ++_version;
+        _restoreOperation?.Cancel();
+        _restoreOperation?.Dispose();
+        _restoreOperation = new();
+        _restoring = !string.IsNullOrEmpty(Value) && CanQuery;
+        if (!_restoring) return;
+        try
+        {
+            var path = await LookupService.ResolvePathAsync(FormId, Field.Name, Value!, ParentValue, !Disabled, RequestId, DraftForm, _restoreOperation.Token);
+            if (version != _version) return;
+            if (path != null && path.Filters.Count == _filters.Length) _filters = path.Filters.Cast<string?>().ToArray();
+            else if (parentChanged && !Disabled)
+            {
+                _value = _lastValue = null;
+                await ValueChanged.InvokeAsync(null);
+            }
+            else _restoreFailed = true;
+        }
+        catch (OperationCanceledException) { }
+        catch { if (version == _version) _restoreFailed = true; }
+        finally
+        {
+            if (version == _version)
+            {
+                _restoring = false;
+                await ReportValidityAsync(!_restoreFailed && (!Required || !string.IsNullOrEmpty(_value)));
+            }
+        }
+    }
+
+    private async Task FilterChangedAsync(int level, string? value)
+    {
+        value = string.IsNullOrEmpty(value) ? null : value;
+        if (_filters[level] == value) return;
+        _version++;
+        _filters[level] = value;
+        for (var index = level + 1; index < _filters.Length; index++) _filters[index] = null;
+        _restoreFailed = false;
+        _value = _lastValue = null;
+        await ValueChanged.InvokeAsync(null);
+        await ReportValidityAsync(!Required);
+    }
+
+    private async Task FinalChangedAsync(string? value)
+    {
+        _value = _lastValue = string.IsNullOrEmpty(value) ? null : value;
+        await ValueChanged.InvokeAsync(value);
+    }
+
+    private Task ReportValidityAsync(bool valid) => SelectionValidChanged.InvokeAsync(Disabled || (valid && !_restoreFailed));
+
+    private Task<LookupFilterPage> SearchLevelAsync(int level, string search, int offset, CancellationToken token)
+    {
+        if (!CanQuery || Disabled || MissingParent || _filters.Take(level).Any(value => value == null))
+            return Task.FromResult(new LookupFilterPage(Array.Empty<LookupOption>(), false));
+        return LookupService.SearchFilterLevelAsync(FormId, Field.Name, level, _filters.Take(level).Select(value => value!).ToArray(), ParentValue, search, offset, RequestId, DraftForm, token);
+    }
+
+    private static Task<(string Value, string Text)?> ResolveFilterAsync(string value, CancellationToken token)
+    {
+        var text = JsonSerializer.Deserialize<string?>(value);
+        return Task.FromResult<(string, string)?>((value, text == null ? "(blank)" : text.Length == 0 ? "(empty)" : text));
+    }
+
+    private async Task<IReadOnlyList<(string Value, string Text)>> SearchAsync(string search, CancellationToken token)
+    {
+        if (!CanQuery || Disabled || MissingParent || !Complete) return Array.Empty<(string, string)>();
+        var options = await LookupService.SearchFilteredAsync(FormId, Field.Name, search, ParentValue, _filters.Select(value => value!).ToArray(), RequestId, DraftForm, token);
+        return options.Select(option => (option.Value, option.Text)).ToList();
+    }
+
+    private async Task<(string Value, string Text)?> ResolveAsync(string value, CancellationToken token)
+    {
+        if (!CanQuery) return null;
+        LookupOption? option;
+        if (Disabled)
+            option = (await LookupService.ResolvePathAsync(FormId, Field.Name, value, ParentValue, false, RequestId, DraftForm, token))?.Option;
+        else if (!Complete || MissingParent) return null;
+        else option = await LookupService.ResolveFilteredAsync(FormId, Field.Name, value, ParentValue, _filters.Select(filter => filter!).ToArray(), RequestId, DraftForm, token);
+        return option == null ? null : (option.Value, option.Text);
+    }
+
+    public void Dispose()
+    {
+        _version++;
+        _restoreOperation?.Cancel();
+        _restoreOperation?.Dispose();
+    }
+}

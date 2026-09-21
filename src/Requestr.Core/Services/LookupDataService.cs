@@ -10,7 +10,7 @@ using Requestr.Core.Validation;
 
 namespace Requestr.Core.Services;
 
-public class LookupDataService(IConfiguration configuration) : ILookupDataService
+public partial class LookupDataService(IConfiguration configuration) : ILookupDataService
 {
     public async Task ValidateConfigurationAsync(FormDefinition form, CancellationToken cancellationToken = default)
     {
@@ -230,6 +230,13 @@ public class LookupDataService(IConfiguration configuration) : ILookupDataServic
             if (parent == null || key.Filter == null || !SupportedKey(parent.DataType) || !Compatible(parent, key.Filter))
                 throw new ValidationException($"{field.DisplayName}: the parent field and lookup filter column have incompatible types or lengths.");
         }
+        foreach (var level in field.LookupFilterLevels)
+        {
+            var column = columns.SingleOrDefault(column => column.Name == level.Column);
+            if (column == null || !SupportedKey(column.DataType) || column.MaxLength == -1)
+                throw new ValidationException($"{field.DisplayName}: filter levels require an integer, GUID, or bounded text source column.");
+            key.Levels.Add(column);
+        }
         return key;
     }
 
@@ -273,6 +280,7 @@ public class LookupDataService(IConfiguration configuration) : ILookupDataServic
     private sealed class LookupColumn
     {
         public LookupColumn? Filter { get; set; }
+        public List<LookupColumn> Levels { get; set; } = new();
         public string Name { get; set; } = "";
         public string DataType { get; set; } = "";
         public short MaxLength { get; set; }

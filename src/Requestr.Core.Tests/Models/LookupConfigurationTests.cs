@@ -7,6 +7,24 @@ namespace Requestr.Core.Tests.Models;
 
 public class LookupConfigurationTests
 {
+    [Theory]
+    [InlineData("Category", "Category", true)]
+    [InlineData("", "Category", false)]
+    [InlineData("Category", "", false)]
+    [InlineData("Department", "Category", false)]
+    [InlineData("department", "Category", false)]
+    public void LookupFilterLevelsRequireDistinctColumnsAndLabels(string column, string label, bool valid)
+    {
+        var field = new FormField
+        {
+            OptionSource = FieldOptionSource.DatabaseLookup, ControlType = "searchable-select",
+            LookupSchema = "dbo", LookupTable = "Programs", LookupKeyColumn = "Id", LookupLabelColumn = "Name",
+            LookupFilterLevels = new() { new() { Column = "Department", Label = "Department" }, new() { Column = column, Label = label } }
+        };
+        if (valid) LookupConfigurationValidator.Validate(field);
+        else Assert.Throws<ValidationException>(() => LookupConfigurationValidator.Validate(field));
+    }
+
     [Fact]
     public void ExistingFieldsDefaultToStaticOptions()
     {

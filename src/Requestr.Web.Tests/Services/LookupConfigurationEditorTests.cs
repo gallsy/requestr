@@ -49,6 +49,39 @@ public class LookupConfigurationEditorTests : TestContext
         => (IHtmlSelectElement)editor.Find($"select[aria-label='{new[] { "Schema", "Table", "Key column", "Label column" }[position]}']");
 
     [Fact]
+    public void FilterLevelsCanBeAddedRenamedReorderedAndRemoved()
+    {
+        var changes = 0;
+        var editor = RenderComponent<LookupConfigurationEditor>(parameters => parameters
+            .Add(component => component.Field, _field).Add(component => component.DatabaseConnectionName, "ReferenceData")
+            .Add(component => component.OnChanged, () => changes++));
+        editor.Find("fieldset button.btn-outline-primary").Click();
+        editor.Find("select[aria-label='Filter level 1 column']").Change("Name");
+        editor.Find("input[aria-label='Filter level 1 label']").Change("Category");
+        editor.Find("fieldset button.btn-outline-primary").Click();
+        Assert.Equal(2, _field.LookupFilterLevels.Count);
+        editor.Find("button[aria-label='Move filter level down']").Click();
+        Assert.Equal("Category", _field.LookupFilterLevels[1].Label);
+        Assert.Equal("Name", _field.LookupFilterLevels[1].Column);
+        editor.Find("button[aria-label='Remove filter level']").Click();
+        Assert.Equal("Category", Assert.Single(_field.LookupFilterLevels).Label);
+        Assert.True(changes >= 6);
+        editor.Find("select[aria-label='Table']").Change("Regions");
+        Assert.Empty(_field.LookupFilterLevels);
+    }
+
+    [Fact]
+    public void SwitchingToStaticOptionsRemovesFilterLevels()
+    {
+        _field.LookupFilterLevels.Add(new() { Column = "Name", Label = "Category" });
+        var editor = RenderEditor();
+        Assert.Single(_field.LookupFilterLevels);
+        editor.Find("select[aria-label='Option source']").Change("Static");
+        Assert.Empty(_field.LookupFilterLevels);
+        Assert.Empty(editor.FindAll(".lookup-level-editor"));
+    }
+
+    [Fact]
     public async Task ChangingConnectionResetsDependentSelectionsAndKeepsConnectionDuringLoading()
     {
         var editor = RenderEditor();

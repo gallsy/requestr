@@ -6,9 +6,17 @@
 
 @if (Field.OptionSource == FieldOptionSource.DatabaseLookup)
 {
+    @if (Field.LookupFilterLevels.Count > 0)
+    {
+        <HierarchicalLookupSelect Field="Field" FormId="FormId" RequestId="RequestId" Value="@Value" ParentValue="@ParentValue"
+            ValueChanged="ValueChanged" Disabled="Disabled" Required="Required" Placeholder="@Placeholder" SelectionValidChanged="SelectionChangedAsync" />
+    }
+    else
+    {
     <SearchableSelect @key="Identity" Value="@Value" ValueChanged="ValueChanged" Disabled="@(Disabled || MissingParent || (DraftForm != null && !PreviewCanQuery))" Required="Required"
                       SearchOptions="SearchAsync" ResolveOption="ResolveAsync" SourceIdentity="@Identity"
                       Placeholder="@Placeholder" SelectionValidChanged="SelectionChangedAsync" />
+    }
     @if (!_selectionValid && !Disabled)
     {
         <div class="small text-danger" role="alert">Select an available lookup value.</div>
@@ -53,7 +61,7 @@ else
             var changed = _lastIdentity != null;
             _lastIdentity = identity;
             var version = ++_version;
-            if (changed && !Disabled && !string.IsNullOrEmpty(Field.LookupParentField) && !string.IsNullOrEmpty(Value))
+            if (changed && Field.LookupFilterLevels.Count == 0 && !Disabled && !string.IsNullOrEmpty(Field.LookupParentField) && !string.IsNullOrEmpty(Value))
             {
                 (string Value, string Text)? option;
                 try { option = await ResolveAsync(Value, CancellationToken.None); }

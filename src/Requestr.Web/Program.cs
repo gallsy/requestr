@@ -112,6 +112,7 @@ app.UseAuthorization();
 app.UseMiddleware<Requestr.Web.Services.UserSyncMiddleware>();
 
 app.MapControllers();
+app.MapStaticAssets().AllowAnonymous();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 app.MapRazorPages();
