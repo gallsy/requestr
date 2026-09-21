@@ -95,6 +95,14 @@
                 <i class="bi bi-plus-lg" aria-hidden="true"></i> Add filter level
             </button>
         </fieldset>
+        @if (Field.LookupFilterLevels.Count > 0)
+        {
+            <div class="col-12">
+                <label class="form-label">Final selection label</label>
+                <input class="form-control" aria-label="Final selection label" maxlength="128" placeholder="@Field.DisplayName"
+                       @bind="Field.LookupSelectionLabel" @bind:after="Changed" disabled="@_loading" />
+            </div>
+        }
         <div class="col-12">
             <label class="form-label">Filter by field</label>
             <select class="form-select" aria-label="Filter by field" @bind="Field.LookupParentField" @bind:after="ParentChanged">

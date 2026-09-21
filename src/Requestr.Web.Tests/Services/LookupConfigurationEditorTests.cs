@@ -49,6 +49,26 @@ public class LookupConfigurationEditorTests : TestContext
         => (IHtmlSelectElement)editor.Find($"select[aria-label='{new[] { "Schema", "Table", "Key column", "Label column" }[position]}']");
 
     [Fact]
+    public void FinalSelectionLabelIsEditableWithoutChangingHeadingOrSourceColumn()
+    {
+        _field.DisplayName = "Library Program Category";
+        _field.LookupFilterLevels.Add(new() { Column = "Code", Label = "Program Category" });
+        var changes = 0;
+        var editor = RenderComponent<LookupConfigurationEditor>(parameters => parameters
+            .Add(component => component.Field, _field).Add(component => component.DatabaseConnectionName, "ReferenceData")
+            .Add(component => component.OnChanged, () => changes++));
+        var before = changes;
+        editor.Find("input[aria-label='Final selection label']").Change("Program");
+        Assert.Equal("Program", _field.LookupSelectionLabel);
+        Assert.Equal("Library Program Category", _field.DisplayName);
+        Assert.Equal("Name", _field.LookupLabelColumn);
+        Assert.Equal("Program Category", _field.LookupFilterLevels[0].Label);
+        Assert.Equal(before + 1, changes);
+        editor.Find("input[aria-label='Final selection label']").Change("");
+        Assert.Equal("", _field.LookupSelectionLabel);
+    }
+
+    [Fact]
     public void FilterLevelsCanBeAddedRenamedReorderedAndRemoved()
     {
         var changes = 0;

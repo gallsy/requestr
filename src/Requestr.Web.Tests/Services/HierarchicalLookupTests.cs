@@ -37,6 +37,25 @@ public class HierarchicalLookupTests : TestContext
     }
 
     [Theory]
+    [InlineData("Program name", "Program name")]
+    [InlineData(null, "Program")]
+    [InlineData("   ", "Program")]
+    public void FinalLabelIsIndependentAndPlaceholdersMatchLabels(string? label, string expected)
+    {
+        _field.LookupSelectionLabel = label;
+        _field.LookupFilterLevels[1].Column = "ProgramCategory";
+        _field.LookupFilterLevels[1].Label = "Program Category";
+        var cut = RenderComponent<FormFieldSelect>(parameters => parameters.Add(component => component.FormId, 1)
+            .Add(component => component.Field, _field));
+        Assert.Equal("Program", cut.Find(".lookup-hierarchy").GetAttribute("aria-label"));
+        Assert.Equal(expected, cut.Find(".lookup-final-selection .form-label").TextContent);
+        var finalInput = cut.Find(".lookup-final-selection input");
+        Assert.Equal(expected, finalInput.GetAttribute("aria-label"));
+        Assert.Equal($"Select {expected}", finalInput.GetAttribute("placeholder"));
+        Assert.Equal("Select Program Category", cut.Find("input[aria-label='Program Category']").GetAttribute("placeholder"));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void FiltersUnlockInOrderAndOnlyFinalKeyIsEmitted(bool normalizeEmpty)

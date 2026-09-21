@@ -9,6 +9,8 @@ public static class LookupConfigurationValidator
     {
         if (!Enum.IsDefined(field.OptionSource))
             throw new ValidationException("Unknown option source.");
+        if (field.LookupSelectionLabel?.Length > 128)
+            throw new ValidationException("The final selection label must not exceed 128 characters.");
         if (field.OptionSource == FieldOptionSource.Static)
             return;
         if (!string.Equals(field.ControlType, "searchable-select", StringComparison.OrdinalIgnoreCase))

@@ -25,9 +25,9 @@
             </div>
         }
         <div class="lookup-final-selection" @key="FinalIdentity">
-            <div class="form-label mb-1">@Field.DisplayName</div>
+            <div class="form-label mb-1">@SelectionLabel</div>
             <SearchableSelect Value="@_value" ValueChanged="FinalChangedAsync" Disabled="@(Disabled || !CanQuery || MissingParent || !Complete)"
-                Required="Required" AccessibleLabel="@Field.DisplayName" Placeholder="@Placeholder"
+                Required="Required" AccessibleLabel="@SelectionLabel" Placeholder="@($"Select {SelectionLabel}")"
                 SearchOptions="SearchAsync" ResolveOption="ResolveAsync" SourceIdentity="@FinalIdentity"
                 SelectionValidChanged="ReportValidityAsync" />
         </div>
@@ -43,7 +43,6 @@
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool Required { get; set; }
-    [Parameter] public string Placeholder { get; set; } = "Type to search...";
     [Parameter] public EventCallback<bool> SelectionValidChanged { get; set; }
     [CascadingParameter(Name = "DraftForm")] public FormDefinition? DraftForm { get; set; }
     [CascadingParameter(Name = "PreviewCanQuery")] public bool PreviewCanQuery { get; set; }
@@ -60,6 +59,7 @@
     private bool CanQuery => DraftForm == null || PreviewCanQuery;
     private bool MissingParent => !string.IsNullOrEmpty(Field.LookupParentField) && string.IsNullOrEmpty(ParentValue);
     private bool Complete => _filters.Length == Field.LookupFilterLevels.Count && _filters.All(value => value != null);
+    private string SelectionLabel => string.IsNullOrWhiteSpace(Field.LookupSelectionLabel) ? Field.DisplayName : Field.LookupSelectionLabel.Trim();
     private string ContextIdentity => JsonSerializer.Serialize(new { FormId, Field.Name, RequestId, ParentValue, Disabled, CanQuery,
         Field.LookupDatabaseConnectionName, Field.LookupSchema, Field.LookupTable, Field.LookupKeyColumn, Field.LookupLabelColumn, Field.LookupParentField, Field.LookupFilterColumn, Field.LookupFilterLevels });
     private string LevelIdentity(int level) => $"{_context}:{level}:{JsonSerializer.Serialize(_filters.Take(level))}";
