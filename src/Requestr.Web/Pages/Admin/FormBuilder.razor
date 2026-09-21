@@ -71,7 +71,7 @@
                     <li><strong>@_schemaChangedFields.Count column(s) have changed metadata:</strong> @string.Join(", ", _schemaChangedFields.Keys)</li>
                 }
             </ul>
-            <small class="text-muted">Affected fields are highlighted in red in the Form Designer. Please review and update or remove these fields.</small>
+            <small class="text-muted">Affected fields are marked in the Form Designer. Please review and update or remove these fields.</small>
         </div>
     </div>
 }
@@ -164,387 +164,10 @@
             <!-- Form Designer Tab -->
             @if (ActiveTab == "designer")
             {
-                <div class="d-flex justify-content-end mb-3">
-                    <div class="form-check form-switch"><input id="advancedLayout" class="form-check-input" type="checkbox" @bind="_advancedLayout" /><label class="form-check-label" for="advancedLayout">Advanced layout</label></div>
-                </div>
-                @if (!_advancedLayout)
-                {
-                    <Requestr.Web.Components.FormBuilder.DesignerWorkspace Form="_formDefinition" Columns="_tableColumns" PresentationOnly="@(!_isAdmin)"
-                        OnAddField="QuickAddField" OnAddSection="AddSection" OnRemoveField="RemoveField" OnRemoveSection="RemoveSection" OnChanged="StateHasChanged" />
-                }
-                else
-                {
-                <div class="row form-designer-row">
-                    <!-- Available Fields Panel -->
-                    @if (_isAdmin)
-                    {
-                    <div class="col-lg-3 field-palette-column">
-                        @if (_tableColumns.Any())
-                        {
-                            <Requestr.Web.Components.FormBuilder.FieldPalette 
-                                Columns="_tableColumns"
-                                AddedFieldNames="_addedFieldNames"
-                                OnDragStart="OnDragStart"
-                                OnDragEnd="OnDragEnd"
-                                OnQuickAddField="QuickAddField" />
-                        }
-                        else if (!string.IsNullOrEmpty(_formDefinition.TableName))
-                        {
-                            <div class="card">
-                                <div class="card-body text-center">
-                                    <i class="bi bi-exclamation-circle text-warning" style="font-size: 2rem;"></i>
-                                    <p class="mt-2">No fields available for the selected table.</p>
-                                </div>
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="card">
-                                <div class="card-body text-center">
-                                    <i class="bi bi-arrow-left text-muted" style="font-size: 2rem;"></i>
-                                    <p class="mt-2 text-muted">Select a database and table in the Form Details tab to see available fields.</p>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                    }
-                    
-                    <!-- Form Sections Panel -->
-                    <div class="@(_isAdmin ? "col-lg-9" : "col-12")">
-                        <div class="card">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0">
-                                    <i class="bi bi-ui-checks me-2"></i>
-                                    Form Designer
-                                </h5>
-                                <button type="button" class="btn btn-primary btn-sm" @onclick="AddSection">
-                                    <i class="bi bi-plus me-1"></i>
-                                    Add Section
-                                </button>
-                            </div>
-                            <div class="card-body">
-                                @if (!_formDefinition.Sections?.Any() == true && !_formDefinition.Fields.Any())
-                                {
-                                    <div class="text-center text-muted p-5">
-                                        <i class="bi bi-dash-square" style="font-size: 3rem;"></i>
-                                        <p class="mt-3">Click "Add Section" to create your first form section</p>
-                                        <small class="text-muted">Then drag fields from the left panel into your sections</small>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <!-- Display existing sections -->
-                                    @if (_formDefinition.Sections?.Any() == true)
-                                    {
-                                        @foreach (var section in _formDefinition.Sections.OrderBy(s => s.DisplayOrder))
-                                        {
-                                            <div class="section-designer mb-4 border rounded">
-                                                <div class="section-header bg-light p-3 border-bottom">
-                                                    <div class="d-flex justify-content-between align-items-center">
-                                                        <div class="flex-grow-1">
-                                                            <div class="row">
-                                                                <div class="col-md-5">
-                                                                    <label class="form-label small">Section Title</label>
-                                                                    <input type="text" class="form-control form-control-sm" @bind="section.Name" placeholder="Section title..." />
-                                                                </div>
-                                                                <div class="col-md-4">
-                                                                    <label class="form-label small">Max Columns</label>
-                                                                    <select class="form-select form-select-sm" @bind="section.MaxColumns" @bind:after="() => FitSectionFields(section)">
-                                                                        <option value="1">1 Column</option>
-                                                                        <option value="2">2 Columns</option>
-                                                                        <option value="3">3 Columns</option>
-                                                                        <option value="4">4 Columns</option>
-                                                                        <option value="6">6 Columns</option>
-                                                                        <option value="12">12 Columns</option>
-                                                                    </select>
-                                                                </div>
-                                                                <div class="col-md-3">
-                                                                    <label class="form-label small">Display Order</label>
-                                                                    <input type="number" class="form-control form-control-sm" @bind="section.DisplayOrder" min="1" />
-                                                                </div>
-                                                            </div>
-                                                            <div class="row mt-2">
-                                                                <div class="col-12">
-                                                                    <label class="form-label small">Description <span class="text-muted">(shown to users above the form fields)</span></label>
-                                                                    <textarea class="form-control form-control-sm" rows="2" @bind="section.Description" placeholder="Add helpful instructions or context for users filling out this section..."></textarea>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        <div class="section-actions ms-3">
-                                                            <button type="button" class="btn btn-danger btn-sm" @onclick="() => RemoveSection(section)" disabled="@(!_isAdmin && !string.IsNullOrWhiteSpace(section.VisibilityCondition))" title="Remove section" aria-label="Remove section">
-                                                                <i class="bi bi-trash"></i>
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                
-                                                <!-- Enhanced Section Grid Designer -->
-                                                <div class="section-grid @(_draggedColumn != null && _dragTargetSection == section ? "drag-over" : "")"
-                                                     @ondrop="@(e => OnSectionDrop(e, section))"
-                                                     @ondragover="OnDragOver"
-                                                     @ondragover:preventDefault="true"
-                                                     @ondragenter="@(e => OnSectionDragEnter(e, section))"
-                                                     @ondragleave="OnDragLeave">
-                                                    
-                                                    @{
-                                                        var sectionFields = _formDefinition.Fields.Where(f => f.FormSectionId == section.Id).OrderBy(f => f.GridRow).ThenBy(f => f.GridColumn).ToList();
-                                                        var maxRow = sectionFields.Any() ? sectionFields.Max(f => f.GridRow) : 0;
-                                                        var gridRows = maxRow + 1; // n+1 rows where n is the maximum row count
-                                                        var gridTemplateColumns = $"repeat({section.MaxColumns}, 1fr)";
-                                                        var gridTemplateRows = $"repeat({gridRows}, 80px)";
-                                                        var gridStyle = $"grid-template-columns: {gridTemplateColumns}; grid-template-rows: {gridTemplateRows}; --columns: {section.MaxColumns}; --rows: {gridRows};";
-                                                    }
-                                                    
-                                                    <!-- Visual Grid Designer with Cells -->
-                                                    <div class="grid-designer @(sectionFields.Any() ? "has-fields" : "")" 
-                                                         style="@gridStyle"
-                                                         @onclick="@(e => OnGridCellClick(e, section))">
-                                                                                                                
-                                                        @if (!sectionFields.Any())
-                                                        {
-                                                            <!-- Empty state with visual grid -->
-                                                            <div style="grid-column: 1 / -1; grid-row: 1 / -1; display: flex; align-items: center; justify-content: center; flex-direction: column; color: #6c757d; pointer-events: none;">
-                                                                <i class="bi bi-grid-3x3-gap" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;"></i>
-                                                                <h6 style="margin-bottom: 0.5rem;">Drag fields here to create your form</h6>
-                                                                <small>@(section.MaxColumns) column grid • Click to position fields</small>
-                                                            </div>
-                                                        }
-                                                        
-                                                        <!-- Render grid cells for empty spaces -->
-                                                        @for (int row = 1; row <= gridRows; row++)
-                                                        {
-                                                            @for (int col = 1; col <= section.MaxColumns; col++)
-                                                            {
-                                                                // Create local copies to avoid variable capture issues
-                                                                var currentRow = row;
-                                                                var currentCol = col;
-                                                                
-                                                                var cellField = sectionFields.FirstOrDefault(f => 
-                                                                    f.GridRow == currentRow && 
-                                                                    f.GridColumn <= currentCol && 
-                                                                    f.GridColumn + f.GridColumnSpan > currentCol);
-                                                                    
-                                                                @if (cellField == null)
-                                                                {
-                                                                    var gridCellStyle = $"grid-row: {currentRow}; grid-column: {currentCol};";
-                                                                    <div class="grid-cell empty" 
-                                                                         data-row="@currentRow" 
-                                                                         data-col="@currentCol"
-                                                                         style="@gridCellStyle"
-                                                                         @onclick="@(e => OnEmptyGridCellClick(e, section, currentRow, currentCol))"
-                                                                         @ondrop="@(e => OnEmptyGridCellDrop(e, section, currentRow, currentCol))"
-                                                                         @ondrop:stopPropagation="true"
-                                                                         @ondragover="OnDragOver"
-                                                                         @ondragover:preventDefault="true"
-                                                                         @ondragenter="@(e => OnEmptyGridCellDragEnter(e, currentRow, currentCol))"
-                                                                         @ondragleave="OnDragLeave">
-                                                                        @if (_showGridGuides)
-                                                                        {
-                                                                            <div style="position: absolute; top: 2px; left: 2px; font-size: 0.6rem; color: #adb5bd; font-weight: 600;">
-                                                                                @currentRow,@currentCol
-                                                                            </div>
-                                                                        }
-                                                                    </div>
-                                                                }
-                                                            }
-                                                        }
-                                                        
-                                                        <!-- Render existing fields in grid -->
-                                                        @foreach (var field in sectionFields)
-                                                        {
-                                                            var fieldGridStyle = $"grid-column: {field.GridColumn} / span {field.GridColumnSpan}; grid-row: {field.GridRow};";
-                                                            var isStale = IsFieldStale(field);
-                                                            var isChanged = IsFieldChanged(field);
-                                                            var driftTooltip = GetFieldDriftTooltip(field);
-                                                            var fieldDriftClass = isStale ? "schema-drift" : (isChanged ? "schema-warning" : "");
-                                                            <div class="field-in-grid @(_draggedField == field ? "dragging" : "") @fieldDriftClass" 
-                                                                 style="@fieldGridStyle"
-                                                                 draggable="@(_isResizing ? "false" : "true")"
-                                                                 @ondragstart="@(e => OnFieldDragStart(e, field))"
-                                                                 @ondragend="OnFieldDragEnd"
-                                                                 @onclick="@(e => OnFieldClick(e, field))"
-                                                                 title="@driftTooltip">
-                                                                
-                                                                @if (isStale)
-                                                                {
-                                                                    <div class="schema-drift-indicator" title="@driftTooltip">
-                                                                        <i class="bi bi-exclamation-triangle-fill"></i>
-                                                                    </div>
-                                                                }
-                                                                else if (isChanged)
-                                                                {
-                                                                    <div class="schema-warning-indicator" title="@driftTooltip">
-                                                                        <i class="bi bi-info-circle-fill"></i>
-                                                                    </div>
-                                                                }
-                                                                
-                                                                <div class="field-header">
-                                                                    <div>
-                                                                        <div class="field-name">@field.Name</div>
-                                                                        <div class="field-display-name">@field.DisplayName</div>
-                                                                        <span class="field-type-badge">@(field.ControlType ?? field.DataType)</span>
-                                                                    </div>
-                                                                </div>
-                                                                
-                                                                <div class="grid-position-indicator">
-                                                                    @field.GridRow,@field.GridColumn (@field.GridColumnSpan)
-                                                                </div>
-                                                                
-                                                                @if (_selectedFieldForPositioning == field)
-                                                                {
-                                                                    <div class="field-positioning">
-                                                                        <div class="d-flex gap-2 align-items-center">
-                                                                            <div>
-                                                                                <label class="form-label small mb-0">Row</label>
-                                                                                <input type="number" class="form-control position-input" @bind="field.GridRow" min="1" max="@gridRows" />
-                                                                            </div>
-                                                                            <div>
-                                                                                <label class="form-label small mb-0">Col</label>
-                                                                                <input type="number" class="form-control position-input" @bind="field.GridColumn" min="1" max="@(section.MaxColumns)" />
-                                                                            </div>
-                                                                            <div>
-                                                                                <label class="form-label small mb-0">Span</label>
-                                                                                <select class="form-select position-input" @bind="field.GridColumnSpan">
-                                                                                    @for (int i = 1; i <= Math.Min((section.MaxColumns) - field.GridColumn + 1, (section.MaxColumns)); i++)
-                                                                                    {
-                                                                                        var spanValue = i; // Local copy for variable capture
-                                                                                        <option value="@spanValue">@spanValue</option>
-                                                                                    }
-                                                                                </select>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                }
-                                                                
-                                                                <div class="field-controls">
-                                                                    <button type="button" class="btn btn-outline-primary btn-sm" 
-                                                                            @onclick="@(e => ConfigureField(field))"
-                                                                            @onclick:stopPropagation="true"
-                                                                            title="Configure Field">
-                                                                        <i class="bi bi-gear"></i>
-                                                                    </button>
-                                                                    <button type="button" class="btn btn-outline-secondary btn-sm" 
-                                                                            @onclick="@(e => ToggleFieldPositioning(field))"
-                                                                            @onclick:stopPropagation="true"
-                                                                            title="Position Field">
-                                                                        <i class="bi bi-arrows-move"></i>
-                                                                    </button>
-                                                                        @if (_isAdmin)
-                                                                        {
-                                                                        <button type="button" class="btn btn-outline-danger btn-sm"
-                                                                            @onclick="@(e => RemoveField(field))"
-                                                                            @onclick:stopPropagation="true"
-                                                                            title="Remove Field">
-                                                                        <i class="bi bi-trash"></i>
-                                                                    </button>
-                                                                    }
-                                                                </div>
-                                                                
-                                                                <!-- Resize handle for visual feedback -->
-                                                                <div class="field-resizer" 
-                                                                     title="Drag to resize"
-                                                                     draggable="false"
-                                                                     @onmousedown="@(e => OnResizeStart(e, field))"
-                                                                     @onmousedown:stopPropagation="true"
-                                                                     @onmousedown:preventDefault="true"
-                                                                     @ondragstart:preventDefault="true"
-                                                                     @ondragstart:stopPropagation="true"
-                                                                     @onclick:stopPropagation="true"></div>
-                                                            </div>
-                                                        }
-                                                    </div>
-                                                    
-                                                    <!-- Grid Controls -->
-                                                    <div class="mt-3 d-flex justify-content-between align-items-center">
-                                                        <div class="form-check form-switch">
-                                                            <input class="form-check-input" type="checkbox" @bind="_showGridGuides" id="gridGuides">
-                                                            <label class="form-check-label" for="gridGuides">
-                                                                Show grid coordinates
-                                                            </label>
-                                                        </div>
-                                                        <div class="btn-group btn-group-sm">
-                                                            <button type="button" class="btn btn-outline-secondary" @onclick="@(() => AddGridRow(section))" title="Add Row">
-                                                                <i class="bi bi-plus"></i> Row
-                                                            </button>
-                                                            <button type="button" class="btn btn-outline-secondary" @onclick="@(() => CompactGrid(section))" title="Compact Grid">
-                                                                <i class="bi bi-arrows-collapse"></i> Compact
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        }
-                                    }
-                                    
-                                    <!-- Display legacy fields not in sections (backward compatibility) -->
-                                    var legacyFields = _formDefinition.Fields.Where(f => f.FormSectionId == null || f.FormSectionId == 0).OrderBy(f => f.DisplayOrder).ToList();
-                                    if (legacyFields.Any())
-                                    {
-                                        <div class="section-designer mb-4 border rounded border-warning">
-                                            <div class="section-header bg-warning bg-opacity-10 p-3 border-bottom">
-                                                <div class="d-flex justify-content-between align-items-center">
-                                                    <div>
-                                                        <h6 class="mb-0">
-                                                            <i class="bi bi-exclamation-triangle text-warning me-1"></i>
-                                                            Legacy Fields (No Section)
-                                                        </h6>
-                                                        <small class="text-muted">These fields need to be moved to a section for grid layout support</small>
-                                                    </div>
-                                                    <button type="button" class="btn btn-warning btn-sm" @onclick="MigrateLegacyFields">
-                                                        <i class="bi bi-arrow-right me-1"></i>
-                                                        Move to New Section
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <div class="section-grid p-3">
-                                                @foreach (var field in legacyFields)
-                                                {
-                                                    <div class="form-field-designer mb-3 p-3 border rounded position-relative">
-                                                        <div class="d-flex justify-content-between align-items-start">
-                                                            <div class="flex-grow-1">
-                                                                <div class="row">
-                                                                    <div class="col-md-6">
-                                                                        <label class="form-label">Field Name</label>
-                                                                        <input type="text" class="form-control form-control-sm" @bind="field.DisplayName" />
-                                                                    </div>
-                                                                    <div class="col-md-6">
-                                                                        <label class="form-label">Control Type</label>
-                                                                        <select class="form-select form-select-sm" @bind="field.ControlType" @bind:after="() => OnControlTypeChanged(field)" disabled="@(!_isAdmin)">
-                                                                            @foreach (var controlOption in GetAvailableControlTypes(field))
-                                                                            {
-                                                                                <option value="@controlOption.Value">@controlOption.Text</option>
-                                                                            }
-                                                                        </select>
-                                                                        <small class="form-text text-muted">SQL Type: @GetOriginalSqlType(field)</small>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <div class="field-actions">
-                                                                <button type="button" class="btn btn-outline-primary btn-sm me-1" @onclick="() => ConfigureField(field)">
-                                                                    <i class="bi bi-gear"></i>
-                                                                </button>
-                                                                @if (_isAdmin)
-                                                                {
-                                                                <button type="button" class="btn btn-danger btn-sm" @onclick="() => RemoveField(field)">
-                                                                    <i class="bi bi-trash"></i>
-                                                                </button>
-                                                                }
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                }
-                                            </div>
-                                        </div>
-                                    }
-                                }
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <Requestr.Web.Components.FormBuilder.DesignerWorkspace Form="_formDefinition" Columns="_tableColumns" PresentationOnly="@(!_isAdmin)"
+                    GetFieldIssue="GetFieldDriftTooltip" OnAddField="QuickAddField" OnAddSection="AddSection" OnRemoveField="RemoveField" OnRemoveSection="RemoveSection" OnChanged="StateHasChanged" />
             }
 
-            <!-- Permissions Tab -->
-            }
             @if (_isAdmin && ActiveTab == "permissions")
             {
                 <Requestr.Web.Components.FormBuilder.FormPermissionsTab 
@@ -596,16 +219,6 @@
     </BodyTemplate>
     <FooterTemplate><Button Color="ButtonColor.Secondary" @onclick="ClosePreview">Close</Button></FooterTemplate>
 </Modal>
-<Requestr.Web.Components.FormBuilder.FieldConfigurationModal 
-    @ref="_fieldConfigModal"
-    Field="_selectedField"
-    Fields="@(_formDefinition?.Fields ?? new())"
-    Sections="@(_formDefinition?.Sections ?? new())"
-    DatabaseConnectionName="@(_formDefinition?.DatabaseConnectionName ?? string.Empty)"
-    PresentationOnly="@(!_isAdmin)"
-    SqlType="@(_selectedField != null ? GetOriginalSqlType(_selectedField) : "varchar")"
-    ColumnInfo="@GetColumnInfoForField(_selectedField)"
-    OnClosed="OnFieldConfigClosed" />
 
 <!-- Affected Requests Warning Modal -->
 <Modal @ref="_affectedRequestsModal" Title="Pending Requests Affected" Size="ModalSize.Large">
@@ -696,7 +309,6 @@
     private List<string> _schemas = new();
     private List<string> _tables = new();
     private List<ColumnInfo> _tableColumns = new();
-    private List<ColumnInfo> _filteredColumns = new();
     private List<string> _primaryKeyColumns = new();
     private bool _hasNoPrimaryKey = false;
     private string _selectedConnectionString = "";
@@ -708,31 +320,8 @@
     private int? _loadedFormId;
     private int _nextDesignSectionId = -1;
     private string _accessError = "You do not have permission to edit this form.";
-    private ColumnInfo? _draggedColumn;
-    private FormField? _draggedField;
-    private Dictionary<string, string> _fieldOriginalSqlTypes = new(); // Track original SQL types for each field
-#pragma warning disable CS0414 // Assigned but never read — reserved for future drag-and-drop UI
-    private bool _isDragOver = false;
-#pragma warning restore CS0414
     private string ActiveTab = "details"; // Default to Form Details tab
-    private string _fieldFilter = "";
-    private bool _showGridGuides = false;
-    private FormField? _selectedFieldForPositioning;
 
-    // Computed property for field names that have been added to the form
-    private HashSet<string> _addedFieldNames => _formDefinition.Fields.Select(f => f.Name).ToHashSet();
-
-    // Resize-related fields
-    private bool _isResizing = false;
-    private FormField? _resizingField;
-    private int _resizeStartX = 0;
-    private int _initialColumnSpan = 1;
-
-    // Section-related drag and drop fields
-    private FormSection? _dragTargetSection;
-    private FormField? _selectedField;
-    private Requestr.Web.Components.FormBuilder.FieldConfigurationModal _fieldConfigModal = default!;
-    private bool _advancedLayout;
     private Modal _previewModal = default!;
     private FormDefinition? _previewDefinition;
     private Dictionary<string, object?> _previewValues = new();
@@ -824,19 +413,6 @@
         if (!_canEdit || (!_isAdmin && tab != "designer")) return;
         ActiveTab = tab;
         
-        // Initialize sticky palette when switching to designer tab
-        if (tab == "designer")
-        {
-            // Small delay to ensure DOM is updated
-            await Task.Delay(50);
-            await JSRuntime.InvokeVoidAsync("formBuilderInterop.initStickyPalette");
-        }
-        else
-        {
-            // Cleanup sticky palette when leaving designer tab
-            await JSRuntime.InvokeVoidAsync("formBuilderInterop.destroyStickyPalette");
-        }
-        
         // Load permissions when switching to permissions tab
         if (tab == "permissions" && FormId.HasValue)
         {
@@ -870,11 +446,8 @@
         _formDefinition = new();
         _tableColumns.Clear();
         _connectionStrings.Clear();
-        _fieldOriginalSqlTypes.Clear();
         _staleFields.Clear();
         _schemaChangedFields.Clear();
-        _selectedField = null;
-        _selectedFieldForPositioning = null;
         _nextDesignSectionId = -1;
         try
         {
@@ -891,8 +464,6 @@
                 }
                 _formDefinition = design;
                 ActiveTab = "designer";
-                foreach (var field in design.Fields)
-                    _fieldOriginalSqlTypes[field.Name] = field.SqlDataType ?? field.DataType;
                 _canEdit = true;
                 return;
             }
@@ -939,12 +510,6 @@
                 // Populate ControlType for existing fields if empty (for backward compatibility)
                 foreach (var field in _formDefinition.Fields)
                 {
-                    // Store the original SQL type. Prefer SqlDataType (actual SQL type like "nvarchar")
-                    // over DataType which may contain the UI control type (like "text") after the refactor.
-                    _fieldOriginalSqlTypes[field.Name] = !string.IsNullOrEmpty(field.SqlDataType) 
-                        ? field.SqlDataType 
-                        : field.DataType;
-                    
                     if (string.IsNullOrEmpty(field.ControlType))
                     {
                         // Map from SQL DataType to appropriate ControlType
@@ -964,7 +529,6 @@
                     if (!string.IsNullOrEmpty(_formDefinition.TableName))
                     {
                         _tableColumns = await DatabaseService.GetTableColumnsAsync(_selectedConnectionString, _formDefinition.TableName, _formDefinition.Schema);
-                        _filteredColumns = _tableColumns.ToList();
                         
                         // Backfill SqlDataType for existing fields that have NULL values (legacy data)
                         BackfillSqlDataTypes();
@@ -1011,16 +575,6 @@
         {
             _isLoading = false;
             MarkSaved();
-        }
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender && ActiveTab == "designer")
-        {
-            // Initialize sticky palette after first render if on designer tab
-            await Task.Delay(100); // Allow DOM to fully render
-            await JSRuntime.InvokeVoidAsync("formBuilderInterop.initStickyPalette");
         }
     }
 
@@ -1308,7 +862,6 @@
         if (!string.IsNullOrEmpty(_formDefinition.TableName) && !string.IsNullOrEmpty(_selectedConnectionString))
         {
             _tableColumns = await DatabaseService.GetTableColumnsAsync(_selectedConnectionString, _formDefinition.TableName, _formDefinition.Schema);
-            _filteredColumns = _tableColumns.ToList();
             
             // Backfill SqlDataType for existing fields that have NULL (legacy data)
             BackfillSqlDataTypes();
@@ -1492,14 +1045,11 @@
             {
                 // Already has SqlDataType - no action needed
                 alreadyPopulatedFields.Add($"{field.Name} ({field.SqlDataType})");
-                // Ensure the local dictionary also has the correct SQL type
-                _fieldOriginalSqlTypes[field.Name] = field.SqlDataType;
             }
             else if (dbColumnLookup.TryGetValue(field.Name, out var dbColumn))
             {
                 // Backfill from current schema
                 field.SqlDataType = dbColumn.DataType;
-                _fieldOriginalSqlTypes[field.Name] = dbColumn.DataType;
                 backfilledFields.Add($"{field.Name} → {dbColumn.DataType}");
             }
             else
@@ -1637,11 +1187,7 @@
         var lower = dataType.ToLowerInvariant();
         return lower is "varchar" or "nvarchar" or "char" or "nchar" or "text" or "ntext";
     }
-    
-    private bool IsFieldStale(FormField field) => _staleFields.Contains(field.Name);
-    
-    private bool IsFieldChanged(FormField field) => _schemaChangedFields.ContainsKey(field.Name);
-    
+
     private string GetFieldDriftTooltip(FormField field)
     {
         if (_staleFields.Contains(field.Name))
@@ -1656,79 +1202,9 @@
         return "";
     }
 
-    private void OnDragStart(ColumnInfo column)
-    {
-        _draggedColumn = column;
-        StateHasChanged();
-    }
-
-    private void OnDragEnd()
-    {
-        // Clear dragged column if drop didn't happen
-        _draggedColumn = null;
-        _isDragOver = false;
-        _dragTargetSection = null;
-        StateHasChanged();
-    }
-
-    private void OnDragOver(DragEventArgs e)
-    {
-        // Allow drop
-    }
-
-    private void OnDragEnter(DragEventArgs e)
-    {
-        _isDragOver = true;
-        StateHasChanged();
-    }
-
-    private void OnDragLeave(DragEventArgs e)
-    {
-        _isDragOver = false;
-        StateHasChanged();
-    }
-
     private bool IsFieldAlreadyAdded(string fieldName)
     {
         return _formDefinition.Fields.Any(f => f.Name == fieldName);
-    }
-
-    private void OnDrop(DragEventArgs e)
-    {
-        _isDragOver = false;
-        if (_draggedColumn != null)
-        {
-            var existingField = _formDefinition.Fields.FirstOrDefault(f => f.Name == _draggedColumn.Name);
-            if (existingField == null)
-            {
-                var defaultControlType = GetDefaultControlTypeForSqlType(_draggedColumn.DataType);
-                var newField = new FormField
-                {
-                    Name = _draggedColumn.Name,
-                    DisplayName = _draggedColumn.Name,
-                    DataType = defaultControlType,
-                    ControlType = defaultControlType,
-                    SqlDataType = _draggedColumn.DataType, // Store the original SQL type for schema drift detection
-                    MaxLength = _draggedColumn.MaxLength,
-                    IsRequired = !_draggedColumn.IsNullable && !_draggedColumn.IsIdentity,
-                    IsReadOnly = _draggedColumn.IsIdentity || _draggedColumn.IsPrimaryKey,
-                    IsUnique = _draggedColumn.IsUnique,
-                    IsVisible = true,
-                    IsVisibleInDataView = true,
-                    DefaultValue = GetDefaultValueForSqlType(_draggedColumn.DataType, _draggedColumn.IsNullable, _draggedColumn.DefaultValue),
-                    DisplayOrder = _formDefinition.Fields.Count + 1,
-                    TreatBlankAsNull = _draggedColumn.IsNullable && !_draggedColumn.IsIdentity // default ON for eligible nullable columns
-                };
-                
-                // Store the original SQL type for this field (also in local dictionary for backward compatibility)
-                _fieldOriginalSqlTypes[newField.Name] = _draggedColumn.DataType;
-                
-                _formDefinition.Fields.Add(newField);
-            }
-            
-            _draggedColumn = null;
-            StateHasChanged();
-        }
     }
 
     private void RemoveField(FormField field)
@@ -1918,8 +1394,6 @@
         return false;
     }
 
-   
-
     private string? GetDefaultValueForSqlType(string sqlDataType, bool isNullable, string? existingDefault)
     {
         // If there's already a default value from the database, use it
@@ -1968,91 +1442,6 @@
         return cleaned;
     }
 
-    // Type-aware control methods
-    private List<(string Value, string Text)> GetAvailableControlTypes(FormField field)
-    {
-        var sqlType = GetOriginalSqlType(field);
-        var options = new List<(string Value, string Text)>();
-
-        switch (sqlType.ToLower())
-        {
-            case var type when type.Contains("bit"):
-                options.Add(("checkbox", "Checkbox"));
-                options.Add(("select", "Dropdown (Yes/No)"));
-                options.Add(("radio", "Radio Buttons"));
-                break;
-
-            case var type when type.Contains("int") || type.Contains("decimal") || type.Contains("numeric") || 
-                              type.Contains("float") || type.Contains("real") || type.Contains("money"):
-                options.Add(("number", "Number Input"));
-                if (type.Contains("int")) options.Add(("searchable-select", "Searchable Dropdown"));
-                options.Add(("text", "Text Input"));
-                options.Add(("select", "Dropdown"));
-                options.Add(("checkbox", "Checkbox"));
-                options.Add(("range", "Slider"));
-                break;
-
-            case var type when type.Contains("date"):
-                options.Add(("date", "Date Picker"));
-                options.Add(("text", "Text Input"));
-                break;
-
-            case var type when type.Contains("datetime") || type.Contains("smalldatetime"):
-                options.Add(("datetime-local", "DateTime Picker"));
-                options.Add(("date", "Date Only"));
-                options.Add(("text", "Text Input"));
-                break;
-
-            case var type when type.Contains("time"):
-                options.Add(("time", "Time Picker"));
-                options.Add(("text", "Text Input"));
-                break;
-
-            case var type when type.Contains("text") || type.Contains("ntext") || 
-                              (type.Contains("varchar") && IsLongText(type)) || 
-                              (type.Contains("nvarchar") && IsLongText(type)):
-                options.Add(("textarea", "Text Area"));
-                options.Add(("text", "Text Input"));
-                options.Add(("suggested-text", "Text Input with Suggestions"));
-                options.Add(("searchable-select", "Searchable Dropdown"));
-                break;
-
-            case var type when type.Contains("varchar") || type.Contains("nvarchar") || 
-                              type.Contains("char") || type.Contains("nchar"):
-                options.Add(("text", "Text Input"));
-                options.Add(("email", "Email Input"));
-                options.Add(("tel", "Phone Input"));
-                options.Add(("url", "URL Input"));
-                options.Add(("password", "Password Input"));
-                options.Add(("select", "Dropdown"));
-                options.Add(("suggested-text", "Text Input with Suggestions"));
-                options.Add(("searchable-select", "Searchable Dropdown"));
-                options.Add(("radio", "Radio Buttons"));
-                options.Add(("checkbox", "Checkbox"));
-                options.Add(("textarea", "Text Area"));
-                break;
-
-            case var type when type.Contains("uniqueidentifier"):
-                options.Add(("text", "Text Input (GUID)"));
-                options.Add(("searchable-select", "Searchable Dropdown"));
-                break;
-
-            default:
-                options.Add(("text", "Text Input"));
-                options.Add(("textarea", "Text Area"));
-                options.Add(("select", "Dropdown"));
-                options.Add(("checkbox", "Checkbox"));
-                break;
-        }
-
-        return options;
-    }
-
-    private string GetOriginalSqlType(FormField field)
-    {
-        return _fieldOriginalSqlTypes.TryGetValue(field.Name, out var sqlType) ? sqlType : "varchar";
-    }
-
     private string GetDefaultControlTypeForSqlType(string sqlDataType)
     {
         return sqlDataType.ToLower() switch
@@ -2069,57 +1458,6 @@
             "uniqueidentifier" => "text",
             _ => "text"
         };
-    }
-
-    private bool SupportsValidation(string controlType)
-    {
-        return controlType switch
-        {
-            "text" or "email" or "tel" or "url" or "password" or "textarea" or "suggested-text" or "searchable-select" => true,
-            "number" => true, // Can use min/max validation
-            _ => false
-        };
-    }
-
-    private bool ShowMaxLengthOption(string controlType)
-    {
-        return controlType switch
-        {
-            "text" or "email" or "tel" or "url" or "password" or "textarea" or "suggested-text" or "searchable-select" => true,
-            _ => false
-        };
-    }
-
-    private void OnControlTypeChanged(FormField field)
-    {
-        if (field.ControlType != "searchable-select") field.OptionSource = FieldOptionSource.Static;
-        // Clear validation regex if control type doesn't support it
-        if (!SupportsValidation(field.ControlType ?? ""))
-        {
-            field.ValidationRegex = null;
-        }
-
-        // Reset max length for controls that don't support it
-        if (!ShowMaxLengthOption(field.ControlType ?? ""))
-        {
-            field.MaxLength = 0;
-        }
-
-        // Set appropriate default values based on control type
-        if (string.IsNullOrEmpty(field.DefaultValue))
-        {
-            field.DefaultValue = field.ControlType switch
-            {
-                "checkbox" => "false",
-                "number" or "range" => "0",
-                "date" => DateTime.Today.ToString("yyyy-MM-dd"),
-                "datetime-local" => DateTime.Now.ToString("yyyy-MM-ddTHH:mm"),
-                "time" => DateTime.Now.ToString("HH:mm"),
-                _ => ""
-            };
-        }
-
-        StateHasChanged();
     }
 
     // ===================
@@ -2429,57 +1767,6 @@
 
     #endregion
 
-    // Section-related drag and drop methods
-    private void OnSectionDragEnter(DragEventArgs e, FormSection section)
-    {
-        _dragTargetSection = section;
-        StateHasChanged();
-    }
-
-    private void OnSectionDrop(DragEventArgs e, FormSection section)
-    {
-        _isDragOver = false;
-        _dragTargetSection = null;
-        
-        if (_draggedColumn != null)
-        {
-            var existingField = _formDefinition.Fields.FirstOrDefault(f => f.Name == _draggedColumn.Name);
-            if (existingField == null)
-            {
-                var defaultControlType = GetDefaultControlTypeForSqlType(_draggedColumn.DataType);
-                var newField = new FormField
-                {
-                    Name = _draggedColumn.Name,
-                    DisplayName = _draggedColumn.Name,
-                    DataType = defaultControlType,
-                    ControlType = defaultControlType,
-                    SqlDataType = _draggedColumn.DataType, // Store the original SQL type for schema drift detection
-                    MaxLength = _draggedColumn.MaxLength,
-                    IsRequired = !_draggedColumn.IsNullable && !_draggedColumn.IsIdentity,
-                    IsReadOnly = _draggedColumn.IsIdentity || _draggedColumn.IsPrimaryKey,
-                    IsUnique = _draggedColumn.IsUnique,
-                    IsVisible = true,
-                    IsVisibleInDataView = true,
-                    DefaultValue = GetDefaultValueForSqlType(_draggedColumn.DataType, _draggedColumn.IsNullable, _draggedColumn.DefaultValue),
-                    DisplayOrder = _formDefinition.Fields.Count + 1,
-                    FormSectionId = section.Id,
-                    GridRow = GetNextAvailableRow(section),
-                    GridColumn = 1,
-                    GridColumnSpan = Math.Min(6, section.MaxColumns), // Ensure span doesn't exceed section width
-                    TreatBlankAsNull = _draggedColumn.IsNullable && !_draggedColumn.IsIdentity
-                };
-                
-                // Store the original SQL type for this field (also in local dictionary for backward compatibility)
-                _fieldOriginalSqlTypes[newField.Name] = _draggedColumn.DataType;
-                
-                _formDefinition.Fields.Add(newField);
-            }
-            
-            _draggedColumn = null;
-            StateHasChanged();
-        }
-    }
-
     // Section management methods
     private void AddSection()
     {
@@ -2529,18 +1816,6 @@
         StateHasChanged();
     }
 
-    private async Task ConfigureField(FormField field)
-    {
-        _selectedField = field;
-        await _fieldConfigModal.ShowAsync();
-    }
-
-    private void OnFieldConfigClosed()
-    {
-        _selectedField = null;
-        StateHasChanged();
-    }
-
     // Affected Requests Modal Methods
     private async Task CloseAffectedRequestsModal()
     {
@@ -2558,48 +1833,6 @@
     private string GetRequestTypeBadgeClass(RequestType requestType) => UiHelper.GetRequestTypeBadgeClass(requestType);
     private string GetStatusBadgeClass(RequestStatus status) => UiHelper.GetStatusBadgeClass(status);
 
-    private ColumnInfo? GetColumnInfoForField(FormField? field)
-    {
-        if (field == null) return null;
-        return _tableColumns.FirstOrDefault(c => string.Equals(c.Name, field.Name, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private void MigrateLegacyFields()
-    {
-        var legacyFields = _formDefinition.Fields.Where(f => f.FormSectionId == null || f.FormSectionId == 0).ToList();
-        if (legacyFields.Any())
-        {
-            // Create a new section for legacy fields
-            AddSection();
-            var newSection = _formDefinition.Sections?.LastOrDefault();
-            
-            if (newSection != null)
-            {
-                newSection.Name = "Migrated Fields";
-                
-                // Move all legacy fields to this section
-                int currentRow = 1;
-                int currentColumn = 1;
-                
-                foreach (var field in legacyFields)
-                {
-                    field.FormSectionId = newSection.Id;
-                    field.GridRow = currentRow;
-                    field.GridColumn = currentColumn;
-                    field.GridColumnSpan = _isAdmin ? 6 : 1;
-                    
-                    currentColumn++;
-                    if (currentColumn > newSection.MaxColumns)
-                    {
-                        currentColumn = 1;
-                        currentRow++;
-                    }
-                }
-            }
-        }
-        StateHasChanged();
-    }
-
     // Helper methods
     private int GetNextSectionId()
     {
@@ -2611,16 +1844,6 @@
         return 1;
     }
 
-    private void FitSectionFields(FormSection section)
-    {
-        if (_isAdmin) return;
-        foreach (var field in _formDefinition.Fields.Where(field => field.FormSectionId == section.Id))
-        {
-            field.GridColumn = Math.Clamp(field.GridColumn, 1, section.MaxColumns);
-            field.GridColumnSpan = Math.Clamp(field.GridColumnSpan, 1, section.MaxColumns - field.GridColumn + 1);
-        }
-    }
-
     private int GetNextAvailableRow(FormSection section)
     {
         var fieldsInSection = _formDefinition.Fields.Where(f => f.FormSectionId == section.Id).ToList();
@@ -2630,36 +1853,6 @@
         }
         
         return fieldsInSection.Max(f => f.GridRow) + 1;
-    }
-
-    // Enhanced grid interaction methods
-    private void FilterFields()
-    {
-        if (string.IsNullOrWhiteSpace(_fieldFilter))
-        {
-            _filteredColumns = _tableColumns.ToList();
-        }
-        else
-        {
-            _filteredColumns = _tableColumns.Where(c => 
-                c.Name.Contains(_fieldFilter, StringComparison.OrdinalIgnoreCase) ||
-                c.DataType.Contains(_fieldFilter, StringComparison.OrdinalIgnoreCase)
-            ).ToList();
-        }
-        StateHasChanged();
-    }
-
-    private string GetFieldIcon(string dataType)
-    {
-        return dataType.ToLower() switch
-        {
-            var type when type.Contains("varchar") || type.Contains("text") => "type",
-            var type when type.Contains("int") || type.Contains("decimal") || type.Contains("float") => "123",
-            var type when type.Contains("bit") || type.Contains("bool") => "check-square",
-            var type when type.Contains("date") || type.Contains("time") => "calendar3",
-            var type when type.Contains("uniqueidentifier") => "key",
-            _ => "file-text"
-        };
     }
 
     private void QuickAddField(ColumnInfo column)
@@ -2674,111 +1867,6 @@
 
         var firstSection = _formDefinition.Sections!.OrderBy(s => s.DisplayOrder).First();
         AddFieldToSection(column, firstSection, GetNextAvailableRow(firstSection), 1);
-    }
-
-    private void OnGridCellClick(MouseEventArgs e, FormSection section)
-    {
-        // Handle clicks on the grid background
-    }
-
-    private void OnEmptyGridCellClick(MouseEventArgs e, FormSection section, int row, int col)
-    {
-        // If we have a dragged column, place it here
-        if (_draggedColumn != null)
-        {
-            AddFieldToSection(_draggedColumn, section, row, col);
-            _draggedColumn = null;
-        }
-    }
-
-    private void OnEmptyGridCellDrop(DragEventArgs e, FormSection section, int row, int col)
-    {
-        OnSectionDrop(e, section, row, col);
-    }
-
-    private void OnEmptyGridCellDragEnter(DragEventArgs e, int row, int col)
-    {
-        // Visual feedback for cell targeting
-        StateHasChanged();
-    }
-
-    private void OnFieldClick(MouseEventArgs e, FormField field)
-    {
-        // Don't handle field clicks during resize operations
-        if (_isResizing)
-            return;
-            
-        if (_selectedFieldForPositioning == field)
-        {
-            _selectedFieldForPositioning = null;
-        }
-        else
-        {
-            _selectedFieldForPositioning = field;
-        }
-        StateHasChanged();
-    }
-
-    private void OnFieldDragStart(DragEventArgs e, FormField field)
-    {
-        _draggedField = field;
-        StateHasChanged();
-    }
-
-    private void OnFieldDragEnd(DragEventArgs e)
-    {
-        _draggedField = null;
-        StateHasChanged();
-    }
-
-    private void ToggleFieldPositioning(FormField field)
-    {
-        if (_selectedFieldForPositioning == field)
-        {
-            _selectedFieldForPositioning = null;
-        }
-        else
-        {
-            _selectedFieldForPositioning = field;
-        }
-        StateHasChanged();
-    }
-
-    private void AddGridRow(FormSection section)
-    {
-        // This method can be used to explicitly add rows if needed
-        // For now, the grid expands automatically based on field placement
-        StateHasChanged();
-    }
-
-    private void CompactGrid(FormSection section)
-    {
-        // Reorganize fields to remove empty rows and optimize layout
-        var fieldsInSection = _formDefinition.Fields
-            .Where(f => f.FormSectionId == section.Id)
-            .OrderBy(f => f.GridRow)
-            .ThenBy(f => f.GridColumn)
-            .ToList();
-
-        int currentRow = 1;
-        var usedRows = new HashSet<int>();
-
-        foreach (var field in fieldsInSection)
-        {
-            if (!usedRows.Contains(field.GridRow))
-            {
-                // Move all fields in this row to the current row
-                var fieldsInRow = fieldsInSection.Where(f => f.GridRow == field.GridRow).ToList();
-                foreach (var f in fieldsInRow)
-                {
-                    f.GridRow = currentRow;
-                }
-                usedRows.Add(field.GridRow);
-                currentRow++;
-            }
-        }
-
-        StateHasChanged();
     }
 
     private void AddFieldToSection(ColumnInfo column, FormSection section, int row, int col)
@@ -2834,174 +1922,10 @@
             TreatBlankAsNull = column.IsNullable && !column.IsIdentity
         };
 
-        // Store the original SQL type for this field (also in local dictionary for backward compatibility)
-        _fieldOriginalSqlTypes[newField.Name] = column.DataType;
-        
         _formDefinition.Fields.Add(newField);
         
-        // Add CSS class for animation
         StateHasChanged();
     }
 
-    // Modified OnSectionDrop to support specific positioning
-    private void OnSectionDrop(DragEventArgs e, FormSection section, int? targetRow = null, int? targetCol = null)
-    {
-        _isDragOver = false;
-        _dragTargetSection = null;
-        
-        if (_draggedColumn != null)
-        {
-            // If specific coordinates are provided, use them directly
-            // Otherwise, find next available position
-            int row, col;
-            if (targetRow.HasValue && targetCol.HasValue)
-            {
-                row = targetRow.Value;
-                col = targetCol.Value;
-            }
-            else
-            {
-                row = GetNextAvailableRow(section);
-                col = 1;
-            }
-            
-            AddFieldToSection(_draggedColumn, section, row, col);
-            _draggedColumn = null;
-        }
-        else if (_draggedField != null)
-        {
-            // Move existing field to new position
-            if (targetRow.HasValue && targetCol.HasValue)
-            {
-                var originalSpan = _draggedField.GridColumnSpan;
-                _draggedField.FormSectionId = section.Id;
-                _draggedField.GridRow = targetRow.Value;
-                _draggedField.GridColumn = targetCol.Value;
-                
-                // Check if current span fits in the new position, adjust if necessary
-                var maxAllowedSpan = section.MaxColumns - targetCol.Value + 1;
-                var newColumnSpan = Math.Max(1, Math.Min(maxAllowedSpan, originalSpan));
-                
-                // Check for collisions with other fields and adjust span if needed
-                var fieldsInSection = _formDefinition.Fields.Where(f => f.FormSectionId == section.Id && f != _draggedField).ToList();
-                
-                // Find the maximum span that fits without collision
-                var maxSpanWithoutCollision = newColumnSpan;
-                for (int span = 1; span <= newColumnSpan; span++)
-                {
-                    bool hasCollision = false;
-                    
-                    // Check if this span would cause any collisions
-                    for (int checkCol = targetCol.Value; checkCol < targetCol.Value + span; checkCol++)
-                    {
-                        var collision = fieldsInSection.Any(f => 
-                            f.GridRow == targetRow.Value && 
-                            f.GridColumn <= checkCol && 
-                            f.GridColumn + f.GridColumnSpan > checkCol);
-                            
-                        if (collision)
-                        {
-                            hasCollision = true;
-                            break;
-                        }
-                    }
-                    
-                    if (!hasCollision)
-                    {
-                        maxSpanWithoutCollision = span;
-                    }
-                    else
-                    {
-                        // Stop at the first span that causes collision
-                        break;
-                    }
-                }
-                
-                // Log span adjustment for debugging
-                if (originalSpan != maxSpanWithoutCollision)
-                {
-                    Logger.LogDebug("Adjusted field '{FieldName}' span from {OriginalSpan} to {NewSpan} at position {Row},{Col}", 
-                        _draggedField.Name, originalSpan, maxSpanWithoutCollision, targetRow.Value, targetCol.Value);
-                }
-                
-                _draggedField.GridColumnSpan = maxSpanWithoutCollision;
-            }
-            else
-            {
-                // If no specific coordinates, place at next available row
-                _draggedField.FormSectionId = section.Id;
-                _draggedField.GridRow = GetNextAvailableRow(section);
-                _draggedField.GridColumn = 1;
-                
-                // Check if current span fits in the section, adjust if necessary
-                if (_draggedField.GridColumnSpan > section.MaxColumns)
-                {
-                    _draggedField.GridColumnSpan = Math.Max(1, section.MaxColumns);
-                }
-            }
-            _draggedField = null;
-        }
-        
-        StateHasChanged();
-    }
-
-    private async Task OnResizeStart(MouseEventArgs e, FormField field)
-    {
-        _isResizing = true;
-        _resizingField = field;
-        _resizeStartX = (int)e.ClientX;
-        _initialColumnSpan = field.GridColumnSpan;
-        
-        // Debug logging
-        await JSRuntime.InvokeVoidAsync("console.log", $"Resize started for field {field.Name}, initial span: {_initialColumnSpan}, startX: {_resizeStartX}");
-        
-        // Attach global mouse event listeners
-        await JSRuntime.InvokeVoidAsync("addGlobalResizeListeners", DotNetObjectReference.Create(this));
-        StateHasChanged(); // Force re-render to disable dragging
-    }
-
-    [JSInvokable]
-    public async Task OnResizeMove(int clientX)
-    {
-        if (!_isResizing || _resizingField == null) return;
-
-        var deltaX = clientX - _resizeStartX;
-        var section = _formDefinition.Sections.FirstOrDefault(s => s.Id == _resizingField.FormSectionId);
-        if (section == null) return;
-
-        // Calculate new column span based on mouse movement
-        // Using 50px per column for more responsive resizing
-        var columnChange = Math.Round(deltaX / 50.0);
-        var maxAllowedSpan = section.MaxColumns - _resizingField.GridColumn + 1;
-        var newColumnSpan = Math.Max(1, Math.Min(maxAllowedSpan, _initialColumnSpan + (int)columnChange));
-
-        // Debug logging
-        await JSRuntime.InvokeVoidAsync("console.log", $"Resize move: deltaX={deltaX}, columnChange={columnChange}, newSpan={newColumnSpan}, currentSpan={_resizingField.GridColumnSpan}");
-
-        if (newColumnSpan != _resizingField.GridColumnSpan)
-        {
-            _resizingField.GridColumnSpan = newColumnSpan;
-            StateHasChanged();
-        }
-    }
-
-    [JSInvokable]
-    public async Task OnResizeEnd()
-    {
-        if (_isResizing)
-        {
-            await JSRuntime.InvokeVoidAsync("console.log", $"Resize ended for field {_resizingField?.Name}, final span: {_resizingField?.GridColumnSpan}");
-            
-            // Remove global mouse event listeners first
-            await JSRuntime.InvokeVoidAsync("removeGlobalResizeListeners");
-            
-            // Add a small delay before clearing resize state to prevent immediate field clicks
-            await Task.Delay(100);
-            
-            _isResizing = false;
-            _resizingField = null;
-            StateHasChanged(); // Force re-render to re-enable dragging
-        }
-    }
 }
 
