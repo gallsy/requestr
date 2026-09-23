@@ -403,18 +403,21 @@ else
                                 }
                             </div>
                             
-                            <div class="mt-4">
-                                <label class="form-label">Comments @(_formDefinition.RequiresRequestComments ? "*" : "(Optional)")</label>
-                                <textarea class="form-control @(_commentsValidationError != null ? "is-invalid" : "")" rows="3" @bind="_comments" placeholder="Add any additional comments about this request..."></textarea>
-                                @if (_commentsValidationError != null)
-                                {
-                                    <div class="invalid-feedback">@_commentsValidationError</div>
-                                }
-                                @if (_formDefinition.RequiresRequestComments)
-                                {
-                                    <small class="form-text text-muted">Minimum 10 characters required</small>
-                                }
-                            </div>
+                            @if (!_formDefinition.HideRequestComments || _formDefinition.RequiresRequestComments)
+                            {
+                                <div class="mt-4">
+                                    <label class="form-label">Comments @(_formDefinition.RequiresRequestComments ? "*" : "(Optional)")</label>
+                                    <textarea class="form-control @(_commentsValidationError != null ? "is-invalid" : "")" rows="3" @bind="_comments" placeholder="Add any additional comments about this request..."></textarea>
+                                    @if (_commentsValidationError != null)
+                                    {
+                                        <div class="invalid-feedback">@_commentsValidationError</div>
+                                    }
+                                    @if (_formDefinition.RequiresRequestComments)
+                                    {
+                                        <small class="form-text text-muted">Minimum 10 characters required</small>
+                                    }
+                                </div>
+                            }
                             
                             <div class="mt-4 d-flex justify-content-between">
                                 <button type="button" class="btn btn-secondary" @onclick="Cancel">

@@ -92,6 +92,9 @@ public class FormDesignSqlTests : IAsyncLifetime
         var labelMigration = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "031_LookupSelectionLabel.sql"));
         await connection.ExecuteAsync(labelMigration);
         await connection.ExecuteAsync(labelMigration);
+        var commentsMigration = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "032_HideRequestComments.sql"));
+        await connection.ExecuteAsync(commentsMigration);
+        await connection.ExecuteAsync(commentsMigration);
         var factory = new Mock<IDbConnectionFactory>();
         factory.Setup(connectionFactory => connectionFactory.CreateConnectionAsync()).Returns(OpenAsync);
         _repository = new FormDesignRepository(factory.Object);
@@ -594,6 +597,44 @@ public class FormDesignSqlTests : IAsyncLifetime
         var values = new Dictionary<string, object?> { ["CountryId"] = key.ToString() };
         await service.ValidateValuesAsync(form, values);
         Assert.Equal(key, Assert.IsType<Guid>(values["CountryId"]));
+    }
+
+    [LocalDbFact]
+    public async Task RequestCommentsVisibilityRoundTripsAndCannotHideRequiredComments()
+    {
+        var existing = await CreateFormAsync();
+        using var connection = await OpenAsync();
+        Assert.False(await connection.QuerySingleAsync<bool>(
+            "SELECT HideRequestComments FROM FormDefinitions WHERE Id = @Id", new { existing.Id }));
+
+        var (lookups, form) = await CreateLookupAsync();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        { ["ConnectionStrings:DefaultConnection"] = ConnectionString }).Build();
+        var definitions = new FormDefinitionService(configuration, NullLogger<FormDefinitionService>.Instance, lookups);
+        form.Name = "Comments settings";
+        form.CreatedBy = "Admin";
+        form.HideRequestComments = true;
+        await definitions.CreateFormDefinitionAsync(form);
+        Assert.True((await definitions.GetFormDefinitionAsync(form.Id))!.HideRequestComments);
+        Assert.True(Assert.Single(await definitions.GetFormDefinitionsAsync(), item => item.Id == form.Id).HideRequestComments);
+        Assert.True(Assert.Single(await definitions.GetActiveAsync(), item => item.Id == form.Id).HideRequestComments);
+        Assert.True(Assert.Single(await definitions.GetFormDefinitionsForUserAsync("Admin", new() { "Admin" }), item => item.Id == form.Id).HideRequestComments);
+
+        var loaded = (await definitions.GetFormDefinitionAsync(form.Id))!;
+        await _repository.SaveAsync(UpdateFormDesignDto.FromForm(loaded), new(), true, "Admin");
+        loaded = (await definitions.GetFormDefinitionAsync(form.Id))!;
+        Assert.True(loaded.HideRequestComments);
+
+        loaded.RequiresRequestComments = true;
+        await definitions.UpdateFormDefinitionAsync(loaded);
+        loaded = (await definitions.GetFormDefinitionAsync(form.Id))!;
+        Assert.True(loaded.RequiresRequestComments);
+        Assert.False(loaded.HideRequestComments);
+
+        loaded.RequiresRequestComments = false;
+        loaded.HideRequestComments = true;
+        await definitions.UpdateFormDefinitionAsync(loaded);
+        Assert.True((await definitions.GetFormDefinitionAsync(form.Id))!.HideRequestComments);
     }
 
     [LocalDbFact]
