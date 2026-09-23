@@ -211,7 +211,7 @@ else
                                                 </td>
                                                 @foreach (var column in _dataResult.Columns)
                                                 {
-                                                    var cellValue = record.ContainsKey(column) ? record[column]?.ToString() : "";
+                                                    var cellValue = _dataResult.GetDisplayValue(record, column);
                                                     <td title="@cellValue">@cellValue</td>
                                                 }
                                             </tr>
