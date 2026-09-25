@@ -17,8 +17,9 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<FormSubmission> Logger
 @attribute [Authorize]
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
 
-<PageTitle>@_formDefinition?.Name</PageTitle>
+<PageTitle>@(_formDefinition?.Name ?? "New Request") | @Branding.ApplicationName</PageTitle>
 
 @if (_isLoading)
 {
@@ -397,7 +398,7 @@ else
                                         Mode: Delete record @(_selectedRecordId)
                                         @if (string.IsNullOrWhiteSpace(_selectedRecordId))
                                         {
-                                            <span class="ms-2 text-dark">No record selected. Open this form from the Data View row actions.</span>
+                                            <span class="ms-2">No record selected. Open this form from the Data View row actions.</span>
                                         }
                                     </div>
                                 }

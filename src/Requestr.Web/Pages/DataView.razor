@@ -23,9 +23,7 @@
 @attribute [Authorize]
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
-<PageTitle>Data Viewer | @Branding.ApplicationName</PageTitle>
-
-<h1 class="visually-hidden">Data View - @Branding.ApplicationName</h1>
+<PageTitle>@(_formDefinition == null ? "Data View" : $"Data View: {_formDefinition.Name}") | @Branding.ApplicationName</PageTitle>
 
 @if (_isLoading)
 {

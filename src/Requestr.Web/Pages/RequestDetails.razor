@@ -22,7 +22,10 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IUserTimezoneService Tz
 @inject IFormRequestCommandService FormRequestCommandService
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
 @attribute [Authorize]
+
+<PageTitle>Request #@RequestId | @Branding.ApplicationName</PageTitle>
 
 @if (_isLoading)
 {

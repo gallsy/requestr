@@ -52,6 +52,21 @@ window.showToast = (message, type = 'info') => {
     }
 };
 
+// Buttons in the reconnect dialog (_Layout.cshtml)
+document.addEventListener('click', event => {
+    const button = event.target.closest('[data-reconnect-action]');
+    if (!button) return;
+    if (button.dataset.reconnectAction === 'reload') {
+        location.reload();
+        return;
+    }
+    const modal = document.getElementById('components-reconnect-modal');
+    const paused = modal?.classList.contains('components-reconnect-paused') || modal?.classList.contains('components-reconnect-resume-failed');
+    const attempt = paused ? window.Blazor?.resumeCircuit?.() : window.Blazor?.reconnect?.();
+    // false means the server no longer knows this circuit, so only a reload can recover.
+    Promise.resolve(attempt).then(ok => { if (ok === false) location.reload(); }).catch(() => location.reload());
+});
+
 // Focus management
 window.focusElement = (elementId) => {
     const element = document.getElementById(elementId);

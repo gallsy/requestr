@@ -27,6 +27,9 @@
 @inject ILogger<FormBuilder> Logger
 @attribute [Authorize]
 @implements IAsyncDisposable
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
+
+<PageTitle>@(string.IsNullOrWhiteSpace(_formDefinition.Name) ? "New Form" : _formDefinition.Name) | @Branding.ApplicationName</PageTitle>
 
 @* Form Builder *@
 

@@ -20,6 +20,7 @@
     --warning: #f59e0b;
     --danger: #ef4444;
     --info: #06b6d4;
+    --purple: #7c3aed;
     
     /* Spacing & Sizing */
     --border-radius: 0.5rem;
@@ -71,6 +72,7 @@
     --row-selected-bg: rgba(59, 130, 246, 0.22);
     --link-color: #60a5fa;
     --link-hover-color: #93c5fd;
+    --purple: #a78bfa;
     color-scheme: dark;
 }
 
@@ -1431,6 +1433,21 @@ button.nav-link.active {
     color: var(--text-color);
 }
 
+/* Preformatted diagnostic/log output */
+.code-block {
+    margin: 0;
+    padding: 1rem;
+    max-height: 60vh;
+    overflow: auto;
+    white-space: pre-wrap;
+    font-family: var(--bs-font-monospace);
+    font-size: 0.8125rem;
+    color: var(--text-color);
+    background-color: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+}
+
 /* ============================================
    Utility Classes
    ============================================ */
@@ -1458,37 +1475,118 @@ button.nav-link.active {
    Error Handling
    ============================================ */
 #blazor-error-ui {
-    background: #fef3c7;
-    bottom: 0;
-    box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
     display: none;
-    left: 0;
-    padding: 1rem;
+    align-items: center;
+    gap: 0.75rem;
     position: fixed;
+    left: 0;
+    bottom: 0;
     width: 100%;
-    z-index: 1000;
-    color: #92400e;
-    border-top: 2px solid var(--warning);
+    z-index: 1090;
+    padding: 0.875rem 3rem 0.875rem 1.25rem;
+    background: var(--card-bg);
+    color: var(--text-color);
+    border-top: 3px solid var(--danger);
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.2);
+}
+
+#blazor-error-ui > .bi {
+    color: var(--danger);
+    font-size: 1.125rem;
+}
+
+#blazor-error-ui .reload {
+    font-weight: 600;
+    white-space: nowrap;
 }
 
 #blazor-error-ui .dismiss {
     cursor: pointer;
     position: absolute;
     right: 1rem;
-    top: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
 }
 
 .blazor-error-boundary {
-    background: #fee2e2;
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
     padding: 1rem;
-    color: #dc2626;
+    color: var(--text-color);
     border-radius: var(--border-radius);
     border-left: 4px solid var(--danger);
     margin: 1rem 0;
 }
 
 .blazor-error-boundary::after {
-    content: "An error has occurred. Please try refreshing the page.";
+    content: "Something went wrong showing this part of the page. Please try reloading.";
+}
+
+/* ============================================
+   Reconnect dialog (Blazor Server connection loss)
+   ============================================ */
+.reconnect-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 15vh 1rem 1rem;
+    background: rgba(15, 23, 42, 0.45);
+}
+
+.reconnect-modal.components-reconnect-show,
+.reconnect-modal.components-reconnect-retrying,
+.reconnect-modal.components-reconnect-failed,
+.reconnect-modal.components-reconnect-rejected,
+.reconnect-modal.components-reconnect-paused,
+.reconnect-modal.components-reconnect-resume-failed {
+    display: flex;
+}
+
+.reconnect-modal.components-reconnect-hide {
+    display: none;
+}
+
+.reconnect-dialog {
+    width: min(420px, 100%);
+    padding: 1.25rem;
+    background: var(--card-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.reconnect-state {
+    display: none;
+    gap: 0.875rem;
+    align-items: flex-start;
+}
+
+.reconnect-icon {
+    flex-shrink: 0;
+    margin-top: 0.25rem;
+    font-size: 1.25rem;
+    color: var(--link-color);
+}
+
+.components-reconnect-show .reconnect-state-retrying,
+.components-reconnect-retrying .reconnect-state-retrying,
+.components-reconnect-failed .reconnect-state-failed,
+.components-reconnect-paused .reconnect-state-failed,
+.components-reconnect-resume-failed .reconnect-state-failed,
+.components-reconnect-rejected .reconnect-state-rejected {
+    display: flex;
+}
+
+/* Only one state at a time when Blazor sets several classes together */
+.components-reconnect-failed .reconnect-state-retrying,
+.components-reconnect-rejected .reconnect-state-retrying,
+.components-reconnect-paused .reconnect-state-retrying,
+.components-reconnect-resume-failed .reconnect-state-retrying {
+    display: none;
 }
 
 /* ============================================
@@ -1660,20 +1758,27 @@ button.nav-link.active {
 }
 
 /* ============================================
-   Request Context Banner
+   Request type icon (summary cards and banners)
    ============================================ */
-.request-context-banner {
-    border-left: 4px solid var(--primary);
+.min-width-0 {
+    min-width: 0;
 }
 
-.request-context-banner .context-icon {
-    width: 64px;
-    height: 64px;
+.request-type-icon {
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--border-radius);
+    border-radius: 12px;
+    font-size: 1.5rem;
 }
+
+.request-type-insert { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
+.request-type-update { background: color-mix(in srgb, var(--primary) 15%, transparent); color: var(--link-color); }
+.request-type-delete { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
+.request-type-default { background: color-mix(in srgb, var(--secondary) 15%, transparent); color: var(--text-muted); }
 
 /* ============================================
    Bulk Summary Card
@@ -1689,10 +1794,6 @@ button.nav-link.active {
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
-
-/* ============================================
-   Status Explainer
-   ============================================ */
 
 /* ============================================
    Stat Cards — theme-aware colored cards
@@ -1783,28 +1884,4 @@ button.nav-link.active {
 
 .card-header-accent.accent-danger {
     border-bottom-color: var(--danger);
-}
-
-.status-explainer {
-    border-left: 3px solid var(--info);
-}
-
-.status-explainer.status-pending {
-    border-left-color: var(--warning);
-}
-
-.status-explainer.status-approved {
-    border-left-color: var(--success);
-}
-
-.status-explainer.status-rejected {
-    border-left-color: var(--danger);
-}
-
-.status-explainer.status-applied {
-    border-left-color: var(--primary);
-}
-
-.status-explainer.status-failed {
-    border-left-color: var(--danger);
 }

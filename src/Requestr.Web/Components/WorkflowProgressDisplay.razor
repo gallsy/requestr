@@ -311,21 +311,17 @@ else
     else if (IsLoading)
     {
         <div class="card mb-4">
-            <div class="card-body text-center py-4">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <p class="mt-2 mb-0">Loading workflow progress...</p>
+            <div class="card-body">
+                <LoadingSpinner Message="Loading workflow progress..." />
             </div>
         </div>
     }
     else
     {
         <div class="card mb-4">
-            <div class="card-body text-center py-4">
-                <i class="bi bi-info-circle text-muted mb-3" style="font-size: 2rem;"></i>
-                <h6 class="text-muted">No Workflow</h6>
-                <p class="text-muted small mb-0">This request is not part of a workflow process and has been automatically approved.</p>
+            <div class="card-body">
+                <EmptyState Title="No workflow" Icon="bi-info-circle"
+                            Description="This request is not part of a workflow process and has been automatically approved." />
             </div>
         </div>
     }

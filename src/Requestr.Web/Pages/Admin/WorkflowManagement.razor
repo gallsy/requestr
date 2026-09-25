@@ -11,17 +11,16 @@
 @attribute [Authorize(Roles = "Admin")]
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
-<PageTitle>Workflow Management | @Branding.ApplicationName Admin</PageTitle>
+<PageTitle>Manage Workflows | @Branding.ApplicationName</PageTitle>
 
-<PageHeader Title="Workflow Management" Description="Design and manage approval workflows for your forms">
+<PageHeader Title="Manage Workflows" Description="Design approval workflows for your forms">
     <Actions>
         <button class="btn btn-primary" @onclick="ShowCreateWorkflowModal">
-            <i class="bi bi-plus-lg me-2"></i>Create New Workflow
+            <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>New Workflow
         </button>
     </Actions>
 </PageHeader>
 
-<div class="container-fluid">
     @if (!string.IsNullOrEmpty(errorMessage))
     {
         <StandardAlert AlertType="danger" 
@@ -36,7 +35,7 @@
     }
     else if (!workflows.Any())
     {
-        <EmptyState Title="No workflows yet" 
+        <EmptyState Title="No workflows yet" Icon="bi-diagram-3"
                     Description="Create your first workflow to get started with approval processes.">
             <Action>
                 <Button Color="ButtonColor.Primary" @onclick="ShowCreateWorkflowModal">
@@ -54,19 +53,17 @@
                 <div class="col-md-6 col-lg-4 mb-4">
                     <div class="card h-100">
                         <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-start mb-3">
-                                <h5 class="card-title">@workflow.Name</h5>
-                            </div>
-                            <h6 class="card-subtitle mb-2 text-muted">
-                                Version @workflow.Version
-                            </h6>
-                            <p class="card-text">@workflow.Description</p>
-                            <small class="text-muted">Version @workflow.Version</small>
+                            <h5 class="card-title mb-1">@workflow.Name</h5>
+                            <small class="text-muted d-block mb-2">Version @workflow.Version</small>
+                            @if (!string.IsNullOrWhiteSpace(workflow.Description))
+                            {
+                                <p class="card-text mb-0">@workflow.Description</p>
+                            }
                         </div>
                         <div class="card-footer">
                             <div class="d-grid">
-                                <button class="btn btn-primary btn-sm" @onclick="() => DesignWorkflow(workflow.Id)">
-                                    <i class="bi bi-diagram-2 me-2"></i>Designer
+                                <button class="btn btn-outline-primary btn-sm" @onclick="() => DesignWorkflow(workflow.Id)">
+                                    <i class="bi bi-diagram-2 me-1" aria-hidden="true"></i>Open designer
                                 </button>
                             </div>
                         </div>
@@ -75,7 +72,6 @@
             }
         </div>
     }
-</div>
 
 <!-- Create Workflow Modal -->
 <Modal @ref="createWorkflowModal" Title="Create New Workflow">
@@ -90,7 +86,7 @@
         </div>
     </BodyTemplate>
     <FooterTemplate>
-        <Button Color="ButtonColor.Secondary" @onclick="HideCreateWorkflowModal" Disabled="@isCreating">Cancel</Button>
+        <Button Color="ButtonColor.Secondary" Outline="true" @onclick="HideCreateWorkflowModal" Disabled="@isCreating">Cancel</Button>
         <Button Color="ButtonColor.Primary" @onclick="CreateWorkflow" 
                 Disabled="@(isCreating || string.IsNullOrWhiteSpace(createWorkflowRequest.Name))">
             @if (isCreating)

@@ -16,7 +16,10 @@
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IUserTimezoneService Tz
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
 @attribute [Authorize]
+
+<PageTitle>Bulk Request #@BulkRequestId | @Branding.ApplicationName</PageTitle>
 
 @if (_isLoading)
 {
@@ -143,10 +146,7 @@ else
                     }
                     else
                     {
-                        <div class="text-center p-4">
-                            <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
-                            <p class="text-muted mt-2">No individual items found.</p>
-                        </div>
+                        <EmptyState Title="No items found" Description="This bulk request has no individual items." />
                     }
                 </div>
             </div>

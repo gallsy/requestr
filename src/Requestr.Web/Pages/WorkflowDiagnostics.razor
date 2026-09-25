@@ -184,7 +184,7 @@
             <!-- Diagnostics Modal -->
             <Modal @ref="diagnosticsModal" Title="@GetDiagnosticsModalTitle()" Size="ModalSize.Large">
                 <BodyTemplate>
-                    <pre class="bg-light p-3 rounded" style="white-space: pre-wrap; font-family: 'Courier New', monospace;">@DiagnosticsText</pre>
+                    <pre class="code-block">@DiagnosticsText</pre>
                 </BodyTemplate>
                 <FooterTemplate>
                     <Button Color="ButtonColor.Secondary" @onclick="CloseDiagnosticsModal">Close</Button>

@@ -1,0 +1,2 @@
+/* Hidden when the ActionButtons fragment renders nothing */
+.request-summary-actions:empty { display: none !important; }

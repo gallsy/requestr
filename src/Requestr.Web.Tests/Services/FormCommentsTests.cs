@@ -73,6 +73,7 @@ public class FormCommentsTests : TestContext
         Services.AddSingleton(Mock.Of<IFormRequestQueryService>());
         Services.AddSingleton(Mock.Of<IFormRequestCommandService>());
         Services.AddSingleton(Mock.Of<IWorkflowDefinitionQueryService>());
+        Services.AddSingleton(new Requestr.Web.Configuration.AppBrandingOptions());
 
         var cut = RenderComponent<FormSubmission>(parameters => parameters.Add(component => component.FormId, 1));
         cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("button[type='submit']")));

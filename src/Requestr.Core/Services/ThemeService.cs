@@ -10,12 +10,6 @@ public class ThemeService
     
     public bool IsDarkMode => _isDarkMode;
     
-    public void ToggleTheme()
-    {
-        _isDarkMode = !_isDarkMode;
-        OnThemeChanged?.Invoke();
-    }
-    
     public void SetTheme(bool isDarkMode)
     {
         if (_isDarkMode != isDarkMode)
@@ -23,10 +17,5 @@ public class ThemeService
             _isDarkMode = isDarkMode;
             OnThemeChanged?.Invoke();
         }
-    }
-    
-    public string GetThemeClass()
-    {
-        return _isDarkMode ? "dark-theme" : "light-theme";
     }
 }

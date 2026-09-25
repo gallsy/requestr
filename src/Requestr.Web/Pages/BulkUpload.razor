@@ -15,8 +15,9 @@
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @attribute [Authorize]
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
 
-<PageTitle>Bulk Upload - @_formDefinition?.Name</PageTitle>
+<PageTitle>Bulk Upload | @Branding.ApplicationName</PageTitle>
 
 @if (_isLoading)
 {
@@ -195,22 +196,21 @@ else
                                     </div>
                                 </div>
                             </div>
-                            <div class="card-body">
-                                <div class="table-responsive">
+                            <div class="table-responsive">
                                     <table class="table table-sm table-hover">
                                         <thead>
                                             <tr>
-                                                <th width="50">
-                                                    <input type="checkbox" @onchange="OnSelectAllChanged" checked="@_allSelected" />
+                                                <th style="width: 40px;">
+                                                    <input type="checkbox" class="form-check-input" aria-label="Select all valid rows" @onchange="OnSelectAllChanged" checked="@_allSelected" />
                                                 </th>
-                                                <th width="80">Row</th>
-                                                <th width="80">Status</th>
+                                                <th>Row</th>
+                                                <th>Status</th>
                                                 @foreach (var field in _formDefinition.Fields.Where(f => f.IsVisible).OrderBy(f => f.DisplayOrder))
                                                 {
                                                     <th>@field.DisplayName</th>
                                                 }
-                                                <th width="150">Errors</th>
-                                                <th width="150">Warnings</th>
+                                                <th>Errors</th>
+                                                <th>Warnings</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -223,7 +223,7 @@ else
                                                     <td>
                                                         @if (result.IsValid)
                                                         {
-                                                            <input type="checkbox" @onchange="@(e => OnRowSelectionChanged(rowKey, e))" checked="@isSelected" />
+                                                            <input type="checkbox" class="form-check-input" aria-label="@($"Select row {result.RowNumber}")" @onchange="@(e => OnRowSelectionChanged(rowKey, e))" checked="@isSelected" />
                                                         }
                                                     </td>
                                                     <td>@result.RowNumber</td>
@@ -266,7 +266,6 @@ else
                                             }
                                         </tbody>
                                     </table>
-                                </div>
                             </div>
                         </div>
                     }

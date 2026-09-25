@@ -16,7 +16,7 @@
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
 @inject IUserTimezoneService Tz
-<h1 class="visually-hidden">Bulk Actions - @Branding.ApplicationName</h1>
+<PageTitle>@(_formDefinition == null ? "Bulk Actions" : $"Bulk Actions: {_formDefinition.Name}") | @Branding.ApplicationName</PageTitle>
 
 @if (_isLoading)
 {
@@ -101,7 +101,7 @@ else
                             <div class="card-body">
                                 <p>Browse and select existing records to perform bulk updates or deletions.</p>
                                 <p><small class="text-muted">Filter, sort, and select records to modify or delete.</small></p>
-                                <a href="/data-view/@FormDefinitionId" class="btn btn-info text-white">
+                                <a href="/data-view/@FormDefinitionId" class="btn btn-outline-primary">
                                     <i class="bi bi-table me-2"></i>
                                     Browse Data
                                 </a>
