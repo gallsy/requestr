@@ -1,8 +1,8 @@
 .designer-workspace { display: grid; grid-template-columns: minmax(170px, 0.65fr) minmax(240px, 1.65fr) minmax(280px, 1fr); border-block: 1px solid var(--border-color); min-height: 65vh; background: var(--card-bg); }
 .designer-outline, .designer-properties { padding: 1rem; min-width: 0; background: var(--card-bg); }
 .designer-outline { border-right: 1px solid var(--border-color); }
-/* Stays in view below the layout top bar (3.5rem) and the sticky builder header */
-.designer-properties { position: sticky; top: calc(3.5rem + var(--builder-header-height, 0px)); align-self: start; max-height: calc(100vh - 3.5rem - var(--builder-header-height, 0px)); overflow-y: auto; padding-top: .5rem; }
+/* Stays in view below the layout top bar and the sticky builder header */
+.designer-properties { position: sticky; top: calc(var(--topbar-height, 0px) + var(--builder-header-height, 0px)); align-self: start; max-height: calc(100vh - var(--topbar-height, 0px) - var(--builder-header-height, 0px)); overflow-y: auto; padding-top: .5rem; }
 .designer-canvas { min-width: 0; padding: 1rem 1.5rem 1.5rem; background: var(--bg-color); border-right: 1px solid var(--border-color); }
 .canvas-toolbar { display: flex; align-items: center; gap: .75rem; margin-bottom: .25rem; }
 .outline-toggle, .outline-close, .outline-backdrop { display: none; }

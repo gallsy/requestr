@@ -1,56 +1,59 @@
+@* Light / Dark / System theme picker shown in the account menu. *@
 @inject ThemeService ThemeService
 @inject IJSRuntime JSRuntime
 @implements IDisposable
 
-<button class="btn btn-outline-light btn-sm theme-toggle"
-        type="button"
-        @onclick="ToggleTheme"
-        aria-pressed="@(ThemeService.IsDarkMode ? "true" : "false")"
-        title="@(ThemeService.IsDarkMode ? "Switch to light mode" : "Switch to dark mode")">
-    <i class="bi @(ThemeService.IsDarkMode ? "bi-sun-fill" : "bi-moon-fill")" aria-hidden="true"></i>
-    <span class="d-none d-md-inline ms-1">@(ThemeService.IsDarkMode ? "Light" : "Dark")</span>
-</button>
+<div class="theme-picker" role="group" aria-label="Theme">
+    @foreach (var option in Options)
+    {
+        var selected = _preference == option.Value;
+        <button type="button" class="theme-option @(selected ? "active" : null)" aria-pressed="@(selected ? "true" : "false")"
+                @onclick="() => SetPreference(option.Value)">
+            <i class="bi @option.Icon" aria-hidden="true"></i><span>@option.Label</span>
+        </button>
+    }
+</div>
 
 @code {
-    private DotNetObjectReference<ThemeToggle>? _dotNetRef;
+    private static readonly (string Value, string Label, string Icon)[] Options =
+        [("light", "Light", "bi-sun"), ("dark", "Dark", "bi-moon-stars"), ("system", "System", "bi-circle-half")];
 
-    protected override void OnInitialized()
-    {
-        ThemeService.OnThemeChanged += OnThemeChanged;
-    }
+    private string _preference = "system";
+    private DotNetObjectReference<ThemeToggle>? _dotNetRef;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
         try
         {
-            // The <head> script is the source of truth (it also covers first visits with no cookie yet).
+            _preference = await JSRuntime.InvokeAsync<string?>("requestrUi.getThemePreference") ?? "system";
             ThemeService.SetTheme(await JSRuntime.InvokeAsync<bool>("requestrUi.isDarkTheme"));
             _dotNetRef = DotNetObjectReference.Create(this);
             await JSRuntime.InvokeVoidAsync("requestrUi.subscribeTheme", _dotNetRef);
+            StateHasChanged();
         }
         catch (JSException) { }
         catch (JSDisconnectedException) { }
     }
 
-    private async Task ToggleTheme()
+    private async Task SetPreference(string preference)
     {
-        ThemeService.ToggleTheme();
+        _preference = preference;
         try
         {
-            await JSRuntime.InvokeVoidAsync("requestrUi.setTheme", ThemeService.IsDarkMode);
+            ThemeService.SetTheme(await JSRuntime.InvokeAsync<bool>("requestrUi.setThemePreference", preference));
         }
         catch (JSException) { }
     }
 
     [JSInvokable]
-    public void SyncTheme(bool isDark) => ThemeService.SetTheme(isDark);
-
-    private void OnThemeChanged() => InvokeAsync(StateHasChanged);
-
-    public void Dispose()
+    public async Task SyncThemePreference(string preference)
     {
-        ThemeService.OnThemeChanged -= OnThemeChanged;
-        _dotNetRef?.Dispose();
+        _preference = preference;
+        try { ThemeService.SetTheme(await JSRuntime.InvokeAsync<bool>("requestrUi.isDarkTheme")); }
+        catch (JSException) { }
+        await InvokeAsync(StateHasChanged);
     }
+
+    public void Dispose() => _dotNetRef?.Dispose();
 }

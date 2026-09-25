@@ -1,9 +1,10 @@
 // Loaded synchronously in <head> so theme and sidebar state apply before first paint.
-// Cookies mirror localStorage so the server can prerender matching markup (see UiPreferences.cs).
+// Cookies mirror the resolved state so the server can prerender matching markup (see UiPreferences.cs).
 (function () {
     var root = document.documentElement;
     var themeKey = 'theme';
     var sidebarKey = 'requestr.sidebarCollapsed';
+    var darkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
     var themeListener = null;
 
     function read(key) {
@@ -19,10 +20,25 @@
             (location.protocol === 'https:' ? '; Secure' : '');
     }
 
-    function applyTheme(theme) {
+    // 'light' | 'dark' | 'system'; anything else (including nothing stored) follows the OS.
+    function preference() {
+        var stored = read(themeKey);
+        return stored === 'dark' || stored === 'light' ? stored : 'system';
+    }
+
+    function applyTheme() {
+        var pref = preference();
+        var theme = pref === 'system' ? (darkQuery && darkQuery.matches ? 'dark' : 'light') : pref;
         root.setAttribute('data-theme', theme);
         root.setAttribute('data-bs-theme', theme);
         setCookie('requestr_theme', theme);
+        return theme;
+    }
+
+    function notify() {
+        if (themeListener) {
+            themeListener.invokeMethodAsync('SyncThemePreference', preference()).catch(function () { });
+        }
     }
 
     function applySidebar(collapsed) {
@@ -34,26 +50,29 @@
         setCookie('requestr_sidebar', collapsed ? 'collapsed' : 'expanded');
     }
 
-    var storedTheme = read(themeKey);
-    var prefersDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    applyTheme(storedTheme === 'dark' || storedTheme === 'light' ? storedTheme : (prefersDark ? 'dark' : 'light'));
+    applyTheme();
     applySidebar(read(sidebarKey) === 'true');
 
-    // Keep other open tabs in sync when the theme is toggled.
+    if (darkQuery && darkQuery.addEventListener) {
+        darkQuery.addEventListener('change', function () {
+            if (preference() === 'system') applyTheme();
+        });
+    }
+
+    // Keep other open tabs in sync when the theme is changed.
     window.addEventListener('storage', function (e) {
-        if (e.key !== themeKey || (e.newValue !== 'dark' && e.newValue !== 'light')) return;
-        applyTheme(e.newValue);
-        if (themeListener) {
-            themeListener.invokeMethodAsync('SyncTheme', e.newValue === 'dark').catch(function () { });
-        }
+        if (e.key !== themeKey) return;
+        applyTheme();
+        notify();
     });
 
     window.requestrUi = {
         isDarkTheme: function () { return root.getAttribute('data-theme') === 'dark'; },
-        setTheme: function (isDark) {
-            var theme = isDark ? 'dark' : 'light';
-            write(themeKey, theme);
-            applyTheme(theme);
+        getThemePreference: preference,
+        // Returns true when the resulting theme is dark.
+        setThemePreference: function (pref) {
+            write(themeKey, pref === 'dark' || pref === 'light' ? pref : 'system');
+            return applyTheme() === 'dark';
         },
         subscribeTheme: function (dotNetRef) { themeListener = dotNetRef; },
         isSidebarCollapsed: function () { return root.getAttribute('data-sidebar') === 'collapsed'; },

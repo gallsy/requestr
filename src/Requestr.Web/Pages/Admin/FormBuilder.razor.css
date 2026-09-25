@@ -1,5 +1,5 @@
-/* Header + tabs stick below the layout's 3.5rem top bar; its height is published as --builder-header-height */
-.builder-savebar { position: sticky; top: 3.5rem; z-index: 100; background: var(--bg-color); padding-top: .5rem; margin-bottom: 1rem; }
+/* Header + tabs stick below the layout top bar (--topbar-height, 0 on desktop); height is published as --builder-header-height */
+.builder-savebar { position: sticky; top: var(--topbar-height, 0px); z-index: 100; background: var(--bg-color); padding-top: .5rem; margin-bottom: 1rem; }
 .builder-savebar ::deep .page-header { margin-bottom: .75rem; }
 .builder-savebar ::deep h1 { font-size: 1.5rem; overflow-wrap: anywhere; }
 .builder-tabs { margin-bottom: 0; }

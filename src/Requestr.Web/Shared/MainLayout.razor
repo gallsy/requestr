@@ -77,22 +77,24 @@
                 </Authorized>
             </AuthorizeView>
         </nav>
+
+        <div class="sidebar-footer">
+            <LoginDisplay />
+        </div>
     </div>
     
     <!-- Overlay for mobile when sidebar is open -->
     <div class="sidebar-overlay d-md-none" @onclick="CloseSidebar"></div>
 
     <main class="main">
-        <div class="top-row px-4 auth">
-            <div class="d-flex align-items-center ms-n2">
-                <button type="button" class="btn btn-link text-decoration-none sidebar-toggle-btn d-md-none me-2" @onclick="ToggleSidebar" aria-label="Toggle navigation"
-                        aria-controls="main-navigation" aria-expanded="@(_isSidebarOpen ? "true" : "false")" title="Toggle navigation">
-                    <i class="bi bi-list fs-4"></i>
-                </button>
-                <ThemeToggle />
-                <LoginDisplay />
-            </div>
-        </div>
+        @* Only shown on small screens, where the sidebar is a drawer *@
+        <header class="top-row d-md-none">
+            <button type="button" class="btn btn-link text-decoration-none sidebar-toggle-btn" @onclick="ToggleSidebar" aria-label="Toggle navigation"
+                    aria-controls="main-navigation" aria-expanded="@(_isSidebarOpen ? "true" : "false")" title="Toggle navigation">
+                <i class="bi bi-list fs-4" aria-hidden="true"></i>
+            </button>
+            <span class="top-row-brand fw-semibold">@Branding.ApplicationName</span>
+        </header>
 
         <article class="content px-4">
             <div class="container-fluid">

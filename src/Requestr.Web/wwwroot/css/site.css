@@ -108,6 +108,7 @@ small, .small, .text-muted {
    Layout
    ============================================ */
 .page {
+    --topbar-height: 0px;
     display: flex;
     min-height: 100vh;
     background-color: var(--bg-color);
@@ -120,6 +121,14 @@ small, .small, .text-muted {
     position: fixed;
     height: 100vh;
     z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.sidebar > nav {
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
 }
 
@@ -135,24 +144,28 @@ small, .small, .text-muted {
     flex-direction: column;
 }
 
+/* Mobile only: holds the menu button while the sidebar is a drawer */
 .top-row {
     background: var(--card-bg);
     border-bottom: 1px solid var(--border-color);
-    height: 3.5rem;
-    min-height: 3.5rem;
+    height: var(--topbar-height);
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    padding: 0 1rem;
+    gap: 0.5rem;
+    padding: 0 0.5rem;
     position: sticky;
     top: 0;
     z-index: 99;
 }
 
+.top-row-brand {
+    color: var(--text-color);
+}
+
 .content {
     padding: 1.5rem;
-    min-height: calc(100vh - 3.5rem);
+    min-height: calc(100vh - var(--topbar-height));
 }
 
 .container-fluid {
@@ -181,8 +194,13 @@ small, .small, .text-muted {
     }
 
     [data-sidebar="collapsed"] .sidebar-header,
-    [data-sidebar="collapsed"] .sidebar-nav-link {
+    [data-sidebar="collapsed"] .sidebar-nav-link,
+    [data-sidebar="collapsed"] .sidebar-account-btn {
         justify-content: center;
+    }
+
+    [data-sidebar="collapsed"] .sidebar-account-btn {
+        padding-inline: 0;
     }
 
     [data-sidebar="collapsed"] .sidebar-nav-link {
@@ -210,6 +228,10 @@ small, .small, .text-muted {
 
 /* Mobile responsive */
 @media (max-width: 767.98px) {
+    .page {
+        --topbar-height: 3.5rem;
+    }
+
     .sidebar {
         transform: translateX(-100%);
         visibility: hidden;
@@ -1148,12 +1170,90 @@ button.nav-link.active {
 }
 
 /* ============================================
-   Theme Toggle
+   Sidebar account menu + theme picker
    ============================================ */
-.theme-toggle {
+.sidebar-footer {
+    flex-shrink: 0;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.sidebar-account-btn {
     display: flex;
     align-items: center;
-    margin-right: 0.5rem;
+    gap: 0.625rem;
+    width: 100%;
+    min-width: 0;
+    padding: 0.375rem 0.5rem;
+    border: 0;
+    border-radius: var(--border-radius-sm);
+    background: transparent;
+    color: var(--text-color);
+    text-align: left;
+}
+
+.sidebar-account-btn:hover,
+.sidebar-account-btn[aria-expanded="true"] {
+    background-color: var(--bg-subtle);
+}
+
+.sidebar-account-text {
+    min-width: 0;
+    line-height: 1.25;
+    font-size: 0.875rem;
+}
+
+.sidebar-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background-color: var(--primary);
+    color: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.sidebar-account-menu {
+    width: 15.5rem;
+    padding-block: 0.5rem;
+}
+
+.theme-picker {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    background-color: var(--bg-subtle);
+}
+
+.theme-option {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.375rem;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.theme-option:hover {
+    color: var(--text-color);
+}
+
+.theme-option.active {
+    background-color: var(--card-bg);
+    color: var(--text-color);
+    box-shadow: var(--shadow-sm);
 }
 
 /* ============================================

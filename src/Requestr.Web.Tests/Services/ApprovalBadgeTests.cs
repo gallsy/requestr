@@ -74,6 +74,23 @@ public class ApprovalBadgeTests : TestContext
     }
 
     [Fact]
+    public void AccountMenuAndThemePickerLiveInSidebarFooter()
+    {
+        JSInterop.Setup<string?>("requestrUi.getThemePreference").SetResult("light");
+        JSInterop.Setup<bool>("requestrUi.setThemePreference", "dark").SetResult(true);
+        var layout = RenderComponent<MainLayout>();
+
+        Assert.NotNull(layout.Find("#main-navigation .sidebar-footer button[aria-label='Account menu for Approver']"));
+        Assert.Empty(layout.FindAll(".top-row .sidebar-account"));
+        layout.WaitForAssertion(() => Assert.Equal("true", layout.Find(".theme-option.active").GetAttribute("aria-pressed")));
+        Assert.Equal("Light", layout.Find(".theme-option.active").TextContent.Trim());
+
+        layout.FindAll(".theme-option").Single(option => option.TextContent.Trim() == "Dark").Click();
+        Assert.Equal("Dark", layout.Find(".theme-option.active").TextContent.Trim());
+        Assert.True(Services.GetRequiredService<ThemeService>().IsDarkMode);
+    }
+
+    [Fact]
     public void DesktopNavigationRestoresSavedPreference()
     {
         JSInterop.Setup<bool>("requestrUi.isSidebarCollapsed").SetResult(true);
