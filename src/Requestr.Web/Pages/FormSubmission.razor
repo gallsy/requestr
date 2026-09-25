@@ -17,8 +17,9 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<FormSubmission> Logger
 @attribute [Authorize]
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
 
-<PageTitle>@_formDefinition?.Name</PageTitle>
+<PageTitle>@(_formDefinition?.Name ?? "New Request") | @Branding.ApplicationName</PageTitle>
 
 @if (_isLoading)
 {
@@ -397,24 +398,27 @@ else
                                         Mode: Delete record @(_selectedRecordId)
                                         @if (string.IsNullOrWhiteSpace(_selectedRecordId))
                                         {
-                                            <span class="ms-2 text-dark">No record selected. Open this form from the Data View row actions.</span>
+                                            <span class="ms-2">No record selected. Open this form from the Data View row actions.</span>
                                         }
                                     </div>
                                 }
                             </div>
                             
-                            <div class="mt-4">
-                                <label class="form-label">Comments @(_formDefinition.RequiresRequestComments ? "*" : "(Optional)")</label>
-                                <textarea class="form-control @(_commentsValidationError != null ? "is-invalid" : "")" rows="3" @bind="_comments" placeholder="Add any additional comments about this request..."></textarea>
-                                @if (_commentsValidationError != null)
-                                {
-                                    <div class="invalid-feedback">@_commentsValidationError</div>
-                                }
-                                @if (_formDefinition.RequiresRequestComments)
-                                {
-                                    <small class="form-text text-muted">Minimum 10 characters required</small>
-                                }
-                            </div>
+                            @if (!_formDefinition.HideRequestComments || _formDefinition.RequiresRequestComments)
+                            {
+                                <div class="mt-4">
+                                    <label class="form-label">Comments @(_formDefinition.RequiresRequestComments ? "*" : "(Optional)")</label>
+                                    <textarea class="form-control @(_commentsValidationError != null ? "is-invalid" : "")" rows="3" @bind="_comments" placeholder="Add any additional comments about this request..."></textarea>
+                                    @if (_commentsValidationError != null)
+                                    {
+                                        <div class="invalid-feedback">@_commentsValidationError</div>
+                                    }
+                                    @if (_formDefinition.RequiresRequestComments)
+                                    {
+                                        <small class="form-text text-muted">Minimum 10 characters required</small>
+                                    }
+                                </div>
+                            }
                             
                             <div class="mt-4 d-flex justify-content-between">
                                 <button type="button" class="btn btn-secondary" @onclick="Cancel">

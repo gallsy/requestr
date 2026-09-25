@@ -16,7 +16,7 @@
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
 @inject IUserTimezoneService Tz
-<h1 class="visually-hidden">Bulk Actions - @Branding.ApplicationName</h1>
+<PageTitle>@(_formDefinition == null ? "Bulk Actions" : $"Bulk Actions: {_formDefinition.Name}") | @Branding.ApplicationName</PageTitle>
 
 @if (_isLoading)
 {
@@ -24,7 +24,7 @@
 }
 else if (!_hasPermission)
 {
-    <EmptyState Title="Access Denied" 
+    <EmptyState Title="Access Denied" Icon="bi-shield-lock" 
                 Description="You do not have permission to perform bulk actions for this form.">
         <Action>
             <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">
@@ -46,7 +46,7 @@ else if (_formDefinition == null)
 }
 else
 {
-    <PageHeader Title="@($"Bulk Actions: {_formDefinition.Name}")">
+    <PageHeader Title="@($"Bulk Actions: {_formDefinition.Name}")" Description="Upload or change many records at once">
         <Actions>
             <a href="/data-view/@FormDefinitionId" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left me-2"></i>
@@ -55,7 +55,6 @@ else
         </Actions>
     </PageHeader>
 
-    <div class="container-fluid">
         @if (!string.IsNullOrEmpty(_errorMessage))
         {
             <StandardAlert AlertType="danger" 
@@ -102,7 +101,7 @@ else
                             <div class="card-body">
                                 <p>Browse and select existing records to perform bulk updates or deletions.</p>
                                 <p><small class="text-muted">Filter, sort, and select records to modify or delete.</small></p>
-                                <a href="/data-view/@FormDefinitionId" class="btn btn-info text-white">
+                                <a href="/data-view/@FormDefinitionId" class="btn btn-outline-primary">
                                     <i class="bi bi-table me-2"></i>
                                     Browse Data
                                 </a>
@@ -119,19 +118,20 @@ else
                             Recent Bulk Requests
                         </h5>
                     </div>
-                    <div class="card-body">
                         @if (_recentBulkRequests == null)
                         {
-                            <LoadingSpinner />
+                            <div class="card-body"><LoadingSpinner /></div>
                         }
                         else if (!_recentBulkRequests.Any())
                         {
-                            <EmptyState Title="No recent bulk requests" Description="No recent bulk requests found." />
+                            <div class="card-body">
+                                <EmptyState Title="No recent bulk requests" Description="No recent bulk requests found." />
+                            </div>
                         }
                         else
                         {
                             <div class="table-responsive">
-                                <table class="table table-striped">
+                                <table class="table table-hover">
                                     <thead>
                                         <tr>
                                             <th>ID</th>
@@ -140,14 +140,14 @@ else
                                             <th>Records</th>
                                             <th>Status</th>
                                             <th>Date</th>
-                                            <th>Actions</th>
+                                            <th class="col-actions">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         @foreach (var request in _recentBulkRequests)
                                         {
                                             <tr>
-                                                <td>@request.Id</td>
+                                                <td><strong>#@request.Id</strong></td>
                                                 <td>
                                                     <span class="badge @GetRequestTypeBadgeClass(request.RequestType)">
                                                         @request.RequestType
@@ -161,10 +161,9 @@ else
                                                     </span>
                                                 </td>
                                                 <td>@Tz.FormatDateTime(request.RequestedAt)</td>
-                                                <td>
-                                                    <a href="/bulk-requests/@request.Id" class="btn btn-sm btn-outline-primary">
-                                                        <i class="bi bi-eye"></i>
-                                                        View
+                                                <td class="col-actions">
+                                                    <a href="/bulk-requests/@request.Id" class="btn btn-sm btn-outline-primary" title="View request" aria-label="View request @request.Id">
+                                                        <i class="bi bi-eye" aria-hidden="true"></i>
                                                     </a>
                                                 </td>
                                             </tr>
@@ -173,9 +172,7 @@ else
                                 </table>
                             </div>
                         }
-                    </div>
                 </div>
-    </div>
 }
 
 @code {

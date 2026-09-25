@@ -23,9 +23,7 @@
 @attribute [Authorize]
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
-<PageTitle>Data Viewer | @Branding.ApplicationName</PageTitle>
-
-<h1 class="visually-hidden">Data View - @Branding.ApplicationName</h1>
+<PageTitle>@(_formDefinition == null ? "Data View" : $"Data View: {_formDefinition.Name}") | @Branding.ApplicationName</PageTitle>
 
 @if (_isLoading)
 {
@@ -44,9 +42,8 @@ else if (_formDefinition == null)
 }
 else
 {
-    <PageHeader Title="@($"Data View: {_formDefinition.Name}")" />
+    <PageHeader Title="@($"Data View: {_formDefinition.Name}")" Description="@($"Browse records in {_formDefinition.TableName}")" />
 
-    <div class="container-fluid">
         @if (!string.IsNullOrEmpty(_errorMessage))
         {
             <StandardAlert AlertType="danger" 
@@ -61,99 +58,46 @@ else
                            Dismissable="true" />
         }
 
-        <!-- Search and Filter Section -->
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-search me-2"></i>
-                    Search and Filter
-                </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                    <input type="text" class="form-control" placeholder="Search..." @bind="_searchTerm" @bind:event="oninput" @onkeypress="@OnSearchKeyPress">
-                                    <button class="btn btn-outline-secondary" type="button" @onclick="Search">
-                                        <i class="bi bi-search"></i> Search
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="d-flex gap-2">
-                                    <button class="btn btn-secondary" @onclick="ClearSearch">
-                                        <i class="bi bi-x-circle"></i> Clear
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Bulk Actions Section -->
-                @if (_canExecuteBulkActions)
+        <FilterBar>
+            <div class="input-group input-group-sm filter-bar-search">
+                <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+                <input type="text" class="form-control" placeholder="Search records..." aria-label="Search records"
+                       @bind="_searchTerm" @bind:event="oninput" @onkeypress="@OnSearchKeyPress">
+                @if (!string.IsNullOrEmpty(_searchTerm))
                 {
-                    <div class="card mb-4">
-                        <div class="card-header bg-primary text-white">
-                            <h5 class="mb-0">
-                                <i class="bi bi-check-square me-2"></i>
-                                Bulk Actions (@_selectedRecords.Count selected)
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            @if (_selectedRecords.Any())
-                            {
-                                <div class="d-flex gap-2">
-                                    <button class="btn btn-warning" @onclick="ShowBulkUpdateModal">
-                                        <i class="bi bi-pencil-square"></i> Bulk Update
-                                    </button>
-                                    <button class="btn btn-danger" @onclick="ShowBulkDeleteModal">
-                                        <i class="bi bi-trash"></i> Bulk Delete
-                                    </button>
-                                    <button class="btn btn-secondary" @onclick="ClearSelection">
-                                        <i class="bi bi-x-circle"></i> Clear Selection
-                                    </button>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="d-flex gap-2">
-                                    <button class="btn btn-warning" disabled>
-                                        <i class="bi bi-pencil-square"></i> Bulk Update
-                                    </button>
-                                    <button class="btn btn-danger" disabled>
-                                        <i class="bi bi-trash"></i> Bulk Delete
-                                    </button>
-                                    <button class="btn btn-secondary" disabled>
-                                        <i class="bi bi-x-circle"></i> Clear Selection
-                                    </button>
-                                </div>
-                            }
-                        </div>
-                    </div>
+                    <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search" aria-label="Clear search">
+                        <i class="bi bi-x-lg" aria-hidden="true"></i>
+                    </button>
                 }
+                <button class="btn btn-outline-primary" type="button" @onclick="Search">Search</button>
+            </div>
+        </FilterBar>
 
-                <!-- Data Table -->
-                <div class="card">
-                    <div class="card-header">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0">
-                                <i class="bi bi-table me-2"></i>
-                                Data Records
-                            </h5>
-                            <span class="badge bg-secondary">@_dataResult?.TotalCount records</span>
-                        </div>
-                    </div>
-                    <div class="card-body">
+        <div class="card">
+            @if (_canExecuteBulkActions)
+            {
+                var hasSelection = _selectedRecords.Any();
+                <div class="card-toolbar" role="group" aria-label="Bulk actions">
+                    <span class="text-muted small me-auto">@_selectedRecords.Count selected</span>
+                    <button class="btn btn-sm btn-outline-warning" disabled="@(!hasSelection)" @onclick="ShowBulkUpdateModal">
+                        <i class="bi bi-pencil-square me-1" aria-hidden="true"></i>Bulk Update
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" disabled="@(!hasSelection)" @onclick="ShowBulkDeleteModal">
+                        <i class="bi bi-trash me-1" aria-hidden="true"></i>Bulk Delete
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" disabled="@(!hasSelection)" @onclick="ClearSelection">
+                        Clear Selection
+                    </button>
+                </div>
+            }
                         @if (_dataResult != null && _dataResult.Records.Any())
                         {
                             <div class="table-responsive data-table-nowrap">
-                                <table class="table table-striped table-hover">
-                                    <thead class="thead-themed">
+                                <table class="table table-hover">
+                                    <thead>
                                         <tr>
                                             <th style="width: 40px;">
-                                                <input type="checkbox" class="form-check-input" @onchange="ToggleSelectAll">
+                                                <input type="checkbox" class="form-check-input" aria-label="Select all records" @onchange="ToggleSelectAll">
                                             </th>
                                             <th style='@GetColumnWidthStyle("__actions")' class="resizable-header" data-column="__actions">
                                                 <span>Actions</span>
@@ -178,40 +122,40 @@ else
                                             var recordId = GetRecordId(record);
                                             var isSelected = _selectedRecords.Contains(recordId);
                                             
-                                            <tr class="@(isSelected ? "table-primary" : "")">
+                                            <tr class="@(isSelected ? "row-selected" : null)">
                                                 <td>
-                                                    <input type="checkbox" class="form-check-input" 
+                                                    <input type="checkbox" class="form-check-input" aria-label="Select record"
                                                            checked="@isSelected" 
                                                            @onchange="@((e) => ToggleRecordSelection(recordId, e.Value))">
                                                 </td>
                                                 <td>
-                                                    <div class="btn-group btn-group-sm" role="group">
+                                                    <div class="btn-group btn-group-sm" role="group" aria-label="Record actions">
                                                         @if (_canUpdateRequests)
                                                         {
-                                                            <button class="btn btn-outline-primary" title="Edit"
+                                                            <button class="btn btn-outline-primary" title="Edit" aria-label="Edit record"
                                                                     @onclick="() => GoToEdit(recordId)">
-                                                                <i class="bi bi-pencil-square"></i>
+                                                                <i class="bi bi-pencil-square" aria-hidden="true"></i>
                                                             </button>
                                                         }
                                                         @if (_canInsertRequests)
                                                         {
-                                                            <button class="btn btn-outline-warning" title="Duplicate"
+                                                            <button class="btn btn-outline-warning" title="Duplicate" aria-label="Duplicate record"
                                                                     @onclick="() => GoToDuplicate(record)">
-                                                                <i class="bi bi-copy"></i>
+                                                                <i class="bi bi-copy" aria-hidden="true"></i>
                                                             </button>
                                                         }
                                                         @if (_canDeleteRequests)
                                                         {
-                                                            <button class="btn btn-outline-danger" title="Delete"
+                                                            <button class="btn btn-outline-danger" title="Delete" aria-label="Delete record"
                                                                     @onclick="() => GoToDelete(recordId)">
-                                                                <i class="bi bi-trash"></i>
+                                                                <i class="bi bi-trash" aria-hidden="true"></i>
                                                             </button>
                                                         }
                                                     </div>
                                                 </td>
                                                 @foreach (var column in _dataResult.Columns)
                                                 {
-                                                    var cellValue = record.ContainsKey(column) ? record[column]?.ToString() : "";
+                                                    var cellValue = _dataResult.GetDisplayValue(record, column);
                                                     <td title="@cellValue">@cellValue</td>
                                                 }
                                             </tr>
@@ -220,75 +164,19 @@ else
                                 </table>
                             </div>
 
-                            <!-- Pagination -->
-                            @if (_dataResult.TotalPages > 1)
-                            {
-                                <nav aria-label="Data pagination">
-                                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-                                        <div class="d-flex align-items-center gap-2">
-                                            <label class="mb-0 text-muted">Show</label>
-                                            <select class="form-select form-select-sm" style="width: auto;" @onchange="OnPageSizeChanged">
-                                                <option value="10" selected="@(_pageSize == 10)">10</option>
-                                                <option value="25" selected="@(_pageSize == 25)">25</option>
-                                                <option value="50" selected="@(_pageSize == 50)">50</option>
-                                                <option value="100" selected="@(_pageSize == 100)">100</option>
-                                                <option value="500" selected="@(_pageSize == 500)">500</option>
-                                            </select>
-                                            <label class="mb-0 text-muted">per page</label>
-                                        </div>
-                                        <ul class="pagination mb-0">
-                                        <li class="page-item @(_dataResult.CurrentPage == 1 ? "disabled" : "")">
-                                            <button class="page-link" @onclick="() => ChangePage(1)">First</button>
-                                        </li>
-                                        <li class="page-item @(_dataResult.CurrentPage == 1 ? "disabled" : "")">
-                                            <button class="page-link" @onclick="() => ChangePage(_dataResult.CurrentPage - 1)">Previous</button>
-                                        </li>
-                                        
-                                        @for (int i = Math.Max(1, _dataResult.CurrentPage - 2); i <= Math.Min(_dataResult.TotalPages, _dataResult.CurrentPage + 2); i++)
-                                        {
-                                            var pageNum = i;
-                                            <li class="page-item @(_dataResult.CurrentPage == pageNum ? "active" : "")">
-                                                <button class="page-link" @onclick="() => ChangePage(pageNum)">@pageNum</button>
-                                            </li>
-                                        }
-                                        
-                                        <li class="page-item @(_dataResult.CurrentPage == _dataResult.TotalPages ? "disabled" : "")">
-                                            <button class="page-link" @onclick="() => ChangePage(_dataResult.CurrentPage + 1)">Next</button>
-                                        </li>
-                                        <li class="page-item @(_dataResult.CurrentPage == _dataResult.TotalPages ? "disabled" : "")">
-                                            <button class="page-link" @onclick="() => ChangePage(_dataResult.TotalPages)">Last</button>
-                                        </li>
-                                    </ul>
-                                    </div>
-                                </nav>
-                            }
-                            else
-                            {
-                                <!-- Show page size even when only 1 page -->
-                                <div class="d-flex align-items-center gap-2 mb-3">
-                                    <label class="mb-0 text-muted">Show</label>
-                                    <select class="form-select form-select-sm" style="width: auto;" @onchange="OnPageSizeChanged">
-                                        <option value="10" selected="@(_pageSize == 10)">10</option>
-                                        <option value="25" selected="@(_pageSize == 25)">25</option>
-                                        <option value="50" selected="@(_pageSize == 50)">50</option>
-                                        <option value="100" selected="@(_pageSize == 100)">100</option>
-                                        <option value="500" selected="@(_pageSize == 500)">500</option>
-                                    </select>
-                                    <label class="mb-0 text-muted">per page</label>
-                                </div>
-                            }
+                            <div class="card-footer">
+                                <TablePagination CurrentPage="_dataResult.CurrentPage" TotalPages="_dataResult.TotalPages" PageSize="_pageSize"
+                                                 TotalCount="_dataResult.TotalCount" PageSizeOptions="DataPageSizes" AriaLabel="Data pagination"
+                                                 OnPageChanged="ChangePage" OnPageSizeChanged="OnPageSizeChanged" />
+                            </div>
                         }
                         else
                         {
-                            <div class="text-center p-5">
-                                <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
-                                <h4 class="mt-3 text-muted">No Data Found</h4>
-                                <p class="text-muted">There are no records to display.</p>
+                            <div class="card-body">
+                                <EmptyState Title="No Data Found" Description="There are no records to display." />
                             </div>
                         }
-                    </div>
-                </div>
-    </div>
+        </div>
 }
 
 <!-- Bulk Update Modal -->
@@ -850,13 +738,12 @@ else
         await LoadData();
     }
 
-    private async Task OnPageSizeChanged(ChangeEventArgs e)
+    private static readonly int[] DataPageSizes = [10, 25, 50, 100, 500];
+
+    private async Task OnPageSizeChanged(int newSize)
     {
-        if (int.TryParse(e.Value?.ToString(), out var newSize))
-        {
-            _pageSize = newSize;
-            await LoadData();
-        }
+        _pageSize = newSize;
+        await LoadData();
     }
 
     private async Task ClearSearch()

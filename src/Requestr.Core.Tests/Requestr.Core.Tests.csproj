@@ -20,5 +20,6 @@
     <None Include="../Requestr.Migrations/Scripts/029_FormConditionals.sql" Link="029_FormConditionals.sql" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../Requestr.Migrations/Scripts/030_LookupFilterLevels.sql" Link="030_LookupFilterLevels.sql" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../Requestr.Migrations/Scripts/031_LookupSelectionLabel.sql" Link="031_LookupSelectionLabel.sql" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../Requestr.Migrations/Scripts/032_HideRequestComments.sql" Link="032_HideRequestComments.sql" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

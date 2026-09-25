@@ -1,0 +1,72 @@
+@* Standard pagination footer for tables. Place inside a .card-footer below the .table-responsive. *@
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div class="d-flex align-items-center gap-2 small text-muted">
+        <label class="mb-0 text-nowrap" for="@_pageSizeId">Rows per page</label>
+        <select id="@_pageSizeId" class="form-select form-select-sm w-auto" @onchange="ChangePageSize">
+            @foreach (var size in PageSizeOptions)
+            {
+                <option value="@size" selected="@(size == PageSize)">@size</option>
+            }
+        </select>
+        <span class="text-nowrap">@FirstItem&ndash;@LastItem of @TotalCount</span>
+    </div>
+    @if (TotalPages > 1)
+    {
+        <nav aria-label="@AriaLabel">
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item @(IsFirst ? "disabled" : null)">
+                    <button type="button" class="page-link" disabled="@IsFirst" aria-label="First page" @onclick="() => GoTo(1)">
+                        <i class="bi bi-chevron-double-left" aria-hidden="true"></i>
+                    </button>
+                </li>
+                <li class="page-item @(IsFirst ? "disabled" : null)">
+                    <button type="button" class="page-link" disabled="@IsFirst" aria-label="Previous page" @onclick="() => GoTo(CurrentPage - 1)">
+                        <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                    </button>
+                </li>
+                @for (var i = Math.Max(1, CurrentPage - 2); i <= Math.Min(TotalPages, CurrentPage + 2); i++)
+                {
+                    var pageNumber = i;
+                    <li class="page-item @(pageNumber == CurrentPage ? "active" : null)">
+                        <button type="button" class="page-link" aria-current="@(pageNumber == CurrentPage ? "page" : null)" @onclick="() => GoTo(pageNumber)">@pageNumber</button>
+                    </li>
+                }
+                <li class="page-item @(IsLast ? "disabled" : null)">
+                    <button type="button" class="page-link" disabled="@IsLast" aria-label="Next page" @onclick="() => GoTo(CurrentPage + 1)">
+                        <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                    </button>
+                </li>
+                <li class="page-item @(IsLast ? "disabled" : null)">
+                    <button type="button" class="page-link" disabled="@IsLast" aria-label="Last page" @onclick="() => GoTo(TotalPages)">
+                        <i class="bi bi-chevron-double-right" aria-hidden="true"></i>
+                    </button>
+                </li>
+            </ul>
+        </nav>
+    }
+</div>
+
+@code {
+    private readonly string _pageSizeId = $"page-size-{Guid.NewGuid():N}";
+
+    [Parameter] public int CurrentPage { get; set; } = 1;
+    [Parameter] public int TotalPages { get; set; }
+    [Parameter] public int PageSize { get; set; } = 10;
+    [Parameter] public int TotalCount { get; set; }
+    [Parameter] public int[] PageSizeOptions { get; set; } = [10, 25, 50, 100];
+    [Parameter] public string AriaLabel { get; set; } = "Table pagination";
+    [Parameter] public EventCallback<int> OnPageChanged { get; set; }
+    [Parameter] public EventCallback<int> OnPageSizeChanged { get; set; }
+
+    private bool IsFirst => CurrentPage <= 1;
+    private bool IsLast => CurrentPage >= TotalPages;
+    private int FirstItem => TotalCount == 0 ? 0 : (CurrentPage - 1) * PageSize + 1;
+    private int LastItem => Math.Min(CurrentPage * PageSize, TotalCount);
+
+    private Task GoTo(int page) =>
+        page < 1 || page > TotalPages || page == CurrentPage ? Task.CompletedTask : OnPageChanged.InvokeAsync(page);
+
+    private Task ChangePageSize(ChangeEventArgs e) =>
+        int.TryParse(e.Value?.ToString(), out var size) ? OnPageSizeChanged.InvokeAsync(size) : Task.CompletedTask;
+}

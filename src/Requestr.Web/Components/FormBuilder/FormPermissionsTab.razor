@@ -40,11 +40,11 @@
                         <div class="row">
                             <div class="col-lg-3">
                                 <!-- Role Selection -->
-                                <div class="card bg-light">
+                                <div class="card">
                                     <div class="card-header d-flex justify-content-between align-items-center">
                                         <h6 class="mb-0">Roles</h6>
-                                        <button type="button" class="btn btn-outline-primary btn-sm" @onclick="ShowAddRole">
-                                            <i class="bi bi-plus"></i>
+                                        <button type="button" class="btn btn-outline-primary btn-sm" @onclick="ShowAddRole" title="Add role" aria-label="Add role">
+                                            <i class="bi bi-plus" aria-hidden="true"></i>
                                         </button>
                                     </div>
                                     <div class="card-body p-2">
@@ -71,38 +71,24 @@
                                             </div>
                                         }
                                         
-                                        <div class="list-group list-group-flush">
+                                        <div class="role-list">
                                             @foreach (var role in AvailableRoles)
                                             {
-                                                <div class="list-group-item list-group-item-action @(SelectedRole == role ? "active" : "") p-0">
-                                                    <div class="d-flex align-items-center">
+                                                <div class="role-item @(SelectedRole == role ? "selected" : "")">
+                                                    <button type="button" class="role-select" aria-pressed="@(SelectedRole == role ? "true" : "false")"
+                                                            @onclick="() => SelectRole(role)">
+                                                        <strong class="d-block">@role</strong>
+                                                        <small class="text-muted">@GetRolePermissionSummary(role)</small>
+                                                    </button>
+                                                    @if (CanDeleteRole(role))
+                                                    {
                                                         <button type="button" 
-                                                                class="btn btn-link flex-fill text-start border-0 @(SelectedRole == role ? "text-white" : "")"
-                                                                @onclick="() => SelectRole(role)">
-                                                            <div class="d-flex justify-content-between align-items-center w-100">
-                                                                <div>
-                                                                    <strong>@role</strong>
-                                                                    <br />
-                                                                    <small class="@(SelectedRole == role ? "text-white-50" : "text-muted")">
-                                                                        @GetRolePermissionSummary(role)
-                                                                    </small>
-                                                                </div>
-                                                                @if (SelectedRole == role)
-                                                                {
-                                                                    <i class="bi bi-check-circle text-white"></i>
-                                                                }
-                                                            </div>
+                                                                class="btn btn-sm btn-outline-danger" 
+                                                                title="Remove role" aria-label="@($"Remove role {role}")"
+                                                                @onclick="() => ConfirmDeleteRole(role)">
+                                                            <i class="bi bi-trash" aria-hidden="true"></i>
                                                         </button>
-                                                        @if (CanDeleteRole(role))
-                                                        {
-                                                            <button type="button" 
-                                                                    class="btn btn-sm btn-outline-danger me-2" 
-                                                                    title="Remove role"
-                                                                    @onclick="() => ConfirmDeleteRole(role)">
-                                                                <i class="bi bi-trash"></i>
-                                                            </button>
-                                                        }
-                                                    </div>
+                                                    }
                                                 </div>
                                             }
                                         </div>
@@ -119,7 +105,7 @@
                                         {
                                             <div class="col-md-6 mb-4">
                                                 <div class="card h-100">
-                                                    <div class="card-header bg-white">
+                                                    <div class="card-header">
                                                         <h6 class="mb-0 @FormPermissionHelper.GetCategoryColorClass(category.Key)">
                                                             <i class="bi @FormPermissionHelper.GetCategoryIcon(category.Key) me-2"></i>
                                                             @category.Key

@@ -1,0 +1,29 @@
+@* Standard filter bar shown above lists and tables. Put controls in ChildContent; wrap a search box in .filter-bar-search. *@
+
+<div class="filter-bar mb-4" role="group" aria-label="@AriaLabel">
+    <div class="filter-bar-fields">
+        @ChildContent
+    </div>
+    <div class="filter-bar-meta">
+        @if (ShowClear)
+        {
+            <button type="button" class="btn btn-sm btn-link text-decoration-none" @onclick="OnClear">
+                <i class="bi bi-x-lg me-1" aria-hidden="true"></i>Clear filters
+            </button>
+        }
+        @if (!string.IsNullOrEmpty(Summary))
+        {
+            <span class="text-muted small text-nowrap" aria-live="polite">@Summary</span>
+        }
+        @Actions
+    </div>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+    [Parameter] public string? Summary { get; set; }
+    [Parameter] public bool ShowClear { get; set; }
+    [Parameter] public EventCallback OnClear { get; set; }
+    [Parameter] public string AriaLabel { get; set; } = "Filters";
+}

@@ -8,6 +8,7 @@
     <meta name="description" content="@((ViewBag?.BrandingName ?? "Requestr")) - Database-first forms application" />
     <title>@ViewData["Title"] - @((ViewBag?.BrandingName ?? "Requestr"))</title>
     <base href="~/" />
+    <script src="~/js/ui-preferences.js" asp-append-version="true"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-LN+7fdVzj6u52u30Kp6M/trliBMCMKTyK833zpbD+pXdCLuTusPj697FH4R/5mcr" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
@@ -22,15 +23,47 @@
 <body>
     @RenderBody()
 
-    <div id="blazor-error-ui">
-        <environment include="Staging,Production">
-            An error has occurred. This application may no longer respond until reloaded.
-        </environment>
-        <environment include="Development">
-            An unhandled exception has occurred. See browser dev tools for details.
-        </environment>
+    @* Blazor toggles components-reconnect-* classes on this element; see the Reconnect section in site.css *@
+    <div id="components-reconnect-modal" class="reconnect-modal" role="alertdialog" aria-modal="true" aria-live="assertive">
+        <div class="reconnect-dialog">
+            <div class="reconnect-state reconnect-state-retrying">
+                <span class="spinner-border spinner-border-sm reconnect-icon" aria-hidden="true"></span>
+                <div>
+                    <strong class="d-block">Reconnecting&hellip;</strong>
+                    <span class="text-muted small">The connection to the server was interrupted. Your changes on this page are kept while we reconnect.</span>
+                </div>
+            </div>
+            <div class="reconnect-state reconnect-state-failed">
+                <i class="bi bi-wifi-off reconnect-icon" aria-hidden="true"></i>
+                <div>
+                    <strong class="d-block">Couldn't reconnect</strong>
+                    <span class="text-muted small d-block mb-2">Check your connection, then try again.</span>
+                    <button type="button" class="btn btn-primary btn-sm" data-reconnect-action="retry">Try again</button>
+                </div>
+            </div>
+            <div class="reconnect-state reconnect-state-rejected">
+                <i class="bi bi-arrow-clockwise reconnect-icon" aria-hidden="true"></i>
+                <div>
+                    <strong class="d-block">Please reload the page</strong>
+                    <span class="text-muted small d-block mb-2">The app was updated or your session ended.</span>
+                    <button type="button" class="btn btn-primary btn-sm" data-reconnect-action="reload">Reload</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui" role="alert">
+        <i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i>
+        <span>
+            <environment include="Staging,Production">
+                Something went wrong. The page may stop responding until it is reloaded.
+            </environment>
+            <environment include="Development">
+                An unhandled exception has occurred. See browser dev tools for details.
+            </environment>
+        </span>
         <a href="" class="reload">Reload</a>
-        <a class="dismiss">🗙</a>
+        <a class="dismiss" role="button" aria-label="Dismiss"><i class="bi bi-x-lg" aria-hidden="true"></i></a>
     </div>
 
     <script>window.__APP_BRAND__ = '@(ViewBag?.BrandingName ?? "Requestr")';</script>

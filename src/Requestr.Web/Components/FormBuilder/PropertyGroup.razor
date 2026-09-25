@@ -1,0 +1,38 @@
+@* Collapsible heading + body used in the designer properties panel. With Enabled=false it renders only its content. *@
+
+@if (!Enabled)
+{
+    @ChildContent
+}
+else
+{
+    <section class="property-group">
+        <h3 class="h6 property-group-heading">
+            <button type="button" class="property-group-toggle" aria-expanded="@(IsOpen ? "true" : "false")" aria-controls="@_bodyId" @onclick="Toggle">
+                <span>@Title</span><i class="bi @(IsOpen ? "bi-chevron-up" : "bi-chevron-down")" aria-hidden="true"></i>
+            </button>
+        </h3>
+        <div id="@_bodyId" class="property-group-body" hidden="@(!IsOpen)">
+            @ChildContent
+        </div>
+    </section>
+}
+
+@code {
+    private readonly string _bodyId = "property-group-" + Guid.NewGuid().ToString("N");
+    private bool _collapsed;
+
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public bool Enabled { get; set; } = true;
+    /// <summary>Shared set of collapsed titles; when null the group tracks its own state.</summary>
+    [Parameter] public ISet<string>? Collapsed { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool IsOpen => !(Collapsed?.Contains(Title) ?? _collapsed);
+
+    private void Toggle()
+    {
+        if (Collapsed == null) { _collapsed = !_collapsed; return; }
+        if (!Collapsed.Remove(Title)) Collapsed.Add(Title);
+    }
+}

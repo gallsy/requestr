@@ -4,44 +4,69 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JSRuntime
 
-<div class="designer-workspace" @ref="_root" data-presentation-only="@PresentationOnly.ToString().ToLowerInvariant()">
-    <aside class="designer-outline" aria-label="Form outline">
-        <div class="d-flex align-items-center justify-content-between mb-3">
+<div class="designer-workspace @(_outlineOpen ? "outline-open" : "")" @ref="_root" data-presentation-only="@PresentationOnly.ToString().ToLowerInvariant()">
+    <aside id="designer-outline" class="designer-outline" aria-label="Form outline" @onkeydown="OnOutlineKeyDown">
+        <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
             <h2 class="h6 mb-0">Outline</h2>
-            <button class="btn btn-sm btn-outline-primary" type="button" @onclick="AddSection" title="Add section" aria-label="Add section"><i class="bi bi-plus-lg"></i></button>
+            <div class="d-flex gap-1">
+                <button class="btn btn-sm btn-outline-primary" type="button" @onclick="AddSection" title="Add section" aria-label="Add section"><i class="bi bi-plus-lg" aria-hidden="true"></i></button>
+                <button class="btn btn-sm btn-outline-secondary outline-close" type="button" @onclick="CloseOutline" title="Close outline" aria-label="Close outline"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+            </div>
         </div>
         @foreach (var section in Form.Sections.OrderBy(section => section.DisplayOrder))
         {
             <button type="button" class="outline-item @(_section == section && _field == null ? "selected" : "")" @onclick="() => SelectSection(section)">
-                <i class="bi bi-layout-text-window me-2"></i>@(section.Name)
+                <i class="bi bi-layout-text-window" aria-hidden="true"></i><span class="text-truncate">@(section.Name)</span>
             </button>
             @foreach (var field in Form.Fields.Where(field => field.FormSectionId == section.Id).OrderBy(field => field.GridRow).ThenBy(field => field.GridColumn))
             {
-                <button type="button" class="outline-item outline-field @(_field == field ? "selected" : "")" @onclick="() => SelectField(field)">@field.DisplayName</button>
+                <button type="button" class="outline-item outline-field @(_field == field ? "selected" : "")" @onclick="() => SelectField(field)"><span class="text-truncate">@field.DisplayName</span>@FieldFlags(field)</button>
             }
         }
         @foreach (var field in Form.Fields.Where(field => !Form.Sections.Any(section => section.Id == field.FormSectionId)))
         {
-            <button type="button" class="outline-item @(_field == field ? "selected" : "")" @onclick="() => SelectField(field)">@field.DisplayName</button>
+            <button type="button" class="outline-item @(_field == field ? "selected" : "")" @onclick="() => SelectField(field)"><span class="text-truncate">@field.DisplayName</span>@FieldFlags(field)</button>
         }
         @if (!PresentationOnly)
         {
+            var remaining = Columns.Where(column => !Form.Fields.Any(field => field.Name == column.Name)).ToList();
+            var matches = remaining.Where(column => column.Name.Contains(_search, StringComparison.OrdinalIgnoreCase) || column.DataType.Contains(_search, StringComparison.OrdinalIgnoreCase)).ToList();
             <h2 class="h6 mt-4">Available Fields</h2>
-            <input class="form-control form-control-sm mb-2" placeholder="Search fields" aria-label="Search available fields" @bind="_search" @bind:event="oninput" />
-            <small class="text-muted">@Columns.Count(column => !Form.Fields.Any(field => field.Name == column.Name)) available</small>
-            @foreach (var column in Columns.Where(column => !Form.Fields.Any(field => field.Name == column.Name) && (column.Name.Contains(_search, StringComparison.OrdinalIgnoreCase) || column.DataType.Contains(_search, StringComparison.OrdinalIgnoreCase))))
+            @if (remaining.Count == 0)
             {
-                <div class="available-field">
-                    <button class="grid-handle" type="button" data-grid-action="add" data-field-name="@column.Name" title="Drag field onto grid" aria-label="@($"Drag {column.Name} onto grid")"><i class="bi bi-grip-vertical" aria-hidden="true"></i></button>
-                    <button class="outline-item" type="button" @onclick="() => AddField(column)" title="Add to selected section"><i class="bi bi-plus me-2"></i>@column.Name
-                        <small class="d-block text-muted">@column.DataType @(column.IsPrimaryKey ? "PK" : "") @(column.IsIdentity ? "Identity" : "") @(column.IsNullable ? "Optional" : "Required")</small>
-                    </button>
-                </div>
+                <p class="outline-empty text-muted mb-0"><i class="bi bi-check2-circle me-1" aria-hidden="true"></i>All table columns are on the form.</p>
+            }
+            else
+            {
+                <input class="form-control form-control-sm mb-1" placeholder="Search fields" aria-label="Search available fields" @bind="_search" @bind:event="oninput" />
+                <small class="text-muted d-block mb-2">@remaining.Count available</small>
+                @foreach (var column in matches)
+                {
+                    <div class="available-field">
+                        <button class="grid-handle" type="button" data-grid-action="add" data-field-name="@column.Name" title="Drag field onto grid" aria-label="@($"Drag {column.Name} onto grid")"><i class="bi bi-grip-vertical" aria-hidden="true"></i></button>
+                        <button class="outline-item" type="button" @onclick="() => AddField(column)" title="Add to selected section">
+                            <i class="bi bi-plus" aria-hidden="true"></i><span class="text-truncate">@column.Name</span>
+                            <span class="type-chips">
+                                <span class="type-chip">@column.DataType</span>
+                                @if (column.IsPrimaryKey) { <span class="type-chip">PK</span> }
+                                @if (column.IsIdentity) { <span class="type-chip">Identity</span> }
+                                @if (!column.IsNullable) { <span class="text-danger" title="Required (NOT NULL)">*</span> }
+                            </span>
+                        </button>
+                    </div>
+                }
+                @if (matches.Count == 0) { <p class="outline-empty text-muted mb-0">No columns match "@_search".</p> }
             }
         }
     </aside>
+    <div class="outline-backdrop" @onclick="CloseOutline"></div>
     <main class="designer-canvas" aria-label="Form layout">
-        <h2 class="h5 mb-4">@Form.Name</h2>
+        <div class="canvas-toolbar">
+            <button type="button" class="btn btn-sm btn-outline-secondary outline-toggle" @onclick="ToggleOutline" aria-controls="designer-outline" aria-expanded="@(_outlineOpen ? "true" : "false")">
+                <i class="bi bi-layout-sidebar me-1" aria-hidden="true"></i>Outline &amp; fields
+            </button>
+            <span class="small text-muted">@CanvasSummary</span>
+        </div>
         @foreach (var section in Form.Sections.OrderBy(section => section.DisplayOrder))
         {
             <section class="canvas-section @(_section == section ? "active-section" : "")">
@@ -51,18 +76,22 @@
                 </button>
                 @if (!string.IsNullOrWhiteSpace(section.Description)) { <p class="small text-muted">@(section.Description)</p> }
                 <div class="canvas-fields" data-section-id="@(section.Id)" data-columns="@(section.MaxColumns)" data-condition="@(section.VisibilityCondition ?? "")"
-                     style="grid-template-columns: repeat(@(section.MaxColumns), minmax(0, 1fr)); grid-template-rows: repeat(@Math.Min(1000, DesignerGrid.NextRow(Form, section)), minmax(128px, auto));">
+                     style="grid-template-columns: repeat(@(section.MaxColumns), minmax(0, 1fr)); grid-template-rows: repeat(@Math.Min(1000, DesignerGrid.NextRow(Form, section)), minmax(88px, auto));">
                     @foreach (var field in Form.Fields.Where(field => field.FormSectionId == section.Id).OrderBy(field => field.GridRow).ThenBy(field => field.GridColumn))
                     {
                         var issue = GetFieldIssue?.Invoke(field);
-                        <div @key="field.Name" class="canvas-field @(_field == field ? "selected" : "") @(!string.IsNullOrEmpty(issue) ? "schema-issue" : "")"
+                        <div @key="field.Name" class="canvas-field @(_field == field ? "selected" : "") @(!string.IsNullOrEmpty(issue) ? "schema-issue" : "") @(!field.IsVisible ? "field-hidden" : "")"
                              data-field-name="@field.Name" data-row="@field.GridRow" data-column="@field.GridColumn" data-span="@field.GridColumnSpan"
                              style="grid-row: @field.GridRow; grid-column: @field.GridColumn / span @field.GridColumnSpan;" @onclick="() => SelectField(field)">
                             <button type="button" class="grid-handle field-drag-handle" data-grid-action="move" title="Move field" aria-label="@($"Move {field.DisplayName}")"><i class="bi bi-grip-vertical" aria-hidden="true"></i></button>
                             <button type="button" class="field-select" @onclick="() => SelectField(field)" aria-pressed="@(_field == field)">
-                            <span class="d-flex justify-content-between gap-2"><span>@field.DisplayName @if (field.IsRequired) { <span class="text-danger">*</span> }</span>
-                                @if (!string.IsNullOrEmpty(field.VisibilityCondition) || !string.IsNullOrEmpty(field.LookupParentField)) { <i class="bi bi-signpost-split" title="Conditional field"></i> }
-                                @if (!string.IsNullOrEmpty(issue)) { <i class="bi bi-exclamation-triangle text-warning" title="@issue" aria-label="@issue"></i> }
+                            <span class="field-title"><span class="text-truncate">@field.DisplayName @if (field.IsRequired) { <span class="text-danger">*</span> }</span>
+                                <span class="field-flags">
+                                    @if (!string.IsNullOrEmpty(field.VisibilityCondition) || !string.IsNullOrEmpty(field.LookupParentField)) { <i class="bi bi-signpost-split" title="Conditional field"></i> }
+                                    @if (!field.IsVisible) { <i class="bi bi-eye-slash" role="img" title="Hidden" aria-label="Hidden"></i> }
+                                    @if (field.IsReadOnly) { <i class="bi bi-lock" role="img" title="Read only" aria-label="Read only"></i> }
+                                    @if (!string.IsNullOrEmpty(issue)) { <i class="bi bi-exclamation-triangle text-warning" title="@issue" aria-label="@issue"></i> }
+                                </span>
                             </span>
                             <span class="field-preview" aria-hidden="true">
                                 @if (field.ControlType == "checkbox") { <i class="bi bi-square"></i> }
@@ -80,53 +109,62 @@
     <aside class="designer-properties" aria-label="Properties">
         @if (_field != null)
         {
-            <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
-                <div><h2 class="h6 mb-1">@_field.DisplayName</h2><small class="text-muted">@_field.Name</small></div>
-                @if (!PresentationOnly) { <button class="btn btn-sm btn-outline-danger" type="button" title="Remove field" aria-label="Remove field" @onclick="RemoveField"><i class="bi bi-trash"></i></button> }
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+                <div><h2 class="h6 mb-1 text-break">@_field.DisplayName</h2><small class="text-muted">@_field.Name</small></div>
+                @if (!PresentationOnly) { <button class="btn btn-sm btn-outline-danger" type="button" title="Remove field" aria-label="Remove field" @onclick="RemoveField"><i class="bi bi-trash" aria-hidden="true"></i></button> }
             </div>
-            <h3 class="h6 border-bottom pb-2 mb-3">Layout</h3>
+            <PropertyGroup Title="Layout" Collapsed="_collapsedGroups">
             @if (!string.IsNullOrEmpty(GetFieldIssue?.Invoke(_field))) { <div class="small text-warning mb-2">@GetFieldIssue(_field)</div> }
-            <label class="form-label">Section</label>
-            <select @key="(_positionVersion.ToString() + nameof(MoveSection))" class="form-select mb-2" value="@_field.FormSectionId" @onchange="MoveSection" aria-label="Field section">
+            <label class="form-label" for="@(_id + "-section")">Section</label>
+            <select id="@(_id + "-section")" @key="(_positionVersion.ToString() + nameof(MoveSection))" class="form-select mb-2" value="@_field.FormSectionId" @onchange="MoveSection" aria-label="Field section">
                 @if (_section == null) { <option value="">Unsectioned</option> }
                 @foreach (var section in Form.Sections.Where(section => !PresentationOnly || (section.VisibilityCondition ?? "") == (_section?.VisibilityCondition ?? ""))) { <option value="@(section.Id)">@(section.Name)</option> }
             </select>
             @if (_section != null)
             {
                 <div class="row g-2 mb-2" @key="_positionVersion">
-                    <div class="col-6"><label class="form-label">Row</label><input class="form-control" type="number" min="1" max="1000" value="@_field.GridRow" @onchange="args => ChangePosition(args, true)" aria-label="Field row" /></div>
-                    <div class="col-6"><label class="form-label">Column</label><input class="form-control" type="number" min="1" max="@_section.MaxColumns" value="@_field.GridColumn" @onchange="args => ChangePosition(args, false)" aria-label="Field column" /></div>
-                </div>
-                <div class="btn-group mb-3">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => MoveField(-1)" title="Move field up" aria-label="Move field up"><i class="bi bi-arrow-up"></i></button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => MoveField(1)" title="Move field down" aria-label="Move field down"><i class="bi bi-arrow-down"></i></button>
+                    <div class="col-7">
+                        <label class="form-label" for="@(_id + "-row")">Row</label>
+                        <div class="input-group">
+                            <input id="@(_id + "-row")" class="form-control" type="number" min="1" max="1000" value="@_field.GridRow" @onchange="args => ChangePosition(args, true)" aria-label="Field row" />
+                            <button type="button" class="btn btn-outline-secondary" @onclick="() => MoveField(-1)" title="Move field up" aria-label="Move field up"><i class="bi bi-arrow-up" aria-hidden="true"></i></button>
+                            <button type="button" class="btn btn-outline-secondary" @onclick="() => MoveField(1)" title="Move field down" aria-label="Move field down"><i class="bi bi-arrow-down" aria-hidden="true"></i></button>
+                        </div>
+                    </div>
+                    <div class="col-5">
+                        <label class="form-label" for="@(_id + "-column")">Column</label>
+                        <input id="@(_id + "-column")" class="form-control" type="number" min="1" max="@_section.MaxColumns" value="@_field.GridColumn" @onchange="args => ChangePosition(args, false)" aria-label="Field column" />
+                    </div>
                 </div>
             }
-            <label class="form-label">Width</label>
-            <select @key="(_positionVersion.ToString() + nameof(ChangeWidth))" class="form-select mb-2" value="@_field.GridColumnSpan" @onchange="ChangeWidth" aria-label="Field width">
-                @for (var span = 1; span <= (_section?.MaxColumns ?? 12); span++) { <option value="@span">@span</option> }
+            <label class="form-label" for="@(_id + "-width")">Width</label>
+            <select id="@(_id + "-width")" @key="(_positionVersion.ToString() + nameof(ChangeWidth))" class="form-select mb-2" value="@_field.GridColumnSpan" @onchange="ChangeWidth" aria-label="Field width">
+                @for (var span = 1; span <= (_section?.MaxColumns ?? 12); span++) { <option value="@span">@WidthLabel(span, _section?.MaxColumns ?? 12)</option> }
             </select>
-            <FieldConfigurationModal @key="_field" Inline="true" Field="_field" Fields="Form.Fields" Sections="Form.Sections" PresentationOnly="PresentationOnly"
+            </PropertyGroup>
+            <FieldConfigurationModal @key="_field" Inline="true" Field="_field" Fields="Form.Fields" Sections="Form.Sections" PresentationOnly="PresentationOnly" CollapsedGroups="_collapsedGroups"
                 DatabaseConnectionName="@Form.DatabaseConnectionName" SqlType="@(_field.SqlDataType ?? _field.DataType)"
                 ColumnInfo="@Columns.FirstOrDefault(column => column.Name == _field.Name)" OnChanged="OnChanged" />
         }
         else if (_section != null)
         {
-            <h2 class="h6 mb-3">Section Properties</h2>
-            <h3 class="h6 border-bottom pb-2 mb-3">Content</h3>
-            <label class="form-label">Title</label><input class="form-control mb-3" @bind="_section.Name" @bind:after="Changed" />
-            <label class="form-label">Description</label><textarea class="form-control mb-3" rows="3" @bind="_section.Description" @bind:after="Changed"></textarea>
-            <h3 class="h6 border-bottom pb-2 mt-4 mb-3">Layout</h3>
-            <label class="form-label">Columns</label>
-            <select class="form-select mb-3" value="@_section.MaxColumns" @onchange="ChangeColumns" aria-label="Section columns">
+            <h2 class="h6 mb-1">Section Properties</h2>
+            <PropertyGroup Title="Content" Collapsed="_collapsedGroups">
+            <label class="form-label" for="@(_id + "-title")">Title</label><input id="@(_id + "-title")" class="form-control mb-3" @bind="_section.Name" @bind:after="Changed" />
+            <label class="form-label" for="@(_id + "-description")">Description</label><textarea id="@(_id + "-description")" class="form-control mb-2" rows="3" @bind="_section.Description" @bind:after="Changed"></textarea>
+            </PropertyGroup>
+            <PropertyGroup Title="Layout" Collapsed="_collapsedGroups">
+            <label class="form-label" for="@(_id + "-columns")">Columns</label>
+            <select id="@(_id + "-columns")" class="form-select mb-3" value="@_section.MaxColumns" @onchange="ChangeColumns" aria-label="Section columns">
                 @foreach (var count in new[] { 1, 2, 3, 4, 6, 12 }) { <option value="@count" disabled="@(!DesignerGrid.CanSetColumns(Form, _section, count))">@count</option> }
             </select>
             <button type="button" class="btn btn-outline-secondary btn-sm mb-3" @onclick="Reflow"><i class="bi bi-grid me-1" aria-hidden="true"></i>Auto-arrange</button>
-            <label class="form-label">Order</label><input class="form-control mb-3" type="number" min="1" @bind="_section.DisplayOrder" @bind:after="Changed" />
-            @if (!PresentationOnly) { <ConditionEditor Fields="Form.Fields" ExcludedSection="_section.Id" @bind-Value="_section.VisibilityCondition" @bind-Value:after="Changed" /> }
-            <button type="button" class="btn btn-outline-danger btn-sm" @onclick="RemoveSection" disabled="@(PresentationOnly && !string.IsNullOrWhiteSpace(_section.VisibilityCondition))"><i class="bi bi-trash me-1"></i>Remove section</button>
+            <label class="form-label d-block" for="@(_id + "-order")">Order</label><input id="@(_id + "-order")" class="form-control mb-2" type="number" min="1" @bind="_section.DisplayOrder" @bind:after="Changed" />
+            </PropertyGroup>
+            @if (!PresentationOnly) { <div class="mt-3"><ConditionEditor Fields="Form.Fields" ExcludedSection="_section.Id" @bind-Value="_section.VisibilityCondition" @bind-Value:after="Changed" /></div> }
+            <button type="button" class="btn btn-outline-danger btn-sm" @onclick="RemoveSection" disabled="@(PresentationOnly && !string.IsNullOrWhiteSpace(_section.VisibilityCondition))"><i class="bi bi-trash me-1" aria-hidden="true"></i>Remove section</button>
         }
-        else { <h2 class="h6">Properties</h2><span class="text-muted small">No selection</span> }
+        else { <h2 class="h6">Properties</h2><span class="text-muted small">Select a field or section to edit it.</span> }
         <div class="small text-muted mt-2" role="status">@_placementStatus</div>
     </aside>
 </div>
@@ -148,6 +186,38 @@
     private FormField? _field;
     private FormSection? _section;
     private string _search = "";
+    private readonly string _id = "designer-" + Guid.NewGuid().ToString("N");
+    // Kept here (not in the per-field properties component) so collapsed groups persist while switching fields.
+    private readonly HashSet<string> _collapsedGroups = new() { "Help", "Generated Value" };
+    private bool _outlineOpen;
+
+    private string CanvasSummary
+    {
+        get
+        {
+            var sections = Form.Sections.Count;
+            var fields = Form.Fields.Count;
+            return $"{sections} section{(sections == 1 ? "" : "s")} · {fields} field{(fields == 1 ? "" : "s")}";
+        }
+    }
+
+    private static RenderFragment FieldFlags(FormField field) => @<span class="field-flags">@if (!field.IsVisible) {<i class="bi bi-eye-slash" role="img" title="Hidden" aria-label="Hidden"></i>}@if (field.IsReadOnly) {<i class="bi bi-lock" role="img" title="Read only" aria-label="Read only"></i>}</span>;
+
+    private static string WidthLabel(int span, int columns)
+    {
+        var name = span == columns ? "Full width"
+            : span * 2 == columns ? "Half"
+            : span * 3 == columns ? "Third"
+            : span * 4 == columns ? "Quarter"
+            : span * 3 == columns * 2 ? "Two thirds"
+            : span * 4 == columns * 3 ? "Three quarters"
+            : null;
+        return name == null ? $"{span} of {columns} columns" : $"{name} ({span} of {columns})";
+    }
+
+    private void ToggleOutline() => _outlineOpen = !_outlineOpen;
+    private void CloseOutline() => _outlineOpen = false;
+    private void OnOutlineKeyDown(KeyboardEventArgs args) { if (args.Key == "Escape") _outlineOpen = false; }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

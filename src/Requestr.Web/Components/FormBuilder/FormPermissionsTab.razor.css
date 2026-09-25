@@ -1,0 +1,5 @@
+.role-list { display: flex; flex-direction: column; gap: .25rem; }
+.role-item { display: flex; align-items: center; gap: .5rem; padding-right: .5rem; border-radius: var(--border-radius-sm); border-left: 3px solid transparent; }
+.role-item:hover { background: var(--bg-subtle); }
+.role-item.selected { background: var(--row-selected-bg); border-left-color: var(--primary); }
+.role-select { flex: 1; min-width: 0; padding: .5rem .75rem; border: 0; background: transparent; color: var(--text-color); text-align: left; overflow-wrap: anywhere; }

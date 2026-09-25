@@ -1,0 +1,3 @@
+.behavior-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: .625rem 1rem; }
+.behavior-grid .form-check { margin-bottom: 0; }
+.form-text { font-size: .75rem; }

@@ -1,0 +1,176 @@
+.workflow-canvas {
+    position: relative;
+    min-height: 600px;
+    overflow: auto;
+    border: 1px dashed var(--border-color);
+    border-radius: var(--border-radius-sm);
+    background-image: radial-gradient(circle, var(--border-color) 1px, transparent 1px);
+    background-size: 20px 20px;
+    background-color: var(--bg-subtle);
+}
+
+.workflow-step.dragging {
+    opacity: 0.8;
+    transform: scale(1.05);
+    transition: transform 0.1s ease;
+}
+
+.workflow-step:hover {
+    transform: scale(1.02);
+    transition: transform 0.1s ease;
+}
+
+.workflow-step .card {
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.2s ease;
+    background-color: var(--card-bg);
+}
+
+.workflow-step:hover .card {
+    box-shadow: var(--shadow);
+}
+
+.workflow-step.linking-source {
+    outline: 3px solid var(--primary);
+    outline-offset: 2px;
+    animation: pulse 1s infinite;
+}
+
+.workflow-step.linking-target {
+    outline: 3px solid var(--success);
+    outline-offset: 2px;
+}
+
+.workflow-step.linking-invalid,
+.workflow-step.delete-mode {
+    outline: 3px solid var(--danger);
+    outline-offset: 2px;
+}
+
+@keyframes pulse {
+    0%, 100% { outline-color: var(--primary); }
+    50% { outline-color: color-mix(in srgb, var(--primary) 50%, transparent); }
+}
+
+/* Mode banners: tinted, theme-aware (was white text on bright gradients) */
+.link-mode-banner {
+    --banner-color: var(--primary);
+    padding: 0.625rem 0.875rem;
+    margin-bottom: 0.75rem;
+    border-radius: var(--border-radius-sm);
+    border-left: 4px solid var(--banner-color);
+    background: color-mix(in srgb, var(--banner-color) 12%, transparent);
+    color: var(--text-color);
+    animation: slideDown 0.3s ease;
+}
+
+.link-mode-banner.banner-danger { --banner-color: var(--danger); }
+.link-mode-banner.banner-warning { --banner-color: var(--warning); }
+
+@keyframes slideDown {
+    from { transform: translateY(-100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.workflow-step.delete-mode .step-delete-icon {
+    display: block !important;
+}
+
+.step-delete-icon {
+    display: none;
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: var(--danger);
+    color: #ffffff;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
+    line-height: 20px;
+    text-align: center;
+    cursor: pointer;
+    z-index: 1001;
+}
+
+.step-delete-icon:hover {
+    filter: brightness(0.9);
+    transform: scale(1.1);
+}
+
+.card-header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.action-icon {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    color: var(--text-color);
+    font-weight: 600;
+}
+
+.action-icon:hover {
+    background: var(--bg-subtle);
+    border-color: var(--text-color);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow);
+}
+
+.action-icon.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #ffffff;
+}
+
+.action-icon.active.danger {
+    background: var(--danger);
+    border-color: var(--danger);
+}
+
+.action-icon.active.warning {
+    background: var(--warning);
+    border-color: var(--warning);
+    color: #1e293b;
+}
+
+.unsaved-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--warning);
+    margin-left: 6px;
+    animation: unsavedPulse 2s ease-in-out infinite;
+}
+
+@keyframes unsavedPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.btn-outline-webhook {
+    color: var(--purple);
+    border: 1px solid var(--purple);
+    background: transparent;
+}
+
+.btn-outline-webhook:hover {
+    color: #ffffff;
+    background: var(--purple);
+}
+
+.border-purple {
+    border-color: var(--purple) !important;
+}

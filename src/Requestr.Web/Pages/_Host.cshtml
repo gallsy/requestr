@@ -6,6 +6,7 @@
     Layout = "_Layout";
     var branding = HttpContext.RequestServices.GetService(typeof(AppBrandingOptions)) as AppBrandingOptions;
     ViewBag.BrandingName = branding?.ApplicationName ?? "Requestr";
+    var ui = UiPreferences.FromCookies(HttpContext.Request.Cookies);
 }
 
-<component type="typeof(App)" render-mode="ServerPrerendered" />
+<component type="typeof(App)" render-mode="ServerPrerendered" param-DarkMode="ui.DarkMode" param-SidebarCollapsed="ui.SidebarCollapsed" />

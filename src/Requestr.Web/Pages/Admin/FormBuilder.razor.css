@@ -1,4 +1,11 @@
-.builder-savebar { position: sticky; top: 0; z-index: 100; background: var(--bg-color); padding-block: .5rem; border-bottom: 1px solid var(--border-color); margin-bottom: 1rem; }
-.builder-savebar ::deep .page-header { margin-bottom: 0; }
+/* Header + tabs stick below the layout top bar (--topbar-height, 0 on desktop); height is published as --builder-header-height */
+.builder-savebar { position: sticky; top: var(--topbar-height, 0px); z-index: 100; background: var(--bg-color); padding-top: .5rem; margin-bottom: 1rem; }
+.builder-savebar ::deep .page-header { margin-bottom: .75rem; }
 .builder-savebar ::deep h1 { font-size: 1.5rem; overflow-wrap: anywhere; }
+.builder-tabs { margin-bottom: 0; }
+.save-status { display: inline-flex; align-items: center; gap: .375rem; padding: .125rem .625rem; border-radius: 999px; font-size: .75rem; font-weight: 500; border: 1px solid var(--border-color); color: var(--text-muted); }
+.save-status i { font-size: .625rem; }
+.save-status.saved i { font-size: .875rem; color: var(--success); }
+.save-status.unsaved { border-color: var(--warning); color: var(--text-color); }
+.save-status.unsaved i { color: var(--warning); }
 @media (max-width: 767px) { .builder-savebar { position: static; } .builder-savebar ::deep .page-header { flex-wrap: wrap; gap: .75rem; } .builder-savebar ::deep button { margin-block: .25rem; } }

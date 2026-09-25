@@ -1,0 +1,6 @@
+.status-explainer { --explainer-color: var(--info); padding: 1rem 1.25rem; border-radius: var(--border-radius); border-left: 4px solid var(--explainer-color); background: color-mix(in srgb, var(--explainer-color) 10%, transparent); }
+.status-explainer-icon { font-size: 1.25rem; margin-top: 2px; color: var(--explainer-color); }
+.status-pending { --explainer-color: var(--warning); }
+.status-success { --explainer-color: var(--success); }
+.status-danger { --explainer-color: var(--danger); }
+.status-info { --explainer-color: var(--info); }

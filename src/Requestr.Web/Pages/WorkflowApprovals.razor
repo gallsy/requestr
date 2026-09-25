@@ -17,78 +17,31 @@
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
 @inject IUserTimezoneService Tz
-<PageTitle>Workflow Approvals | @Branding.ApplicationName</PageTitle>
+<PageTitle>Approvals | @Branding.ApplicationName</PageTitle>
 
 <PageHeader Title="Approvals" Description="Review and process form requests awaiting approval" />
 
-<div class="container-fluid">
-
-            <!-- Advanced Filters -->
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h6 class="mb-0">
-                        <i class="bi bi-funnel me-2"></i>
-                        Filters
-                        <button class="btn btn-sm btn-link p-0 ms-2" @onclick="ToggleAdvancedFilters">
-                            <i class="bi bi-@(_showAdvancedFilters ? "chevron-up" : "chevron-down")"></i>
-                        </button>
-                    </h6>
-                </div>
-                <div class="card-body @(_showAdvancedFilters ? "" : "d-none")">
-                    <div class="row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label">Form</label>
-                            <select class="form-select form-select-sm" @bind="SelectedFormFilter" @bind:after="ApplyFilters">
-                                <option value="">All Forms</option>
-                                @foreach (var form in _availableForms)
-                                {
-                                    <option value="@form.Id">@form.Name</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Status</label>
-                            <select class="form-select form-select-sm" @bind="SelectedStatusFilter" @bind:after="ApplyFilters">
-                                <option value="">All Statuses</option>
-                                <option value="Pending">Pending</option>
-                                <option value="InProgress">In Progress</option>
-                                <option value="Completed">Completed</option>
-                                <option value="Skipped">Skipped</option>
-                                <option value="Failed">Failed</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Sort Order</label>
-                            <select class="form-select form-select-sm" @bind="SortOrder" @bind:after="ApplyFilters">
-                                <option value="newest">Newest First</option>
-                                <option value="oldest">Oldest First</option>
-                            </select>
-                        </div>
-                        <div class="col-md-12">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <small class="text-muted">
-                                    @if (FilteredTasks.Any())
-                                    {
-                                        <text>Showing @(((_currentPage - 1) * _pageSize) + 1)–@(Math.Min(_currentPage * _pageSize, _totalCount)) of @_totalCount approval tasks</text>
-                                    }
-                                    else if (_totalCount > 0)
-                                    {
-                                        <text>No tasks match your current filters (@_totalCount total)</text>
-                                    }
-                                    else
-                                    {
-                                        <text>No approval tasks found</text>
-                                    }
-                                </small>
-                                <button class="btn btn-sm btn-outline-primary" @onclick="RefreshData">
-                                    <i class="bi bi-arrow-clockwise me-1"></i>
-                                    Refresh
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    <FilterBar ShowClear="HasActiveFilters" OnClear="ClearFilters">
+        <select class="form-select form-select-sm" aria-label="Status" @bind="SelectedStatusFilter" @bind:after="ApplyFilters">
+            <option value="">All Statuses</option>
+            <option value="Pending">Pending</option>
+            <option value="InProgress">In Progress</option>
+            <option value="Completed">Completed</option>
+            <option value="Skipped">Skipped</option>
+            <option value="Failed">Failed</option>
+        </select>
+        <select class="form-select form-select-sm" aria-label="Form" @bind="SelectedFormFilter" @bind:after="ApplyFilters">
+            <option value="">All Forms</option>
+            @foreach (var form in _availableForms)
+            {
+                <option value="@form.Id">@form.Name</option>
+            }
+        </select>
+        <select class="form-select form-select-sm" aria-label="Sort order" @bind="SortOrder" @bind:after="ApplyFilters">
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+        </select>
+    </FilterBar>
 
             @if (!string.IsNullOrEmpty(SuccessMessage))
             {
@@ -103,21 +56,24 @@
             }
 
             <div class="card">
-                <div class="card-body">
                     @if (IsLoading)
                     {
-                        <LoadingSpinner Message="Loading approvals..." />
+                        <div class="card-body">
+                            <LoadingSpinner Message="Loading approvals..." />
+                        </div>
                     }
                     else if (!FilteredTasks.Any())
                     {
-                        <EmptyState Title="No pending approvals" 
-                                    Description="@GetEmptyStateDescription()" />
+                        <div class="card-body">
+                            <EmptyState Title="No pending approvals" 
+                                        Description="@GetEmptyStateDescription()" />
+                        </div>
                     }
                     else
                     {
                         <div class="table-responsive">
                             <table class="table table-hover">
-                                <thead class="thead-themed">
+                                <thead>
                                     <tr>
                                         <th>ID</th>
                                         <th>Form</th>
@@ -126,7 +82,7 @@
                                         <th>Status</th>
                                         <th>Requested By</th>
                                         <th>Date</th>
-                                        <th>Actions</th>
+                                        <th class="col-actions">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -157,10 +113,10 @@
                                             <td>
                                                 <small>@Tz.FormatDate(task.Request.RequestedAt)</small>
                                             </td>
-                                            <td>
-                                                <button class="btn btn-sm btn-outline-primary" 
+                                            <td class="col-actions">
+                                                <button class="btn btn-sm btn-outline-primary" title="Review" aria-label="Review request"
                                                         @onclick="() => ViewApprovalTask(task)">
-                                                    <i class="bi bi-eye"></i>
+                                                    <i class="bi bi-eye" aria-hidden="true"></i>
                                                 </button>
                                             </td>
                                         </tr>
@@ -169,58 +125,17 @@
                             </table>
                         </div>
 
-                        <!-- Pagination -->
-                        @if (_totalPages > 1 || _pageSize != 10)
-                        {
-                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mt-3">
-                                <div class="d-flex align-items-center gap-2">
-                                    <label class="mb-0 text-muted">Show</label>
-                                    <select class="form-select form-select-sm" style="width: auto;" @onchange="OnPageSizeChanged">
-                                        <option value="10" selected="@(_pageSize == 10)">10</option>
-                                        <option value="25" selected="@(_pageSize == 25)">25</option>
-                                        <option value="50" selected="@(_pageSize == 50)">50</option>
-                                        <option value="100" selected="@(_pageSize == 100)">100</option>
-                                    </select>
-                                    <label class="mb-0 text-muted">per page</label>
-                                </div>
-                                @if (_totalPages > 1)
-                                {
-                                    <ul class="pagination mb-0">
-                                        <li class="page-item @(_currentPage == 1 ? "disabled" : "")">
-                                            <button class="page-link" @onclick="() => ChangePage(1)">First</button>
-                                        </li>
-                                        <li class="page-item @(_currentPage == 1 ? "disabled" : "")">
-                                            <button class="page-link" @onclick="() => ChangePage(_currentPage - 1)">Previous</button>
-                                        </li>
-
-                                        @for (int i = Math.Max(1, _currentPage - 2); i <= Math.Min(_totalPages, _currentPage + 2); i++)
-                                        {
-                                            var pageNum = i;
-                                            <li class="page-item @(_currentPage == pageNum ? "active" : "")">
-                                                <button class="page-link" @onclick="() => ChangePage(pageNum)">@pageNum</button>
-                                            </li>
-                                        }
-
-                                        <li class="page-item @(_currentPage == _totalPages ? "disabled" : "")">
-                                            <button class="page-link" @onclick="() => ChangePage(_currentPage + 1)">Next</button>
-                                        </li>
-                                        <li class="page-item @(_currentPage == _totalPages ? "disabled" : "")">
-                                            <button class="page-link" @onclick="() => ChangePage(_totalPages)">Last</button>
-                                        </li>
-                                    </ul>
-                                }
-                            </div>
-                        }
+                        <div class="card-footer">
+                            <TablePagination CurrentPage="_currentPage" TotalPages="_totalPages" PageSize="_pageSize" TotalCount="_totalCount"
+                                             AriaLabel="Approvals pagination" OnPageChanged="ChangePage" OnPageSizeChanged="OnPageSizeChanged" />
+                        </div>
                     }
-                </div>
             </div>
-        </div>
 
 @code {
     private List<WorkflowApprovalTask> AllTasks = new();
     private List<WorkflowApprovalTask> FilteredTasks = new();
     private bool IsLoading = true;
-    private bool _showAdvancedFilters = true;
     private int _currentPage = 1;
     private int _pageSize = 10;
     private int _totalCount = 0;
@@ -332,11 +247,6 @@
         }
     }
 
-    private async Task RefreshData()
-    {
-        await LoadData();
-    }
-
     private string GetRequestTypeBadgeColor(RequestType requestType) => UiHelper.GetRequestTypeColor(requestType);
     private string GetStatusBadgeClass(RequestStatus status) => UiHelper.GetStatusBadgeClass(status);
 
@@ -346,9 +256,15 @@
         ErrorMessage = null;
     }
 
-    private void ToggleAdvancedFilters()
+    private bool HasActiveFilters =>
+        !string.IsNullOrEmpty(SelectedFormFilter) || SelectedStatusFilter != "InProgress" || SortOrder != "newest";
+
+    private async Task ClearFilters()
     {
-        _showAdvancedFilters = !_showAdvancedFilters;
+        SelectedFormFilter = "";
+        SelectedStatusFilter = "InProgress";
+        SortOrder = "newest";
+        await ApplyFilters();
     }
 
     private async Task ChangePage(int page)
@@ -358,13 +274,10 @@
         await LoadData();
     }
 
-    private async Task OnPageSizeChanged(ChangeEventArgs e)
+    private async Task OnPageSizeChanged(int newSize)
     {
-        if (int.TryParse(e.Value?.ToString(), out var newSize))
-        {
-            _pageSize = newSize;
-            _currentPage = 1;
-            await LoadData();
-        }
+        _pageSize = newSize;
+        _currentPage = 1;
+        await LoadData();
     }
 }

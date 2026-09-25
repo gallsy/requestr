@@ -10,7 +10,7 @@
 @inject IJSRuntime JSRuntime
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
-<PageTitle>Create New Request | @Branding.ApplicationName</PageTitle>
+<PageTitle>New Request | @Branding.ApplicationName</PageTitle>
 
 <PageHeader Title="New Request" 
             Description="Choose a form below to submit a new request." />
@@ -34,48 +34,43 @@ else if (_forms == null || !_forms.Any())
 else
 {
     @* --- Filter bar --- *@
-    <div class="filter-bar mb-4">
-        <div class="row g-3 align-items-center">
-            <div class="col-12 col-md">
-                <div class="input-group">
-                    <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input type="text" class="form-control" placeholder="Search forms..." 
-                           @bind="_searchText" @bind:event="oninput" @onkeyup="ApplyFilters" />
-                    @if (!string.IsNullOrEmpty(_searchText))
-                    {
-                        <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch">
-                            <i class="bi bi-x-lg"></i>
-                        </button>
-                    }
-                </div>
+    <FilterBar Summary="@($"{_filteredForms.Count} form{(_filteredForms.Count != 1 ? "s" : "")}")">
+        <ChildContent>
+            <div class="input-group input-group-sm filter-bar-search">
+                <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+                <input type="text" class="form-control" placeholder="Search forms..." aria-label="Search forms"
+                       @bind="_searchText" @bind:event="oninput" @onkeyup="ApplyFilters" />
+                @if (!string.IsNullOrEmpty(_searchText))
+                {
+                    <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search" aria-label="Clear search">
+                        <i class="bi bi-x-lg" aria-hidden="true"></i>
+                    </button>
+                }
             </div>
             @if (_categories.Count > 0)
             {
-                <div class="col-12 col-md-auto">
-                    <select class="form-select" @onchange="OnCategoryChanged">
-                        <option value="">All Categories</option>
-                        @foreach (var category in _categories.OrderBy(c => c))
-                        {
-                            <option value="@category" selected="@(_selectedCategory == category)">@category</option>
-                        }
-                    </select>
-                </div>
+                <select class="form-select form-select-sm" aria-label="Category" @onchange="OnCategoryChanged">
+                    <option value="">All Categories</option>
+                    @foreach (var category in _categories.OrderBy(c => c))
+                    {
+                        <option value="@category" selected="@(_selectedCategory == category)">@category</option>
+                    }
+                </select>
             }
-            <div class="col-auto d-flex align-items-center gap-2">
-                <span class="text-muted small">@_filteredForms.Count form@(_filteredForms.Count != 1 ? "s" : "")</span>
-                <div class="btn-group btn-group-sm" role="group" aria-label="View toggle">
-                    <button type="button" class="btn @(_viewMode == ViewMode.Card ? "btn-primary" : "btn-outline-secondary")" 
-                            @onclick="() => SetViewMode(ViewMode.Card)" title="Card view">
-                        <i class="bi bi-grid-3x3-gap-fill"></i>
-                    </button>
-                    <button type="button" class="btn @(_viewMode == ViewMode.List ? "btn-primary" : "btn-outline-secondary")" 
-                            @onclick="() => SetViewMode(ViewMode.List)" title="List view">
-                        <i class="bi bi-list-ul"></i>
-                    </button>
-                </div>
+        </ChildContent>
+        <Actions>
+            <div class="btn-group btn-group-sm" role="group" aria-label="View toggle">
+                <button type="button" class="btn @(_viewMode == ViewMode.Card ? "btn-primary" : "btn-outline-secondary")" 
+                        @onclick="() => SetViewMode(ViewMode.Card)" title="Card view" aria-label="Card view" aria-pressed="@(_viewMode == ViewMode.Card ? "true" : "false")">
+                    <i class="bi bi-grid-3x3-gap-fill" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="btn @(_viewMode == ViewMode.List ? "btn-primary" : "btn-outline-secondary")" 
+                        @onclick="() => SetViewMode(ViewMode.List)" title="List view" aria-label="List view" aria-pressed="@(_viewMode == ViewMode.List ? "true" : "false")">
+                    <i class="bi bi-list-ul" aria-hidden="true"></i>
+                </button>
             </div>
-        </div>
-    </div>
+        </Actions>
+    </FilterBar>
 
     @if (!_filteredForms.Any())
     {
@@ -144,14 +139,15 @@ else
     else
     {
         @* --- List / table view --- *@
+        <div class="card">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
+            <table class="table table-hover">
                 <thead>
                     <tr>
                         <th>Name</th>
                         <th class="d-none d-md-table-cell">Category</th>
                         <th class="d-none d-md-table-cell">Table</th>
-                        <th class="text-end">Actions</th>
+                        <th class="col-actions">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -176,13 +172,14 @@ else
                                 }
                             </td>
                             <td class="d-none d-md-table-cell text-muted small">@form.TableName</td>
-                            <td class="text-end">
+                            <td class="col-actions">
                                 <FormActionButtons Form="form" Compact="true" />
                             </td>
                         </tr>
                     }
                 </tbody>
             </table>
+        </div>
         </div>
     }
 }
@@ -344,52 +341,3 @@ else
         catch { }
     }
 }
-
-<style>
-    .filter-bar {
-        padding: 1rem;
-        background-color: var(--card-bg, var(--bs-body-bg));
-        border: 1px solid var(--border-color);
-        border-radius: var(--border-radius);
-    }
-
-    .form-card {
-        border-radius: var(--border-radius);
-        overflow: hidden;
-        border: 1px solid var(--border-color);
-    }
-
-    .form-details {
-        margin-top: 1rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-
-    .form-detail-item {
-        display: flex;
-        align-items: center;
-        color: var(--text-muted);
-        font-size: 0.875rem;
-    }
-
-    .category-header {
-        display: flex;
-        align-items: center;
-        margin-bottom: 1.5rem;
-    }
-
-    .category-title {
-        margin-bottom: 0;
-        margin-right: 1rem;
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: var(--primary);
-    }
-
-    .category-line {
-        flex-grow: 1;
-        height: 1px;
-        background-color: var(--border-color);
-    }
-</style>

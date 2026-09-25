@@ -26,31 +26,98 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<FormBuilder> Logger
 @attribute [Authorize]
+@implements IAsyncDisposable
+@inject Requestr.Web.Configuration.AppBrandingOptions Branding
+
+<PageTitle>@(string.IsNullOrWhiteSpace(_formDefinition.Name) ? "New Form" : _formDefinition.Name) | @Branding.ApplicationName</PageTitle>
 
 @* Form Builder *@
 
 <NavigationLock ConfirmExternalNavigation="HasChanges" OnBeforeInternalNavigation="ConfirmNavigation" />
-<div class="builder-savebar">
-<PageHeader Title="@(string.IsNullOrWhiteSpace(_formDefinition.Name) ? "New Form" : _formDefinition.Name)">
+<div class="builder-savebar" @ref="_header">
+<PageHeader Title="@(string.IsNullOrWhiteSpace(_formDefinition.Name) ? "New Form" : _formDefinition.Name)" Description="Design fields, layout and approvals">
+    <TitleBadge>
+        <span class="save-status @(HasChanges ? "unsaved" : "saved")" role="status">
+            <i class="bi @(HasChanges ? "bi-circle-fill" : "bi-check2")" aria-hidden="true"></i>@(HasChanges ? "Unsaved changes" : "Saved")
+        </span>
+    </TitleBadge>
     <Actions>
-        <span class="small text-muted me-2" role="status">@(HasChanges ? "Unsaved changes" : "Saved")</span>
-        <button type="button" class="btn btn-outline-secondary me-2" @onclick="ShowPreview" disabled="@(_isLoading || !_canEdit)"><i class="bi bi-eye me-1"></i>Preview</button>
-        <button type="button" class="btn btn-outline-secondary me-2" @onclick="Cancel">Close</button>
-        <button type="button" class="btn btn-outline-primary me-2" @onclick="SaveAndClose" disabled="@(_isSaving || _isLoading || !_canEdit)">Save and close</button>
-        <button type="button" class="btn btn-primary" @onclick="SaveAndStay" disabled="@(_isSaving || _isLoading || !_canEdit)">
-            <i class="bi bi-save me-1"></i>
-            @if (_isSaving)
-            {
-                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                <text>Saving...</text>
-            }
-            else
-            {
-                <text>Save</text>
-            }
-        </button>
+        <button type="button" class="btn btn-outline-secondary" @onclick="ShowPreview" disabled="@(_isLoading || !_canEdit)"><i class="bi bi-eye me-1" aria-hidden="true"></i>Preview</button>
+        <button type="button" class="btn btn-outline-secondary" @onclick="Cancel">Close</button>
+        <div class="btn-group">
+            <button type="button" class="btn btn-primary" @onclick="SaveAndStay" disabled="@(_isSaving || _isLoading || !_canEdit)" title="Save (Ctrl+S)">
+                @if (_isSaving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                    <text>Saving...</text>
+                }
+                else
+                {
+                    <i class="bi bi-save me-1" aria-hidden="true"></i>
+                    <text>Save</text>
+                }
+            </button>
+            <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false"
+                    disabled="@(_isSaving || _isLoading || !_canEdit)">
+                <span class="visually-hidden">More save options</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><button type="button" class="dropdown-item" @onclick="SaveAndClose" disabled="@(_isSaving || _isLoading || !_canEdit)">Save and close</button></li>
+            </ul>
+        </div>
     </Actions>
 </PageHeader>
+@if (!_isLoading && _canEdit)
+{
+    <ul class="nav nav-tabs builder-tabs" id="formBuilderTabs" role="tablist">
+        @if (_isAdmin)
+        {
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(ActiveTab == "details" ? "active" : "")" 
+                    @onclick="@(() => SetActiveTab("details"))" 
+                    type="button">
+                <i class="bi bi-info-circle me-2"></i>
+                Form Details
+            </button>
+        </li>
+        }
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(ActiveTab == "designer" ? "active" : "")" 
+                    @onclick="@(() => SetActiveTab("designer"))" 
+                    type="button">
+                <i class="bi bi-ui-checks me-2"></i>
+                Form Designer
+            </button>
+        </li>
+        @if (_isAdmin)
+        {
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(ActiveTab == "permissions" ? "active" : "")" 
+                    @onclick="@(() => SetActiveTab("permissions"))" 
+                    type="button">
+                <i class="bi bi-shield-check me-2"></i>
+                Permissions
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(ActiveTab == "workflow" ? "active" : "")" 
+                    @onclick="@(() => SetActiveTab("workflow"))" 
+                    type="button">
+                <i class="bi bi-diagram-3 me-2"></i>
+                Workflow
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(ActiveTab == "notifications" ? "active" : "")" 
+                    @onclick="@(() => SetActiveTab("notifications"))" 
+                    type="button">
+                <i class="bi bi-bell me-2"></i>
+                Notifications
+            </button>
+        </li>
+        }
+    </ul>
+}
 </div>
 
 @* Schema Drift Warning Banner *@
@@ -87,60 +154,6 @@
     }
     else
     {
-        <!-- Tab Navigation -->
-        <div class="row">
-            <div class="col-12">
-                <ul class="nav nav-tabs mb-4" id="formBuilderTabs" role="tablist">
-                    @if (_isAdmin)
-                    {
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link @(ActiveTab == "details" ? "active" : "")" 
-                                @onclick="@(() => SetActiveTab("details"))" 
-                                type="button">
-                            <i class="bi bi-info-circle me-2"></i>
-                            Form Details
-                        </button>
-                    </li>
-                    }
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link @(ActiveTab == "designer" ? "active" : "")" 
-                                @onclick="@(() => SetActiveTab("designer"))" 
-                                type="button">
-                            <i class="bi bi-ui-checks me-2"></i>
-                            Form Designer
-                        </button>
-                    </li>
-                    @if (_isAdmin)
-                    {
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link @(ActiveTab == "permissions" ? "active" : "")" 
-                                @onclick="@(() => SetActiveTab("permissions"))" 
-                                type="button">
-                            <i class="bi bi-shield-check me-2"></i>
-                            Permissions
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link @(ActiveTab == "workflow" ? "active" : "")" 
-                                @onclick="@(() => SetActiveTab("workflow"))" 
-                                type="button">
-                            <i class="bi bi-diagram-3 me-2"></i>
-                            Workflow
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link @(ActiveTab == "notifications" ? "active" : "")" 
-                                @onclick="@(() => SetActiveTab("notifications"))" 
-                                type="button">
-                            <i class="bi bi-bell me-2"></i>
-                            Notifications
-                        </button>
-                    </li>
-                    }
-                </ul>
-            </div>
-        </div>
-
         <!-- Tab Content -->
         <div class="tab-content">
             <!-- Form Details Tab -->
@@ -243,9 +256,9 @@
             <strong>Affected Pending Requests:</strong>
         </div>
         
-        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
-            <table class="table table-sm table-striped">
-                <thead class="table-light sticky-top">
+        <div class="table-responsive table-scroll" style="max-height: 300px;">
+            <table class="table table-sm table-hover table-sticky">
+                <thead>
                     <tr>
                         <th>ID</th>
                         <th>Type</th>
@@ -356,6 +369,33 @@
     }
     private async Task SaveAndStay() { _closeAfterSave = false; await SaveForm(); }
     private async Task SaveAndClose() { _closeAfterSave = true; await SaveForm(); }
+
+    private ElementReference _header;
+    private DotNetObjectReference<FormBuilder>? _builderInterop;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        _builderInterop = DotNetObjectReference.Create(this);
+        try { await JSRuntime.InvokeVoidAsync("requestrBuilder.initialize", _header, _builderInterop); }
+        catch (JSException) { }
+    }
+
+    [JSInvokable]
+    public async Task SaveFromShortcut()
+    {
+        if (_isSaving || _isLoading || !_canEdit) return;
+        await SaveAndStay();
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JSRuntime.InvokeVoidAsync("requestrBuilder.dispose"); }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { }
+        _builderInterop?.Dispose();
+    }
 
     // Permission-related fields
     private bool _isLoadingPermissions = false;

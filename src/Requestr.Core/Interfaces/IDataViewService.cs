@@ -14,6 +14,14 @@ public interface IDataViewService
 public class DataViewResult
 {
     public List<Dictionary<string, object?>> Records { get; set; } = new();
+    public Dictionary<string, Dictionary<string, string>> LookupLabels { get; set; } = new();
+    public string GetDisplayValue(Dictionary<string, object?> record, string column)
+    {
+        if (!record.TryGetValue(column, out var value) || value == null) return "";
+        var key = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? "";
+        return LookupLabels.TryGetValue(column, out var labels) && labels.TryGetValue(key, out var label)
+            ? label : value.ToString() ?? "";
+    }
     public int TotalCount { get; set; }
     public int CurrentPage { get; set; }
     public int PageSize { get; set; }

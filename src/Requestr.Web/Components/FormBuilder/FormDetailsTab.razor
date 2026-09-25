@@ -35,12 +35,16 @@
                         <div class="mb-3">
                             <label class="form-label">Require Request Comments</label>
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" @bind="FormDefinition.RequiresRequestComments" @bind:after="Changed" id="requiresRequestCommentsSwitch">
+                                <input class="form-check-input" type="checkbox" @bind="FormDefinition.RequiresRequestComments" @bind:after="RequestCommentsRequirementChanged" id="requiresRequestCommentsSwitch">
                                 <label class="form-check-label" for="requiresRequestCommentsSwitch">
                                     @(FormDefinition.RequiresRequestComments ? "Required" : "Optional")
                                 </label>
                             </div>
                             <small class="form-text text-muted">When enabled, users must enter at least 10 characters when submitting requests</small>
+                            <div class="form-check form-switch mt-3">
+                                <input class="form-check-input" type="checkbox" @bind="FormDefinition.HideRequestComments" @bind:after="Changed" disabled="@FormDefinition.RequiresRequestComments" id="hideRequestCommentsSwitch">
+                                <label class="form-check-label" for="hideRequestCommentsSwitch">Hide comments on form</label>
+                            </div>
                         </div>
                     </div>
                     <div class="col-md-6">
@@ -166,6 +170,12 @@
     [Parameter] public FormDefinition FormDefinition { get; set; } = new();
     [Parameter] public EventCallback OnChanged { get; set; }
     private Task Changed() => OnChanged.InvokeAsync();
+    private Task RequestCommentsRequirementChanged()
+    {
+        if (FormDefinition.RequiresRequestComments)
+            FormDefinition.HideRequestComments = false;
+        return Changed();
+    }
     [Parameter] public List<string> ExistingCategories { get; set; } = new();
     [Parameter] public Dictionary<string, string> ConnectionStrings { get; set; } = new();
     [Parameter] public string SelectedConnectionString { get; set; } = "";

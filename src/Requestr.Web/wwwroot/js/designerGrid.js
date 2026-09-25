@@ -86,7 +86,7 @@ window.designerGrid = (() => {
             Object.assign(preview.style, {
                 left: `${(column - 1) * (geometry.track + geometry.gap)}px`, top: `${top}px`,
                 width: `${Math.max(1, span) * geometry.track + (Math.max(1, span) - 1) * geometry.gap}px`,
-                height: `${geometry.rows[row - 1] || 128}px`
+                height: `${geometry.rows[row - 1] || 88}px`
             });
             if (valid) gesture.target = { section: Number(grid.dataset.sectionId), row, column, span };
         }

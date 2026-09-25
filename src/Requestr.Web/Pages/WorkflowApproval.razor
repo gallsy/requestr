@@ -28,7 +28,7 @@
 
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
 @inject IUserTimezoneService Tz
-<PageTitle>Workflow Review | @Branding.ApplicationName</PageTitle>
+<PageTitle>Review @(_formRequest?.FormDefinition?.Name ?? "Request") | @Branding.ApplicationName</PageTitle>
 
 @if (_isLoading)
 {

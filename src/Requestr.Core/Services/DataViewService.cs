@@ -9,7 +9,7 @@ using Requestr.Core.Models.DTOs;
 
 namespace Requestr.Core.Services;
 
-public class DataViewService : IDataViewService
+public partial class DataViewService : IDataViewService
 {
     private readonly IConfiguration _configuration;
     private readonly ILogger<DataViewService> _logger;
@@ -78,6 +78,11 @@ public class DataViewService : IDataViewService
                 formDefinition.TableName,
                 formDefinition.Schema);
 
+            using var connection = new SqlConnection(GetConnectionString(formDefinition.DatabaseConnectionName));
+            await connection.OpenAsync();
+            var lookups = await BuildLookupQueriesAsync(connection, formDefinition, visibleFields);
+            var fromClause = $"{QuoteIdentifier(formDefinition.Schema)}.{QuoteIdentifier(formDefinition.TableName)} AS [data] {string.Join(" ", lookups.Select(lookup => lookup.Join))}";
+
             // Build query with pagination and filtering
             var whereConditions = new List<string>();
             var parameters = new DynamicParameters();
@@ -89,7 +94,7 @@ public class DataViewService : IDataViewService
                 var searchableFields = visibleFields
                     .SelectMany(field =>
                     {
-                        var column = $"[{field.Name.Replace("]", "]]")}]";
+                        var column = $"[data].{QuoteIdentifier(field.Name)}";
                         return (field.SqlDataType ?? field.DataType).ToLowerInvariant() switch
                         {
                             "string" or "text" or "nvarchar" or "varchar" or "char" or "nchar" or "ntext" => new[] { column },
@@ -104,6 +109,7 @@ public class DataViewService : IDataViewService
                             _ => Array.Empty<string>()
                         };
                     })
+                    .Concat(lookups.Select(lookup => lookup.DisplayExpression))
                     .ToList();
 
                 if (searchableFields.Any())
@@ -126,8 +132,11 @@ public class DataViewService : IDataViewService
             {
                 foreach (var filter in filters)
                 {
-                    whereConditions.Add($"[{filter.Key}] = @{filter.Key}");
-                    parameters.Add(filter.Key, filter.Value);
+                    if (!formDefinition.Fields.Any(field => field.Name == filter.Key))
+                        throw new ArgumentException("Unknown filter column.", nameof(filters));
+                    var parameterName = $"Filter{parameters.ParameterNames.Count()}";
+                    whereConditions.Add($"[data].{QuoteIdentifier(filter.Key)} = @{parameterName}");
+                    parameters.Add(parameterName, filter.Value);
                 }
             }
 
@@ -136,18 +145,16 @@ public class DataViewService : IDataViewService
             // Get total count
             var countSql = $@"
                 SELECT COUNT(*)
-                FROM [{formDefinition.Schema}].[{formDefinition.TableName}]
+                FROM {fromClause}
                 {whereClause}";
-
-            using var connection = new SqlConnection(GetConnectionString(formDefinition.DatabaseConnectionName));
-            await connection.OpenAsync();
 
             result.TotalCount = await connection.QuerySingleAsync<int>(countSql, parameters);
             result.TotalPages = (int)Math.Ceiling((double)result.TotalCount / pageSize);
 
             // Get paginated data
             var offset = (page - 1) * pageSize;
-            var columnsList = string.Join(", ", result.Columns.Select(c => $"[{c}]"));
+            var columnsList = string.Join(", ", result.Columns.Select(column => $"[data].{QuoteIdentifier(column)}")
+                .Concat(lookups.Select(lookup => $"{lookup.DisplayExpression} AS {QuoteIdentifier(lookup.ResultColumn)}")));
             var defaultOrderByColumn = result.PrimaryKeyColumns.FirstOrDefault() ?? result.Columns.FirstOrDefault() ?? "1";
 
             // Validate sort column against available columns to prevent SQL injection
@@ -157,12 +164,17 @@ public class DataViewService : IDataViewService
                 orderByColumn = sortColumn;
             }
             var direction = string.Equals(sortDirection, "DESC", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
+            var orderLookup = lookups.FirstOrDefault(lookup => lookup.Field.Name == orderByColumn);
+            var orderExpression = orderLookup?.DisplayExpression
+                ?? (orderByColumn == "1" ? "(SELECT NULL)" : $"[data].{QuoteIdentifier(orderByColumn)}");
+            var tieBreakers = string.Concat(result.PrimaryKeyColumns.Where(column => column != orderByColumn || orderLookup != null)
+                .Select(column => $", [data].{QuoteIdentifier(column)} {direction}"));
 
             var dataSql = $@"
                 SELECT {columnsList}
-                FROM [{formDefinition.Schema}].[{formDefinition.TableName}]
+                FROM {fromClause}
                 {whereClause}
-                ORDER BY [{orderByColumn}] {direction}
+                ORDER BY {orderExpression} {direction}{tieBreakers}
                 OFFSET @Offset ROWS
                 FETCH NEXT @PageSize ROWS ONLY";
 
@@ -173,6 +185,17 @@ public class DataViewService : IDataViewService
             result.Records = records.Cast<IDictionary<string, object>>()
                 .Select(row => row.ToDictionary(kvp => kvp.Key, kvp => (object?)kvp.Value))
                 .ToList();
+            foreach (var lookup in lookups)
+            {
+                var labels = new Dictionary<string, string>();
+                foreach (var record in result.Records)
+                {
+                    if (record.TryGetValue(lookup.Field.Name, out var value) && value != null && record[lookup.ResultColumn] is string label)
+                        labels[Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!] = label;
+                    record.Remove(lookup.ResultColumn);
+                }
+                result.LookupLabels[lookup.Field.Name] = labels;
+            }
 
             return result;
         }

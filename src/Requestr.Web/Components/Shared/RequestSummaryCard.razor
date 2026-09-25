@@ -115,12 +115,10 @@
             }
         </div>
 
-        @* Action buttons (Edit, Retry, etc.) *@
+        @* The fragment may render nothing when no actions apply; :empty hides the band then *@
         @if (ActionButtons != null)
         {
-            <div class="mt-3 pt-3 border-top d-flex gap-2">
-                @ActionButtons
-            </div>
+            <div class="request-summary-actions mt-3 pt-3 border-top d-flex gap-2">@ActionButtons</div>
         }
     </div>
 </div>
@@ -153,40 +151,4 @@
     private string GetStatusMessage() => UiHelper.GetStatusMessage(Status, HasWorkflow);
 }
 
-<style>
-    .request-summary-card .d-flex.min-width-0,
-    .request-summary-card .min-width-0 {
-        min-width: 0;
-    }
 
-    .request-summary-card .request-type-icon {
-        width: 48px;
-        height: 48px;
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.5rem;
-        flex-shrink: 0;
-    }
-
-    .request-type-insert {
-        background: rgba(16, 185, 129, 0.15);
-        color: #10b981;
-    }
-
-    .request-type-update {
-        background: rgba(59, 130, 246, 0.15);
-        color: #3b82f6;
-    }
-
-    .request-type-delete {
-        background: rgba(239, 68, 68, 0.15);
-        color: #ef4444;
-    }
-
-    .request-type-default {
-        background: rgba(107, 114, 128, 0.15);
-        color: #6b7280;
-    }
-</style>

@@ -92,6 +92,9 @@ public class FormDesignSqlTests : IAsyncLifetime
         var labelMigration = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "031_LookupSelectionLabel.sql"));
         await connection.ExecuteAsync(labelMigration);
         await connection.ExecuteAsync(labelMigration);
+        var commentsMigration = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "032_HideRequestComments.sql"));
+        await connection.ExecuteAsync(commentsMigration);
+        await connection.ExecuteAsync(commentsMigration);
         var factory = new Mock<IDbConnectionFactory>();
         factory.Setup(connectionFactory => connectionFactory.CreateConnectionAsync()).Returns(OpenAsync);
         _repository = new FormDesignRepository(factory.Object);
@@ -316,6 +319,123 @@ public class FormDesignSqlTests : IAsyncLifetime
         }
     }
 
+    [LocalDbFact]
+    public async Task DataViewLookupLabelsAreSearchableBeforePagingAndKeepRawKeys()
+    {
+        using var connection = await OpenAsync();
+        await connection.ExecuteAsync("""
+            CREATE TABLE ViewPrograms (Id int PRIMARY KEY, Name nvarchar(100) NULL);
+            CREATE TABLE ViewRecords (Id int PRIMARY KEY, ProgramId int NULL, Notes nvarchar(100));
+            INSERT INTO ViewPrograms VALUES (10, 'Zebra workshop'), (20, 'Literacy program'), (30, 'Literacy program'), (40, NULL);
+            INSERT INTO ViewRecords VALUES (1, 10, 'North'), (2, 20, 'North'), (3, 30, 'South'), (4, 99, 'Missing'), (5, NULL, 'Empty'), (6, 40, 'Unlabelled');
+            """);
+        var field = new FormField { Name = "ProgramId", DisplayName = "Program", DataType = "number", SqlDataType = "int",
+            ControlType = "searchable-select", OptionSource = FieldOptionSource.DatabaseLookup,
+            LookupSchema = "dbo", LookupTable = "ViewPrograms", LookupKeyColumn = "Id", LookupLabelColumn = "Name" };
+        var form = new FormDefinition { DatabaseConnectionName = "ReferenceData", TableName = "ViewRecords", Schema = "dbo",
+            Fields = new() { new() { Name = "Id", DataType = "int" }, field, new() { Name = "Notes", DataType = "nvarchar" } } };
+        var definitions = new Mock<IFormDefinitionService>();
+        definitions.Setup(service => service.GetFormDefinitionAsync(1)).ReturnsAsync(form);
+        var data = new Mock<IDataService>();
+        data.Setup(service => service.GetPrimaryKeyColumnsAsync("ReferenceData", "ViewRecords", "dbo")).ReturnsAsync(new List<string> { "Id" });
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:DefaultConnection"] = ConnectionString,
+            ["DatabaseConnections:ReferenceData"] = ConnectionString,
+            ["DatabaseConnections:LookupSource"] = new SqlConnectionStringBuilder(ConnectionString) { ApplicationName = "DataViewLookupTest" }.ConnectionString
+        }).Build();
+        var service = new DataViewService(configuration, NullLogger<DataViewService>.Instance, definitions.Object, data.Object, Mock.Of<IBulkFormRequestService>());
+        foreach (var source in new string?[] { null, "LookupSource" })
+        {
+            field.LookupDatabaseConnectionName = source;
+            var page = await service.GetDataAsync(1, page: 2, pageSize: 1, searchTerm: "Literacy", sortColumn: "ProgramId");
+            Assert.Equal(2, page.TotalCount);
+            Assert.Equal(2, page.TotalPages);
+            var record = Assert.Single(page.Records);
+            Assert.Equal(3, record["Id"]);
+            Assert.Equal(30, Assert.IsType<int>(record["ProgramId"]));
+            Assert.Equal(3, record.Count);
+            Assert.Equal("Literacy program", page.GetDisplayValue(record, "ProgramId"));
+            Assert.Equal(2, Assert.Single((await service.GetDataAsync(1, searchTerm: "\"Literacy program\" North")).Records)["Id"]);
+            Assert.Equal(1, Assert.Single((await service.GetDataAsync(1, searchTerm: "10")).Records)["Id"]);
+            var sorted = await service.GetDataAsync(1, sortColumn: "ProgramId", sortDirection: "DESC");
+            Assert.Equal(1, sorted.Records.First()["Id"]);
+            Assert.Equal("99", sorted.GetDisplayValue(sorted.Records.Single(row => Equals(row["Id"], 4)), "ProgramId"));
+            Assert.Equal("", sorted.GetDisplayValue(sorted.Records.Single(row => Equals(row["Id"], 5)), "ProgramId"));
+            Assert.Equal("40", sorted.GetDisplayValue(sorted.Records.Single(row => Equals(row["Id"], 6)), "ProgramId"));
+            Assert.Equal(20, Assert.Single(await service.GetSelectedRecordsAsync(1, new() { "2" }))["ProgramId"]);
+            Assert.Empty((await service.GetDataAsync(1, searchTerm: "no-match")).Records);
+            Assert.Equal(1, (await service.GetDataAsync(1, searchTerm: "Literacy", filters: new() { ["ProgramId"] = 20 })).TotalCount);
+        }
+        field.IsVisibleInDataView = false;
+        Assert.Empty((await service.GetDataAsync(1, searchTerm: "Literacy")).Records);
+    }
+
+    [LocalDbFact]
+    public async Task DataViewExternalLookupSupportsTypedKeysAndMoreThanFiftyLabels()
+    {
+        var sourceDatabase = $"RequestrLookupTest_{Guid.NewGuid():N}";
+        using var master = new SqlConnection(_masterConnection);
+        await master.OpenAsync();
+        await master.ExecuteAsync($"CREATE DATABASE [{sourceDatabase}]");
+        try
+        {
+            var sourceConnectionString = new SqlConnectionStringBuilder(_masterConnection) { InitialCatalog = sourceDatabase }.ConnectionString;
+            using var source = new SqlConnection(sourceConnectionString);
+            await source.OpenAsync();
+            using var destination = await OpenAsync();
+            foreach (var (sqlType, dataType, getKey) in new (string, string, Func<int, object>)[]
+            {
+                ("bigint", "bigint", number => 3000000000L + number),
+                ("uniqueidentifier", "uniqueidentifier", number => Guid.Parse($"00000000-0000-0000-0000-{number:D12}")),
+                ("nvarchar(100)", "nvarchar", number => $"code']-{number:D3}")
+            })
+            {
+                await source.ExecuteAsync($"CREATE TABLE TypedPrograms (Id {sqlType} NOT NULL PRIMARY KEY, Name nvarchar(100));");
+                await destination.ExecuteAsync($"CREATE TABLE TypedRecords (LookupId {sqlType} NOT NULL PRIMARY KEY);");
+                var keys = Enumerable.Range(1, 65).Select(number => new { Id = getKey(number), Name = "Program label" }).ToList();
+                await source.ExecuteAsync("INSERT INTO TypedPrograms VALUES (@Id, @Name)", keys);
+                await destination.ExecuteAsync("INSERT INTO TypedRecords VALUES (@Id)", keys);
+                var field = new FormField { Name = "LookupId", DisplayName = "Program", SqlDataType = dataType,
+                    ControlType = "searchable-select", OptionSource = FieldOptionSource.DatabaseLookup,
+                    LookupDatabaseConnectionName = "LookupSource", LookupSchema = "dbo", LookupTable = "TypedPrograms",
+                    LookupKeyColumn = "Id", LookupLabelColumn = "Name" };
+                var form = new FormDefinition { DatabaseConnectionName = "ReferenceData", TableName = "TypedRecords", Schema = "dbo", Fields = new() { field } };
+                var definitions = new Mock<IFormDefinitionService>();
+                definitions.Setup(service => service.GetFormDefinitionAsync(1)).ReturnsAsync(form);
+                var data = new Mock<IDataService>();
+                data.Setup(service => service.GetPrimaryKeyColumnsAsync("ReferenceData", "TypedRecords", "dbo")).ReturnsAsync(new List<string> { "LookupId" });
+                var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:DefaultConnection"] = ConnectionString,
+                    ["ConnectionStrings:ReferenceData"] = ConnectionString,
+                    ["ConnectionStrings:LookupSource"] = ConnectionString,
+                    ["DatabaseConnections:LookupSource"] = sourceConnectionString
+                }).Build();
+                var service = new DataViewService(configuration, NullLogger<DataViewService>.Instance, definitions.Object, data.Object, Mock.Of<IBulkFormRequestService>());
+                var page = await service.GetDataAsync(1, page: 7, pageSize: 10, searchTerm: "\"Program label\"", sortColumn: "LookupId");
+                Assert.Equal(65, page.TotalCount);
+                Assert.Equal(7, page.TotalPages);
+                Assert.Equal(5, page.Records.Count);
+                Assert.Equal(getKey(61), page.Records.First()["LookupId"]);
+                Assert.Equal(getKey(65), page.Records.Last()["LookupId"]);
+                Assert.All(page.Records, record =>
+                {
+                    Assert.Single(record);
+                    Assert.Equal("Program label", page.GetDisplayValue(record, "LookupId"));
+                });
+                field.LookupDatabaseConnectionName = "MissingConnection";
+                await Assert.ThrowsAsync<InvalidOperationException>(() => service.GetDataAsync(1));
+                await source.ExecuteAsync("DROP TABLE TypedPrograms");
+                await destination.ExecuteAsync("DROP TABLE TypedRecords");
+            }
+        }
+        finally
+        {
+            await master.ExecuteAsync($"ALTER DATABASE [{sourceDatabase}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{sourceDatabase}]");
+        }
+    }
+
     private async Task<(LookupDataService Service, FormDefinition Form)> CreateLookupAsync(string keyType = "int")
     {
         using var connection = await OpenAsync();
@@ -477,6 +597,44 @@ public class FormDesignSqlTests : IAsyncLifetime
         var values = new Dictionary<string, object?> { ["CountryId"] = key.ToString() };
         await service.ValidateValuesAsync(form, values);
         Assert.Equal(key, Assert.IsType<Guid>(values["CountryId"]));
+    }
+
+    [LocalDbFact]
+    public async Task RequestCommentsVisibilityRoundTripsAndCannotHideRequiredComments()
+    {
+        var existing = await CreateFormAsync();
+        using var connection = await OpenAsync();
+        Assert.False(await connection.QuerySingleAsync<bool>(
+            "SELECT HideRequestComments FROM FormDefinitions WHERE Id = @Id", new { existing.Id }));
+
+        var (lookups, form) = await CreateLookupAsync();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        { ["ConnectionStrings:DefaultConnection"] = ConnectionString }).Build();
+        var definitions = new FormDefinitionService(configuration, NullLogger<FormDefinitionService>.Instance, lookups);
+        form.Name = "Comments settings";
+        form.CreatedBy = "Admin";
+        form.HideRequestComments = true;
+        await definitions.CreateFormDefinitionAsync(form);
+        Assert.True((await definitions.GetFormDefinitionAsync(form.Id))!.HideRequestComments);
+        Assert.True(Assert.Single(await definitions.GetFormDefinitionsAsync(), item => item.Id == form.Id).HideRequestComments);
+        Assert.True(Assert.Single(await definitions.GetActiveAsync(), item => item.Id == form.Id).HideRequestComments);
+        Assert.True(Assert.Single(await definitions.GetFormDefinitionsForUserAsync("Admin", new() { "Admin" }), item => item.Id == form.Id).HideRequestComments);
+
+        var loaded = (await definitions.GetFormDefinitionAsync(form.Id))!;
+        await _repository.SaveAsync(UpdateFormDesignDto.FromForm(loaded), new(), true, "Admin");
+        loaded = (await definitions.GetFormDefinitionAsync(form.Id))!;
+        Assert.True(loaded.HideRequestComments);
+
+        loaded.RequiresRequestComments = true;
+        await definitions.UpdateFormDefinitionAsync(loaded);
+        loaded = (await definitions.GetFormDefinitionAsync(form.Id))!;
+        Assert.True(loaded.RequiresRequestComments);
+        Assert.False(loaded.HideRequestComments);
+
+        loaded.RequiresRequestComments = false;
+        loaded.HideRequestComments = true;
+        await definitions.UpdateFormDefinitionAsync(loaded);
+        Assert.True((await definitions.GetFormDefinitionAsync(form.Id))!.HideRequestComments);
     }
 
     [LocalDbFact]
