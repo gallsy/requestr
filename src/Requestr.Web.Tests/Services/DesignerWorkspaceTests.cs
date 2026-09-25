@@ -143,6 +143,33 @@ public class DesignerWorkspaceTests : TestContext
     }
 
     [Fact]
+    public void DesignerShowsStatusMarkersWidthLabelsAndRemembersCollapsedGroups()
+    {
+        var form = new FormDefinition { Sections = new() { new() { Id = 1, Name = "Details", MaxColumns = 2 } },
+            Fields = new()
+            {
+                new() { Name = "Code", DisplayName = "Code", FormSectionId = 1, GridColumnSpan = 1, IsReadOnly = true },
+                new() { Name = "Notes", DisplayName = "Notes", FormSectionId = 1, GridColumn = 2, GridColumnSpan = 1, IsVisible = false }
+            } };
+        var cut = RenderComponent<DesignerWorkspace>(parameters => parameters.Add(component => component.Form, form)
+            .Add(component => component.Columns, new() { new() { Name = "Code" }, new() { Name = "Notes" } }));
+
+        Assert.Contains("All table columns are on the form", cut.Markup);
+        Assert.Contains("1 section · 2 fields", cut.Markup);
+        Assert.Single(cut.FindAll(".canvas-field.field-hidden"));
+        Assert.Equal(2, cut.FindAll(".outline-item [aria-label='Hidden'], .outline-item [aria-label='Read only']").Count);
+
+        cut.FindAll(".canvas-field").First().Click();
+        Assert.Equal(new[] { "Half (1 of 2)", "Full width (2 of 2)" }, cut.FindAll("[aria-label='Field width'] option").Select(option => option.TextContent));
+        var help = cut.FindAll(".property-group-toggle").Single(toggle => toggle.TextContent.Trim() == "Help");
+        Assert.Equal("false", help.GetAttribute("aria-expanded"));
+        cut.FindAll(".property-group-toggle").Single(toggle => toggle.TextContent.Trim() == "Layout").Click();
+
+        cut.FindAll(".canvas-field").Last().Click();
+        Assert.Equal("false", cut.FindAll(".property-group-toggle").Single(toggle => toggle.TextContent.Trim() == "Layout").GetAttribute("aria-expanded"));
+    }
+
+    [Fact]
     public void ConditionEditorOffersUnsectionedParentsAndWritesTypedJson()
     {
         string? saved = null;

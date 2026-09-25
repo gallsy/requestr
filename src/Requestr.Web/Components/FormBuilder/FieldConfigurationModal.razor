@@ -18,48 +18,48 @@ else
     private RenderFragment Properties => @<div>
         @if (Field != null)
         {
-            @if (Inline) { <h3 class="h6 border-bottom pb-2 mb-3">Control</h3> }
+            <PropertyGroup Title="Control" Enabled="Inline" Collapsed="CollapsedGroups">
             <div class="row mb-2">
                 <div class="col-md-6">
-                    <label class="form-label">Field Name</label>
-                    <input type="text" class="form-control" @bind="Field.DisplayName" @bind:after="NotifyChanged" />
+                    <label class="form-label" for="@Id("name")">Field Name</label>
+                    <input id="@Id("name")" type="text" class="form-control" @bind="Field.DisplayName" @bind:after="NotifyChanged" />
                 </div>
                 @if (!PresentationOnly)
                 {
                 <div class="col-md-6">
-                    <label class="form-label">Control Type</label>
-                    <select class="form-select" @bind="Field.ControlType" @bind:after="OnControlTypeChanged">
+                    <label class="form-label" for="@Id("control")">Control Type</label>
+                    <select id="@Id("control")" class="form-select" @bind="Field.ControlType" @bind:after="OnControlTypeChanged">
                         @foreach (var controlOption in AvailableControlTypes)
                         {
                             <option value="@controlOption.Value">@controlOption.Text</option>
                         }
                     </select>
-                    <small class="form-text text-muted">SQL Type: @SqlType</small>
+                    <small class="form-text text-muted">SQL type: @SqlType</small>
                 </div>
                 }
             </div>
+            </PropertyGroup>
             @if (!PresentationOnly)
             {
-            @if (Inline) { <h3 class="h6 border-bottom pb-2 mt-4 mb-3">Defaults and Validation</h3> }
+            <PropertyGroup Title="Defaults and Validation" Enabled="Inline" Collapsed="CollapsedGroups">
             <div class="row mb-2">
                 <div class="col-md-6">
+                    <label class="form-label" for="@Id("default")">Default Value</label>
                     @if (HasComputedValue)
                     {
-                        <label class="form-label">Default Value</label>
-                        <input type="text" class="form-control" disabled value="(auto-generated)" />
+                        <input id="@Id("default")" type="text" class="form-control" disabled value="(auto-generated)" />
                         <small class="form-text text-muted">Value is auto-generated at apply time</small>
                     }
                     else
                     {
-                        <label class="form-label">Default Value</label>
-                        <input type="text" class="form-control" @bind="Field.DefaultValue" @bind:after="NotifyChanged" />
+                        <input id="@Id("default")" type="text" class="form-control" @bind="Field.DefaultValue" @bind:after="NotifyChanged" />
                     }
                 </div>
                 @if (!HasComputedValue && SupportsValidation(Field.ControlType ?? Field.DataType))
                 {
                     <div class="col-md-6">
-                        <label class="form-label">Validation Regex</label>
-                        <input type="text" class="form-control" @bind="Field.ValidationRegex" @bind:after="NotifyChanged" placeholder="Regex pattern" />
+                        <label class="form-label" for="@Id("regex")">Validation Regex</label>
+                        <input id="@Id("regex")" type="text" class="form-control" @bind="Field.ValidationRegex" @bind:after="NotifyChanged" placeholder="Regex pattern" />
                     </div>
                 }
             </div>
@@ -67,110 +67,102 @@ else
             {
                 <div class="row mb-2">
                     <div class="col-md-6">
-                        <label class="form-label">Max Length</label>
-                        <input type="number" class="form-control" @bind="Field.MaxLength" @bind:after="NotifyChanged" min="0" />
+                        <label class="form-label" for="@Id("maxlength")">Max Length</label>
+                        <input id="@Id("maxlength")" type="number" class="form-control" @bind="Field.MaxLength" @bind:after="NotifyChanged" min="0" />
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Validation Message</label>
-                        <input type="text" class="form-control" @bind="Field.ValidationMessage" @bind:after="NotifyChanged" placeholder="Custom error message" />
+                        <label class="form-label" for="@Id("message")">Validation Message</label>
+                        <input id="@Id("message")" type="text" class="form-control" @bind="Field.ValidationMessage" @bind:after="NotifyChanged" placeholder="Custom error message" />
                     </div>
                 </div>
             }
+            </PropertyGroup>
             }
-              @if (Inline && ((!PresentationOnly && Field.ControlType == "searchable-select") ||
-                  (Field.OptionSource == FieldOptionSource.Static && (Field.ControlType is "select" or "searchable-select" or "radio" || Field.DataType is "select" or "searchable-select" or "radio"))))
-              {
-                  <h3 class="h6 border-bottom pb-2 mt-4 mb-3">Options</h3>
-              }
-              @if (!PresentationOnly && Field.ControlType == "searchable-select")
-              {
-                <LookupConfigurationEditor Field="Field" DatabaseConnectionName="@DatabaseConnectionName" Fields="Fields" OnChanged="NotifyChanged" />
-              }
-              @if (Field.OptionSource == FieldOptionSource.Static && (Field.ControlType == "select" || Field.ControlType == "searchable-select" || Field.ControlType == "radio" ||
-                  Field.DataType == "select" || Field.DataType == "searchable-select" || Field.DataType == "radio"))
+            var showLookup = !PresentationOnly && Field.ControlType == "searchable-select";
+            var showStaticOptions = Field.OptionSource == FieldOptionSource.Static && (Field.ControlType is "select" or "searchable-select" or "radio" || Field.DataType is "select" or "searchable-select" or "radio");
+            @if (showLookup || showStaticOptions)
             {
-                <div class="row mb-2">
-                    <div class="col-12">
-                        <label class="form-label">Options (one per line)</label>
-                        <textarea class="form-control" rows="3" @bind="Field.DropdownOptions" @bind:after="NotifyChanged" disabled="@(PresentationOnly && IsConditionParent)" placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
-                        <small class="form-text text-muted">Enter each option on a new line</small>
+                <PropertyGroup Title="Options" Enabled="Inline" Collapsed="CollapsedGroups">
+                @if (showLookup)
+                {
+                    <LookupConfigurationEditor Field="Field" DatabaseConnectionName="@DatabaseConnectionName" Fields="Fields" OnChanged="NotifyChanged" />
+                }
+                @if (showStaticOptions)
+                {
+                    <div class="row mb-2">
+                        <div class="col-12">
+                            <label class="form-label" for="@Id("options")">Options (one per line)</label>
+                            <textarea id="@Id("options")" class="form-control" rows="3" @bind="Field.DropdownOptions" @bind:after="NotifyChanged" disabled="@(PresentationOnly && IsConditionParent)" placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
+                            <small class="form-text text-muted">Enter each option on a new line</small>
+                        </div>
                     </div>
-                </div>
+                }
+                </PropertyGroup>
             }
             @if (!PresentationOnly)
             {
-            @if (Inline) { <h3 class="h6 border-bottom pb-2 mt-4 mb-3">Behavior</h3> }
-            <div class="row mb-2">
-                <div class="col-md-3">
-                    <div class="form-check" title="@(HasComputedValue ? "Auto-generated fields cannot be required" : "")">
-                        <input class="form-check-input" type="checkbox" @bind="Field.IsRequired" @bind:after="NotifyChanged" disabled="@HasComputedValue" />
-                        <label class="form-check-label">Required</label>
-                        @if (HasComputedValue)
-                        {
-                            <small class="d-block text-muted">Disabled (auto-generated)</small>
-                        }
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" @bind="Field.IsReadOnly" @bind:after="NotifyChanged" />
-                        <label class="form-check-label">Read Only</label>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" @bind="Field.IsVisible" @bind:after="NotifyChanged" />
-                        <label class="form-check-label">Visible</label>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" @bind="Field.IsVisibleInDataView" @bind:after="NotifyChanged" />
-                        <label class="form-check-label">Visible in Data View</label>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    @{
-                        var isNullable = ColumnInfo?.IsNullable ?? true;
-                        var eligibleForBlankAsNull = isNullable && !Field.IsRequired;
-                        if (Field.IsRequired && Field.TreatBlankAsNull)
-                        {
-                            Field.TreatBlankAsNull = false;
-                        }
+            <PropertyGroup Title="Behavior" Enabled="Inline" Collapsed="CollapsedGroups">
+            @{
+                var isNullable = ColumnInfo?.IsNullable ?? true;
+                var eligibleForBlankAsNull = isNullable && !Field.IsRequired;
+                if (Field.IsRequired && Field.TreatBlankAsNull)
+                {
+                    Field.TreatBlankAsNull = false;
+                }
+            }
+            <div class="behavior-grid mb-2">
+                <div class="form-check form-switch">
+                    <input id="@Id("required")" class="form-check-input" type="checkbox" role="switch" @bind="Field.IsRequired" @bind:after="NotifyChanged" disabled="@HasComputedValue" />
+                    <label class="form-check-label" for="@Id("required")">Required</label>
+                    @if (HasComputedValue)
+                    {
+                        <small class="form-text text-muted d-block">Not available for auto-generated values</small>
                     }
-                    <div class="form-check" title="Treat blank input as NULL when saved (only for nullable, non-required fields)">
-                        <input class="form-check-input" type="checkbox" @bind="Field.TreatBlankAsNull" @bind:after="NotifyChanged" disabled="@(!eligibleForBlankAsNull)" />
-                        <label class="form-check-label">Blank is NULL</label>
-                    </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="form-check" title="Values in this field must be unique across all records">
-                        <input class="form-check-input" type="checkbox" @bind="Field.IsUnique" @bind:after="NotifyChanged" />
-                        <label class="form-check-label">Unique</label>
-                        @if (ColumnInfo?.IsUnique == true)
-                        {
-                            <small class="d-block text-muted">DB constraint</small>
-                        }
-                    </div>
+                <div class="form-check form-switch">
+                    <input id="@Id("readonly")" class="form-check-input" type="checkbox" role="switch" @bind="Field.IsReadOnly" @bind:after="NotifyChanged" />
+                    <label class="form-check-label" for="@Id("readonly")">Read Only</label>
+                </div>
+                <div class="form-check form-switch">
+                    <input id="@Id("visible")" class="form-check-input" type="checkbox" role="switch" @bind="Field.IsVisible" @bind:after="NotifyChanged" />
+                    <label class="form-check-label" for="@Id("visible")">Visible</label>
+                </div>
+                <div class="form-check form-switch">
+                    <input id="@Id("dataview")" class="form-check-input" type="checkbox" role="switch" @bind="Field.IsVisibleInDataView" @bind:after="NotifyChanged" />
+                    <label class="form-check-label" for="@Id("dataview")">Visible in Data View</label>
+                </div>
+                <div class="form-check form-switch">
+                    <input id="@Id("blanknull")" class="form-check-input" type="checkbox" role="switch" @bind="Field.TreatBlankAsNull" @bind:after="NotifyChanged" disabled="@(!eligibleForBlankAsNull)" />
+                    <label class="form-check-label" for="@Id("blanknull")">Blank is NULL</label>
+                    <small class="form-text text-muted d-block">
+                        @(!isNullable ? "Column doesn't allow NULL" : Field.IsRequired ? "Not available for required fields" : "Save empty input as NULL")
+                    </small>
+                </div>
+                <div class="form-check form-switch">
+                    <input id="@Id("unique")" class="form-check-input" type="checkbox" role="switch" @bind="Field.IsUnique" @bind:after="NotifyChanged" />
+                    <label class="form-check-label" for="@Id("unique")">Unique</label>
+                    <small class="form-text text-muted d-block">@(ColumnInfo?.IsUnique == true ? "Enforced by a database constraint" : "No duplicate values allowed")</small>
                 </div>
             </div>
+            </PropertyGroup>
             }
-            @if (Inline) { <h3 class="h6 border-bottom pb-2 mt-4 mb-3">Help</h3> }
+            <PropertyGroup Title="Help" Enabled="Inline" Collapsed="CollapsedGroups">
             <div class="row mb-2">
                 <div class="col-12">
-                    <label class="form-label">Help Text (Tooltip)</label>
-                    <textarea class="form-control" rows="2" @bind="Field.HelpText" @bind:after="NotifyChanged" placeholder="Optional tooltip shown via info icon next to field label"></textarea>
+                    <label class="form-label" for="@Id("help")">Help Text (Tooltip)</label>
+                    <textarea id="@Id("help")" class="form-control" rows="2" @bind="Field.HelpText" @bind:after="NotifyChanged" placeholder="Optional tooltip shown via info icon next to field label"></textarea>
                     <small class="form-text text-muted">When provided, an info icon will appear next to the field label</small>
                 </div>
             </div>
+            </PropertyGroup>
             @if (!PresentationOnly)
             {
             <ConditionEditor Fields="Fields" ExcludedField="@Field.Name" @bind-Value="Field.VisibilityCondition" @bind-Value:after="NotifyChanged" />
-            @if (Inline) { <h3 class="h6 border-bottom pb-2 mt-4 mb-3">Generated Value</h3> }
+            <PropertyGroup Title="Generated Value" Enabled="Inline" Collapsed="CollapsedGroups">
             <div class="row mb-2">
                 <div class="col-md-6">
-                    <label class="form-label">Computed Value</label>
-                    <select class="form-select" value="@ComputedValueTypeInt" @onchange="OnComputedValueTypeChanged">
+                    <label class="form-label" for="@Id("computed")">Computed Value</label>
+                    <select id="@Id("computed")" class="form-select" value="@ComputedValueTypeInt" @onchange="OnComputedValueTypeChanged">
                         <option value="0">None (user-entered)</option>
                         @foreach (var option in GetComputedValueOptions())
                         {
@@ -182,8 +174,8 @@ else
                 @if (HasComputedValue)
                 {
                     <div class="col-md-6">
-                        <label class="form-label">Apply On</label>
-                        <select class="form-select" @bind="Field.ComputedValueApplyMode" @bind:after="NotifyChanged">
+                        <label class="form-label" for="@Id("applyon")">Apply On</label>
+                        <select id="@Id("applyon")" class="form-select" @bind="Field.ComputedValueApplyMode" @bind:after="NotifyChanged">
                             <option value="@ComputedValueApplyMode.InsertAndUpdate">Insert &amp; Update</option>
                             <option value="@ComputedValueApplyMode.InsertOnly">Insert Only</option>
                             <option value="@ComputedValueApplyMode.UpdateOnly">Update Only</option>
@@ -192,6 +184,7 @@ else
                     </div>
                 }
             </div>
+            </PropertyGroup>
             }
         }
     </div>;
@@ -205,6 +198,10 @@ else
     /// </summary>
     [Parameter] public FormField? Field { get; set; }
     [Parameter] public bool Inline { get; set; }
+    /// <summary>Titles of collapsed property groups; owned by the host so state survives field changes.</summary>
+    [Parameter] public ISet<string>? CollapsedGroups { get; set; }
+    private readonly string _idPrefix = "field-props-" + Guid.NewGuid().ToString("N");
+    private string Id(string name) => $"{_idPrefix}-{name}";
     [Parameter] public List<FormField> Fields { get; set; } = new();
     [Parameter] public EventCallback OnChanged { get; set; }
     private Task NotifyChanged() => OnChanged.InvokeAsync();

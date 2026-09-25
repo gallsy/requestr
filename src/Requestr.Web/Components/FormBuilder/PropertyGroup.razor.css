@@ -1,0 +1,6 @@
+.property-group { border-bottom: 1px solid var(--border-color); }
+.property-group-heading { margin: 0; }
+.property-group-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: .5rem; padding: .75rem 0; border: 0; background: transparent; color: var(--text-color); font: inherit; font-weight: 600; text-align: left; }
+.property-group-toggle:hover { color: var(--link-color); }
+.property-group-toggle i { font-size: .75rem; color: var(--text-muted); }
+.property-group-body { padding-bottom: .75rem; }

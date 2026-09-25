@@ -102,3 +102,40 @@ window.requestrCombobox = {
 
 // Backward-compatible name used by the strict searchable dropdown component.
 window.requestrSearchableSelect = window.requestrCombobox;
+
+// Form builder: publish the sticky header height to CSS and handle Ctrl/Cmd+S.
+window.requestrBuilder = (() => {
+    let observer = null;
+    let keyHandler = null;
+
+    function dispose() {
+        observer?.disconnect();
+        observer = null;
+        if (keyHandler) document.removeEventListener('keydown', keyHandler);
+        keyHandler = null;
+        document.documentElement.style.removeProperty('--builder-header-height');
+    }
+
+    function initialize(header, dotNetRef) {
+        dispose();
+        if (header && window.ResizeObserver) {
+            const apply = () => document.documentElement.style.setProperty('--builder-header-height', `${header.offsetHeight}px`);
+            observer = new ResizeObserver(apply);
+            observer.observe(header);
+            apply();
+        }
+        keyHandler = event => {
+            if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 's') return;
+            event.preventDefault();
+            // Blur first so a pending input change reaches Blazor before the save runs.
+            const active = document.activeElement;
+            active?.blur?.();
+            dotNetRef.invokeMethodAsync('SaveFromShortcut')
+                .catch(() => { })
+                .finally(() => active?.focus?.());
+        };
+        document.addEventListener('keydown', keyHandler);
+    }
+
+    return { initialize, dispose };
+})();
