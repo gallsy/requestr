@@ -131,6 +131,7 @@ small, .small, .text-muted {
 .sidebar > nav {
     flex: 1 1 auto;
     min-height: 0;
+    overflow-x: hidden;
     overflow-y: auto;
 }
 
@@ -578,7 +579,7 @@ textarea::placeholder {
     color: var(--link-color);
 }
 
-.btn:focus {
+.btn:focus-visible {
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
 }
 
@@ -1632,12 +1633,20 @@ button.nav-link.active {
 /* ============================================
    Focus States (Accessibility)
    ============================================ */
-.nav-link:focus,
-.btn:focus,
-.form-control:focus,
-.form-select:focus {
+.nav-link:focus-visible,
+.btn:focus-visible,
+.form-control:focus-visible,
+.form-select:focus-visible {
     outline: 2px solid var(--primary);
     outline-offset: 2px;
+}
+
+/* The sidebar clips overflow, so draw its focus rings inside the item */
+.sidebar .nav-link:focus-visible,
+.sidebar .btn:focus-visible,
+.sidebar-account-btn:focus-visible {
+    outline-offset: -2px;
+    box-shadow: none;
 }
 
 /* Prevent focus outline on headers */
