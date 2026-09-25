@@ -1,3 +1,7 @@
+@using Requestr.Web.Configuration
+@inject ThemeService ThemeService
+
+<CascadingValue Value="_uiPreferences" IsFixed="true">
 <CascadingAuthenticationState>
     <Router AppAssembly="@typeof(App).Assembly">
         <Found Context="routeData">
@@ -37,3 +41,17 @@
         </NotFound>
     </Router>
 </CascadingAuthenticationState>
+</CascadingValue>
+
+@code {
+    [Parameter] public bool DarkMode { get; set; }
+    [Parameter] public bool SidebarCollapsed { get; set; }
+
+    private UiPreferences _uiPreferences = new(false, false);
+
+    protected override void OnInitialized()
+    {
+        _uiPreferences = new(DarkMode, SidebarCollapsed);
+        ThemeService.SetTheme(DarkMode);
+    }
+}

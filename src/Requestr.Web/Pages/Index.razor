@@ -111,10 +111,10 @@
                                     <div class="flex-grow-1">
                                         <h6 class="mb-2 fw-bold">@request.FormDefinition?.Name</h6>
                                         <div class="mb-2">
-                                            <span class="badge bg-primary me-2">
+                                            <span class="badge @UiHelper.GetRequestTypeBadgeClass(request.RequestType) me-2">
                                                 @request.RequestType
                                             </span>
-                                            <span class="badge bg-secondary">
+                                            <span class="badge @UiHelper.GetStatusBadgeClass(request.Status)">
                                                 @request.Status
                                             </span>
                                         </div>
@@ -135,7 +135,7 @@
                     @if (PendingRequests?.Count > 3)
                     {
                         <div class="mt-3 pt-3 border-top">
-                            <a href="/requests" class="btn btn-outline-info btn-sm">
+                            <a href="/requests" class="btn btn-outline-primary btn-sm">
                                 <i class="bi bi-arrow-right me-2"></i>
                                 View All (@PendingRequests.Count) Requests
                             </a>
@@ -155,20 +155,21 @@
                 <div class="card-header">
                     <h5 class="card-title mb-0">My In‑Progress Approvals</h5>
                 </div>
-                <div class="card-body">
                     @if (PendingWorkflowSteps == null)
                     {
-                        <LoadingSpinner />
+                        <div class="card-body"><LoadingSpinner /></div>
                     }
                     else if (!PendingWorkflowSteps.Any())
                     {
-                        <EmptyState Title="No approvals in progress" 
-                                    Description="You have no workflow steps requiring your action at this time." />
+                        <div class="card-body">
+                            <EmptyState Title="No approvals in progress" 
+                                        Description="You have no workflow steps requiring your action at this time." />
+                        </div>
                     }
                     else
                     {
                         <div class="table-responsive table-scroll">
-                            <table class="table table-hover table-sm table-sticky">
+                            <table class="table table-hover table-sticky">
                                 <thead>
                                     <tr>
                                         <th>Workflow</th>
@@ -176,7 +177,7 @@
                                         <th>Form</th>
                                         <th>Requested By</th>
                                         <th>Step Started</th>
-                                        <th>Actions</th>
+                                        <th class="col-actions">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -192,9 +193,9 @@
                                             <td>@GetFormName(step.WorkflowInstanceId)</td>
                                             <td>@GetRequesterName(step.WorkflowInstanceId)</td>
                                             <td>@(step.StartedAt.HasValue ? FormatRelativeTime(step.StartedAt.Value) : "Not started")</td>
-                                            <td>
-                                                <a href="/workflow/@step.WorkflowInstanceId/step/@step.StepId" class="btn btn-sm btn-outline-info">
-                                                    <i class="bi bi-play-circle me-1"></i>
+                                            <td class="col-actions">
+                                                <a href="/workflow/@step.WorkflowInstanceId/step/@step.StepId" class="btn btn-sm btn-outline-primary">
+                                                    <i class="bi bi-play-circle me-1" aria-hidden="true"></i>
                                                     Review
                                                 </a>
                                             </td>
@@ -205,15 +206,14 @@
                         </div>
                         @if (PendingWorkflowSteps?.Count > 10)
                         {
-                            <div class="mt-3 pt-3 border-top">
-                                <a href="/approvals" class="btn btn-outline-primary">
-                                    <i class="bi bi-arrow-right me-2"></i>
+                            <div class="card-footer">
+                                <a href="/approvals" class="btn btn-outline-primary btn-sm">
+                                    <i class="bi bi-arrow-right me-2" aria-hidden="true"></i>
                                     View All (@PendingWorkflowSteps.Count) Approvals
                                 </a>
                             </div>
                         }
                     }
-                </div>
             </div>
         </div>
     </div>

@@ -52,7 +52,7 @@ public class DataViewTests : TestContext
         cut.WaitForAssertion(() => Assert.Equal("Literacy & language", cut.Find("tbody tr:first-child td:last-child").TextContent));
         Assert.Equal("Literacy & language", cut.Find("tbody tr:first-child td:last-child").GetAttribute("title"));
         Assert.Equal("99", cut.Find("tbody tr:last-child td:last-child").TextContent);
-        cut.Find("input[placeholder='Search...']").Input("Literacy");
+        cut.Find("input[aria-label='Search records']").Input("Literacy");
         cut.FindAll("button").Single(button => button.TextContent.Trim() == "Search").Click();
         data.Verify(service => service.GetDataAsync(1, 1, 10, "Literacy", null, null, "ASC"), Times.Once);
         cut.Find("th[data-column='ProgramId']").Click();

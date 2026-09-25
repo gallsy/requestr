@@ -115,12 +115,10 @@
             }
         </div>
 
-        @* Action buttons (Edit, Retry, etc.) *@
+        @* The fragment may render nothing when no actions apply; :empty hides the band then *@
         @if (ActionButtons != null)
         {
-            <div class="mt-3 pt-3 border-top d-flex gap-2">
-                @ActionButtons
-            </div>
+            <div class="request-summary-actions mt-3 pt-3 border-top d-flex gap-2">@ActionButtons</div>
         }
     </div>
 </div>
@@ -154,6 +152,10 @@
 }
 
 <style>
+    .request-summary-card .request-summary-actions:empty {
+        display: none !important;
+    }
+
     .request-summary-card .d-flex.min-width-0,
     .request-summary-card .min-width-0 {
         min-width: 0;

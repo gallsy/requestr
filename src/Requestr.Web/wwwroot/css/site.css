@@ -38,9 +38,24 @@
     --input-border: #cbd5e1;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    --row-hover-bg: rgba(59, 130, 246, 0.06);
+    --row-selected-bg: rgba(59, 130, 246, 0.14);
+    /* Text-on-background blues that meet WCAG AA (4.5:1); --primary stays for fills */
+    --link-color: #2563eb;
+    --link-hover-color: #1d4ed8;
+    color-scheme: light;
+
+    /* Point Bootstrap's own tokens at ours so its components follow the active theme */
+    --bs-body-bg: var(--bg-color);
+    --bs-body-color: var(--text-color);
+    --bs-border-color: var(--border-color);
+    --bs-secondary-color: var(--text-muted);
+    --bs-tertiary-bg: var(--bg-subtle);
+    --bs-link-color: var(--link-color);
+    --bs-link-hover-color: var(--link-hover-color);
 }
 
-/* Dark theme */
+/* Dark theme (data-theme is set on <html> by js/ui-preferences.js before first paint) */
 [data-theme="dark"] {
     --bg-color: #0f172a;
     --bg-subtle: #334155;
@@ -52,6 +67,11 @@
     --input-border: #475569;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --row-hover-bg: rgba(59, 130, 246, 0.1);
+    --row-selected-bg: rgba(59, 130, 246, 0.22);
+    --link-color: #60a5fa;
+    --link-hover-color: #93c5fd;
+    color-scheme: dark;
 }
 
 /* ============================================
@@ -68,12 +88,12 @@ html, body {
 }
 
 a {
-    color: var(--primary);
+    color: var(--link-color);
     text-decoration: none;
 }
 
 a:hover {
-    color: var(--primary-dark);
+    color: var(--link-hover-color);
 }
 
 h1, h2, h3, h4, h5, h6, p, div {
@@ -140,37 +160,43 @@ small, .small, .text-muted {
     margin: 0 auto;
 }
 
+/* The layout already provides the page gutter; keep page-level wrappers aligned with the header */
+.container-fluid .container-fluid {
+    padding-left: 0;
+    padding-right: 0;
+}
+
 @media (min-width: 768px) {
-    .page.sidebar-collapsed .sidebar {
+    [data-sidebar="collapsed"] .sidebar {
         width: var(--sidebar-collapsed-width);
     }
 
-    .page.sidebar-collapsed .main {
+    [data-sidebar="collapsed"] .main {
         margin-left: var(--sidebar-collapsed-width);
     }
 
-    .page.sidebar-collapsed .sidebar-brand,
-    .page.sidebar-collapsed .sidebar-label {
+    [data-sidebar="collapsed"] .sidebar-brand,
+    [data-sidebar="collapsed"] .sidebar-label {
         display: none;
     }
 
-    .page.sidebar-collapsed .sidebar-header,
-    .page.sidebar-collapsed .sidebar-nav-link {
+    [data-sidebar="collapsed"] .sidebar-header,
+    [data-sidebar="collapsed"] .sidebar-nav-link {
         justify-content: center;
     }
 
-    .page.sidebar-collapsed .sidebar-nav-link {
+    [data-sidebar="collapsed"] .sidebar-nav-link {
         padding: 0.625rem 0;
         gap: 0;
     }
 
-    .page.sidebar-collapsed .nav-section-label {
+    [data-sidebar="collapsed"] .nav-section-label {
         border-top: 1px solid var(--border-color);
         padding: 0;
         margin: 1rem 0;
     }
 
-    .page.sidebar-collapsed .sidebar-approval-badge {
+    [data-sidebar="collapsed"] .sidebar-approval-badge {
         position: absolute;
         top: 2px;
         right: 2px;
@@ -282,7 +308,7 @@ small, .small, .text-muted {
 .sidebar .nav-link:hover,
 .sidebar-nav-link:hover {
     background-color: var(--bg-subtle);
-    color: var(--primary);
+    color: var(--link-color);
 }
 
 .sidebar .nav-link.active,
@@ -346,6 +372,7 @@ small, .small, .text-muted {
 /* ============================================
    Forms
    ============================================ */
+/* Padding is left to Bootstrap so -sm/-lg sizes and the select arrow spacing stay consistent */
 .form-control,
 .form-select,
 textarea {
@@ -353,7 +380,6 @@ textarea {
     border: 1px solid var(--input-border);
     border-radius: var(--border-radius-sm);
     color: var(--text-color);
-    padding: 0.5rem 0.75rem;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -479,7 +505,6 @@ textarea::placeholder {
 .btn {
     border-radius: var(--border-radius-sm);
     font-weight: 500;
-    padding: 0.5rem 1rem;
     transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
@@ -495,7 +520,7 @@ textarea::placeholder {
 }
 
 .btn-outline-primary {
-    color: var(--primary);
+    color: var(--link-color);
     border: 1px solid var(--primary);
     background: transparent;
 }
@@ -506,14 +531,15 @@ textarea::placeholder {
 }
 
 .btn-outline-secondary {
-    color: var(--secondary);
-    border: 1px solid var(--secondary);
+    color: var(--text-muted);
+    border: 1px solid var(--input-border);
     background: transparent;
 }
 
 .btn-outline-secondary:hover {
-    background: var(--secondary);
-    color: #ffffff;
+    background: var(--bg-subtle);
+    border-color: var(--text-muted);
+    color: var(--text-color);
 }
 
 .btn-outline-light {
@@ -525,7 +551,7 @@ textarea::placeholder {
 .btn-outline-light:hover {
     background: var(--bg-subtle);
     border-color: var(--primary);
-    color: var(--primary);
+    color: var(--link-color);
 }
 
 .btn:focus {
@@ -533,46 +559,88 @@ textarea::placeholder {
 }
 
 /* ============================================
-   Tables
+   Tables — one look everywhere.
+   Standard markup: .card > [.card-header] > .table-responsive > table.table.table-hover > [.card-footer]
    ============================================ */
 .table {
-    color: var(--text-color);
     --bs-table-bg: transparent;
     --bs-table-color: var(--text-color);
     --bs-table-border-color: var(--border-color);
-}
-
-.table th {
-    background-color: transparent;
-    border-bottom: 1px solid var(--border-color);
-    font-weight: 600;
-    font-size: 0.875rem;
+    --bs-table-hover-bg: var(--row-hover-bg);
+    --bs-table-hover-color: var(--text-color);
+    --bs-table-striped-bg: var(--row-hover-bg);
+    --bs-table-striped-color: var(--text-color);
     color: var(--text-color);
 }
 
-.table td {
-    color: var(--text-color);
-    border-color: var(--border-color);
+.table > :not(caption) > * > * {
+    padding: 0.75rem 1rem;
+    vertical-align: middle;
 }
 
-.table-hover tbody tr:hover {
+.table > thead > tr > th {
     background-color: var(--bg-subtle);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border-color);
 }
 
-/* Compact scrollable tables */
-.table-sm th, .table-sm td {
+.table-sm > :not(caption) > * > * {
     padding: 0.5rem 0.75rem;
 }
 
-/* Theme-aware table header — replaces table-dark for dark mode compatibility */
-.thead-themed {
-    background-color: var(--bg-subtle);
+.table > tbody > tr.row-selected > * {
+    --bs-table-bg-state: var(--row-selected-bg);
 }
 
-.thead-themed th {
-    color: var(--text-color);
-    font-weight: 600;
-    border-bottom: 2px solid var(--border-color);
+/* Theme-aware contextual rows (Bootstrap's defaults are light-only) */
+.table > tbody > tr.table-danger,
+.table > tbody > tr.table-warning,
+.table > tbody > tr.table-success {
+    --bs-table-color: var(--text-color);
+    --bs-table-border-color: var(--border-color);
+    --bs-table-hover-color: var(--text-color);
+}
+
+.table > tbody > tr.table-danger { --bs-table-bg: rgba(239, 68, 68, 0.12); --bs-table-hover-bg: rgba(239, 68, 68, 0.18); }
+.table > tbody > tr.table-warning { --bs-table-bg: rgba(245, 158, 11, 0.12); --bs-table-hover-bg: rgba(245, 158, 11, 0.18); }
+.table > tbody > tr.table-success { --bs-table-bg: rgba(16, 185, 129, 0.12); --bs-table-hover-bg: rgba(16, 185, 129, 0.18); }
+
+/* Right-aligned, shrink-to-fit actions column */
+.table .col-actions {
+    width: 1%;
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* Tables that sit directly inside a card run edge to edge */
+.card > .table-responsive,
+.card > .table-responsive > .table,
+.card > .table {
+    margin-bottom: 0;
+}
+
+.card > .table-responsive > .table > :not(caption) > * > :first-child,
+.card > .table > :not(caption) > * > :first-child {
+    padding-left: 1.25rem;
+}
+
+.card > .table-responsive > .table > :not(caption) > * > :last-child,
+.card > .table > :not(caption) > * > :last-child {
+    padding-right: 1.25rem;
+}
+
+.card > .table-responsive > .table > tbody > tr:last-child > *,
+.card > .table > tbody > tr:last-child > * {
+    border-bottom-width: 0;
+}
+
+.card > .table-responsive + .card-footer {
+    background-color: var(--card-bg);
 }
 
 .table-scroll {
@@ -583,8 +651,18 @@ textarea::placeholder {
 .table-sticky thead th {
     position: sticky;
     top: 0;
-    background: var(--card-bg);
     z-index: 1;
+}
+
+/* Action row inside a card, above its table (e.g. bulk actions) */
+.card-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--card-bg);
 }
 
 /* ============================================
@@ -623,6 +701,11 @@ textarea::placeholder {
     padding: 0.375rem 0.625rem;
     border-radius: 1rem;
     font-weight: 500;
+}
+
+/* White text on cyan is ~2:1; use dark text instead */
+.badge.bg-info {
+    color: #0f172a;
 }
 
 /* ============================================
@@ -665,11 +748,11 @@ textarea::placeholder {
 }
 
 .nav-link:hover {
-    color: var(--primary);
+    color: var(--link-color);
 }
 
 .nav-link.active {
-    color: var(--primary);
+    color: var(--link-color);
 }
 
 .nav-tabs .nav-link {
@@ -680,11 +763,11 @@ textarea::placeholder {
 
 .nav-tabs .nav-link:hover {
     border-color: var(--border-color);
-    color: var(--primary);
+    color: var(--link-color);
 }
 
 .nav-tabs .nav-link.active {
-    color: var(--primary);
+    color: var(--link-color);
     background-color: var(--card-bg);
     border-color: var(--border-color) var(--border-color) var(--card-bg);
 }
@@ -696,12 +779,12 @@ button.nav-link {
 }
 
 button.nav-link:hover {
-    color: var(--primary);
+    color: var(--link-color);
     background-color: var(--bg-subtle);
 }
 
 button.nav-link.active {
-    color: var(--primary);
+    color: var(--link-color);
     background-color: var(--card-bg);
     font-weight: 600;
 }
@@ -723,7 +806,7 @@ button.nav-link.active {
 
 .dropdown-item:hover {
     background-color: var(--bg-subtle);
-    color: var(--primary);
+    color: var(--link-color);
 }
 
 /* ============================================
@@ -755,7 +838,7 @@ button.nav-link.active {
 }
 
 .breadcrumb-item a {
-    color: var(--primary);
+    color: var(--link-color);
 }
 
 .breadcrumb-item.active {
@@ -766,7 +849,7 @@ button.nav-link.active {
    Pagination
    ============================================ */
 .page-link {
-    color: var(--primary);
+    color: var(--link-color);
     background-color: var(--card-bg);
     border-color: var(--border-color);
 }
@@ -1099,6 +1182,90 @@ button.nav-link.active {
     }
 }
 
+/* ============================================
+   Filter Bar (Components/Shared/FilterBar.razor)
+   ============================================ */
+.filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1rem;
+    padding: 0.75rem 1rem;
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-sm);
+}
+
+.filter-bar-fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.filter-bar-fields > * {
+    flex: 0 1 12rem;
+    min-width: 10rem;
+}
+
+.filter-bar-fields > .filter-bar-search {
+    flex: 1 1 18rem;
+    max-width: 32rem;
+}
+
+.filter-bar-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-left: auto;
+}
+
+.filter-bar-meta:empty {
+    display: none;
+}
+
+/* ============================================
+   New Request (form catalogue)
+   ============================================ */
+.form-details {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.form-detail-item {
+    display: flex;
+    align-items: center;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.category-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.category-title {
+    margin-bottom: 0;
+    margin-right: 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+
+.category-line {
+    flex-grow: 1;
+    height: 1px;
+    background-color: var(--border-color);
+}
+
 .text-truncate-2 {
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -1130,7 +1297,7 @@ button.nav-link.active {
 }
 
 .resizable-header.sortable-header:hover {
-    background-color: rgba(0, 0, 0, 0.05);
+    color: var(--text-color);
 }
 
 .resizable-header .resize-handle {
@@ -1279,6 +1446,15 @@ button.nav-link.active {
 .display-1, .display-2, .display-3, .display-4, .display-5, .display-6,
 .page-header, .page-header * {
     outline: none !important;
+}
+
+/* ============================================
+   Empty State
+   ============================================ */
+.empty-state-icon {
+    font-size: 2.5rem;
+    color: var(--text-muted);
+    opacity: 0.6;
 }
 
 /* ============================================

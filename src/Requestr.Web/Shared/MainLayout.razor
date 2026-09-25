@@ -1,5 +1,4 @@
 @inherits LayoutComponentBase
-@inject ThemeService ThemeService
 @inject Requestr.Web.Configuration.AppBrandingOptions Branding
 @using Requestr.Core.Services.Workflow
 @inject IWorkflowExecutionService WorkflowExecutionService
@@ -10,7 +9,8 @@
 @inject IUserTimezoneService UserTimezoneService
 @implements IDisposable
 
-<div class="page @(_isSidebarOpen ? "sidebar-open" : null) @(_isSidebarCollapsed ? "sidebar-collapsed" : null)" data-theme="@(_isDarkMode ? "dark" : "light")">
+@* Collapsed state is styled from html[data-sidebar] (set in <head>) to avoid a flash on load. *@
+<div class="page @(_isSidebarOpen ? "sidebar-open" : null)">
     <div id="main-navigation" class="sidebar p-3">
         <div class="sidebar-header mb-4">
             <h5 class="sidebar-brand mb-0 fw-semibold">@Branding.ApplicationName</h5>
@@ -106,7 +106,8 @@
 <Toasts class="p-3" AutoHide="true" Delay="6000" Placement="ToastsPlacement.TopRight" />
 
 @code {
-    private bool _isDarkMode;
+    [CascadingParameter] public Requestr.Web.Configuration.UiPreferences? UiPreferences { get; set; }
+
     private bool _isSidebarOpen = false;
     private bool _isSidebarCollapsed;
     private bool UserHasPendingWorkflowSteps = false;
@@ -116,8 +117,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _isDarkMode = ThemeService.IsDarkMode;
-        ThemeService.OnThemeChanged += OnThemeChanged;
+        _isSidebarCollapsed = UiPreferences?.SidebarCollapsed ?? false;
         Navigation.LocationChanged += OnLocationChanged;
         AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
         
@@ -130,8 +130,12 @@
         {
             try
             {
-                _isSidebarCollapsed = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "requestr.sidebarCollapsed") == "true";
-                StateHasChanged();
+                var collapsed = await JSRuntime.InvokeAsync<bool>("requestrUi.isSidebarCollapsed");
+                if (collapsed != _isSidebarCollapsed)
+                {
+                    _isSidebarCollapsed = collapsed;
+                    StateHasChanged();
+                }
             }
             catch (JSException) { }
         }
@@ -200,12 +204,6 @@
         if (!_disposed) StateHasChanged();
     }
 
-    private void OnThemeChanged()
-    {
-        _isDarkMode = ThemeService.IsDarkMode;
-        InvokeAsync(StateHasChanged);
-    }
-
     private void ToggleSidebar()
     {
         _isSidebarOpen = !_isSidebarOpen;
@@ -216,7 +214,7 @@
         _isSidebarCollapsed = !_isSidebarCollapsed;
         try
         {
-            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "requestr.sidebarCollapsed", _isSidebarCollapsed ? "true" : "false");
+            await JSRuntime.InvokeVoidAsync("requestrUi.setSidebarCollapsed", _isSidebarCollapsed);
         }
         catch (JSException) { }
     }
@@ -230,7 +228,6 @@
     {
         _disposed = true;
         _workflowCheckVersion++;
-        ThemeService.OnThemeChanged -= OnThemeChanged;
         Navigation.LocationChanged -= OnLocationChanged;
         AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
     }

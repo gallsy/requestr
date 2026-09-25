@@ -1,10 +1,11 @@
 @* Standardized empty state component *@
 
-<div class="text-center py-5">
-    <h3 class="text-muted">@Title</h3>
+<div class="empty-state text-center py-5">
+    <i class="bi @Icon empty-state-icon" aria-hidden="true"></i>
+    <h3 class="h5 mt-3 mb-1">@Title</h3>
     @if (!string.IsNullOrEmpty(Description))
     {
-        <p class="text-muted">@Description</p>
+        <p class="text-muted mb-0">@Description</p>
     }
     @if (Action != null)
     {
@@ -19,6 +20,11 @@
     /// Title for the empty state
     /// </summary>
     [Parameter] public string Title { get; set; } = "No Items Found";
+
+    /// <summary>
+    /// Bootstrap icon class shown above the title
+    /// </summary>
+    [Parameter] public string Icon { get; set; } = "bi-inbox";
 
     /// <summary>
     /// Optional description for the empty state

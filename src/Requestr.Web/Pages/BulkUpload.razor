@@ -24,7 +24,7 @@
 }
 else if (!_hasPermission)
 {
-    <EmptyState Title="Access Denied" 
+    <EmptyState Title="Access Denied" Icon="bi-shield-lock" 
                 Description="You do not have permission to perform bulk uploads for this form.">
         <Action>
             <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">
@@ -198,7 +198,7 @@ else
                             <div class="card-body">
                                 <div class="table-responsive">
                                     <table class="table table-sm table-hover">
-                                        <thead class="thead-themed">
+                                        <thead>
                                             <tr>
                                                 <th width="50">
                                                     <input type="checkbox" @onchange="OnSelectAllChanged" checked="@_allSelected" />

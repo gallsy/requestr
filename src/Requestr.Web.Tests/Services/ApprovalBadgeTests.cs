@@ -46,7 +46,6 @@ public class ApprovalBadgeTests : TestContext
         Assert.Empty(layout.FindAll(".top-row button[aria-label='Collapse navigation']"));
         Assert.Equal("true", collapse.GetAttribute("aria-expanded"));
         collapse.Click();
-        Assert.Contains("sidebar-collapsed", layout.Find(".page").ClassList);
         Assert.Equal("false", layout.Find("#main-navigation button[aria-label='Expand navigation']").GetAttribute("aria-expanded"));
         var links = layout.FindAll("#main-navigation a.sidebar-nav-link");
         Assert.Equal(7, links.Count);
@@ -58,9 +57,9 @@ public class ApprovalBadgeTests : TestContext
             Assert.False(string.IsNullOrWhiteSpace(link.GetAttribute("title")));
         });
         Assert.Single(layout.FindAll("a[href='approvals'] .sidebar-approval-badge"));
-        Assert.Equal("true", JSInterop.Invocations["localStorage.setItem"].Last().Arguments[1]);
+        Assert.Equal(true, JSInterop.Invocations["requestrUi.setSidebarCollapsed"].Last().Arguments[0]);
         await layout.InvokeAsync(() => Navigation.NavigateTo("/forms"));
-        Assert.Contains("sidebar-collapsed", layout.Find(".page").ClassList);
+        Assert.Single(layout.FindAll("button[aria-label='Expand navigation']"));
         Assert.Contains("active", layout.Find("a[href='/forms']").ClassList);
         layout.Find("button[aria-label='Toggle navigation']").Click();
         Assert.Contains("sidebar-open", layout.Find(".page").ClassList);
@@ -70,16 +69,25 @@ public class ApprovalBadgeTests : TestContext
         layout.Find(".sidebar-overlay").Click();
         Assert.DoesNotContain("sidebar-open", layout.Find(".page").ClassList);
         layout.Find("button[aria-label='Expand navigation']").Click();
-        Assert.DoesNotContain("sidebar-collapsed", layout.Find(".page").ClassList);
-        Assert.Equal("false", JSInterop.Invocations["localStorage.setItem"].Last().Arguments[1]);
+        Assert.Single(layout.FindAll("#main-navigation button[aria-label='Collapse navigation']"));
+        Assert.Equal(false, JSInterop.Invocations["requestrUi.setSidebarCollapsed"].Last().Arguments[0]);
     }
 
     [Fact]
     public void DesktopNavigationRestoresSavedPreference()
     {
-        JSInterop.Setup<string?>("localStorage.getItem", "requestr.sidebarCollapsed").SetResult("true");
+        JSInterop.Setup<bool>("requestrUi.isSidebarCollapsed").SetResult(true);
         var layout = RenderComponent<MainLayout>();
-        Assert.Contains("sidebar-collapsed", layout.Find(".page").ClassList);
+        Assert.Equal("false", layout.Find("#main-navigation button[aria-label='Expand navigation']").GetAttribute("aria-expanded"));
+    }
+
+    [Fact]
+    public void DesktopNavigationPrerendersCookiePreference()
+    {
+        JSInterop.Setup<bool>("requestrUi.isSidebarCollapsed").SetResult(true);
+        var layout = RenderComponent<MainLayout>(parameters => parameters
+            .AddCascadingValue(new UiPreferences(DarkMode: false, SidebarCollapsed: true)));
+        Assert.Single(layout.FindAll("#main-navigation button[aria-label='Expand navigation']"));
     }
 
     private void SetPending(bool pending) => _workflows

@@ -13,27 +13,25 @@
 @inject IUserTimezoneService Tz
 <PageTitle>Form Management | @Branding.ApplicationName</PageTitle>
 
-<PageHeader Title="Manage Forms">
+<PageHeader Title="Manage Forms" Description="Create and maintain request forms">
     <Actions>
         @if (_isAdmin)
         {
-        <button class="btn btn-primary btn-sm" @onclick="CreateForm" title="Create New Form">
-            <i class="bi bi-plus-lg"></i>
+        <button class="btn btn-primary" @onclick="CreateForm" title="Create New Form">
+            <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>New Form
         </button>
         }
     </Actions>
 </PageHeader>
 
-<div class="container-fluid">
-
     @if (_isLoading)
     {
         <LoadingSpinner Message="Loading forms..." />
     }
-    else if (!_filteredForms.Any())
+    else if (!_forms.Any())
     {
         <EmptyState Title="No Forms Available" 
-                    Description="@(!_isAdmin ? "No editable forms found." : StatusFilter == "active" ? "No active forms found" : StatusFilter == "inactive" ? "No inactive forms found" : "No forms found.")">
+                    Description="@(!_isAdmin ? "No editable forms found." : "No forms found.")">
             <Action>
                 @if (_isAdmin)
                 {
@@ -47,45 +45,37 @@
     }
     else
     {
-        <div class="card mb-3">
-            <div class="card-body py-2">
-                <div class="row g-2 align-items-center">
-                    <div class="col-md-3">
-                        <select class="form-select form-select-sm" @bind="StatusFilter" @bind:after="ApplyFilter">
-                            <option value="all">All Statuses</option>
-                            <option value="active">Active Only</option>
-                            <option value="inactive">Inactive Only</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <select class="form-select form-select-sm" @bind="CategoryFilter" @bind:after="ApplyFilter">
-                            <option value="">All Categories</option>
-                            @foreach (var cat in _allCategories)
-                            {
-                                <option value="@cat">@cat</option>
-                            }
-                        </select>
-                    </div>
-                    @if (_isAdmin)
+        <FilterBar Summary="@($"{_filteredForms.Count} of {_forms.Count} forms")" ShowClear="HasActiveFilters" OnClear="ClearFilters">
+            <select class="form-select form-select-sm" aria-label="Status" @bind="StatusFilter" @bind:after="ApplyFilter">
+                <option value="all">All Statuses</option>
+                <option value="active">Active Only</option>
+                <option value="inactive">Inactive Only</option>
+            </select>
+            <select class="form-select form-select-sm" aria-label="Category" @bind="CategoryFilter" @bind:after="ApplyFilter">
+                <option value="">All Categories</option>
+                @foreach (var cat in _allCategories)
+                {
+                    <option value="@cat">@cat</option>
+                }
+            </select>
+            @if (_isAdmin)
+            {
+                <select class="form-select form-select-sm" aria-label="Role" @bind="RoleFilter" @bind:after="ApplyFilter">
+                    <option value="">All Roles</option>
+                    @foreach (var role in _allRoles)
                     {
-                    <div class="col-md-3">
-                        <select class="form-select form-select-sm" @bind="RoleFilter" @bind:after="ApplyFilter">
-                            <option value="">All Roles</option>
-                            @foreach (var role in _allRoles)
-                            {
-                                <option value="@role">@role</option>
-                            }
-                        </select>
-                    </div>
+                        <option value="@role">@role</option>
                     }
-                    <div class="col-md-3 text-end">
-                        <span class="text-muted small">@_filteredForms.Count of @(_forms?.Count ?? 0) forms</span>
-                    </div>
-                </div>
-            </div>
-        </div>
+                </select>
+            }
+        </FilterBar>
+        @if (!_filteredForms.Any())
+        {
+            <EmptyState Title="No Matching Forms" Icon="bi-funnel" Description="No forms match your current filters." />
+        }
+        else
+        {
         <div class="card">
-            <div class="card-body">
                 <div class="table-responsive">
                     <table class="table table-hover">
                         <thead>
@@ -98,7 +88,7 @@
                                     <th>Roles</th>
                                 }
                                 <th>Status</th>
-                                <th>Actions</th>
+                                <th class="col-actions">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -160,35 +150,34 @@
                                             <span class="badge bg-danger">Inactive</span>
                                         }
                                     </td>
-                                    <td>
-                                        <div class="btn-group btn-group-sm" role="group">
+                                    <td class="col-actions">
+                                        <div class="btn-group btn-group-sm" role="group" aria-label="Form actions">
                                             <button class="btn btn-outline-primary" @onclick="() => EditForm(form.Id)" title="Edit form" aria-label="Edit form">
-                                                <i class="bi bi-pencil-square"></i>
+                                                <i class="bi bi-pencil-square" aria-hidden="true"></i>
                                             </button>
                                             @if (_isAdmin)
                                             {
-                                            <button class="btn btn-outline-info" @onclick="() => ViewForm(form.Id)">
-                                                <i class="bi bi-eye"></i>
+                                            <button class="btn btn-outline-primary" @onclick="() => ViewForm(form.Id)" title="Open form" aria-label="Open form">
+                                                <i class="bi bi-eye" aria-hidden="true"></i>
                                             </button>
-                                            <button class="btn btn-outline-warning" @onclick="() => ToggleFormStatus(form)">
-                                                <i class="bi @(form.IsActive ? "bi-pause-fill" : "bi-play-fill")"></i>
+                                            <button class="btn btn-outline-warning" @onclick="() => ToggleFormStatus(form)"
+                                                    title="@(form.IsActive ? "Deactivate form" : "Activate form")" aria-label="@(form.IsActive ? "Deactivate form" : "Activate form")">
+                                                <i class="bi @(form.IsActive ? "bi-pause-fill" : "bi-play-fill")" aria-hidden="true"></i>
                                             </button>
-                                            <button class="btn btn-outline-danger" @onclick="() => DeleteForm(form.Id)">
-                                                <i class="bi bi-trash"></i>
+                                            <button class="btn btn-outline-danger" @onclick="() => DeleteForm(form.Id)" title="Delete form" aria-label="Delete form">
+                                                <i class="bi bi-trash" aria-hidden="true"></i>
                                             </button>
                                             }
                                         </div>
                                     </td>
                                 </tr>
                             }
-                        </tbody>                            </table>
-                        </div>
-
-
-                    </div>
+                        </tbody>
+                    </table>
                 </div>
-            }
-</div>
+        </div>
+        }
+    }
 
 @code {
     private List<FormDefinition> _forms = new();
@@ -200,6 +189,16 @@
     private string StatusFilter = "all";
     private string CategoryFilter = "";
     private string RoleFilter = "";
+
+    private bool HasActiveFilters => StatusFilter != "all" || !string.IsNullOrEmpty(CategoryFilter) || !string.IsNullOrEmpty(RoleFilter);
+
+    private void ClearFilters()
+    {
+        StatusFilter = "all";
+        CategoryFilter = "";
+        RoleFilter = "";
+        ApplyFilter();
+    }
 
     protected override async Task OnInitializedAsync()
     {
