@@ -21,5 +21,6 @@
     <None Include="../Requestr.Migrations/Scripts/030_LookupFilterLevels.sql" Link="030_LookupFilterLevels.sql" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../Requestr.Migrations/Scripts/031_LookupSelectionLabel.sql" Link="031_LookupSelectionLabel.sql" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../Requestr.Migrations/Scripts/032_HideRequestComments.sql" Link="032_HideRequestComments.sql" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../Requestr.Migrations/Scripts/033_RecordKeys.sql" Link="033_RecordKeys.sql" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -18,6 +18,7 @@ public static class FormPermissionHelper
             FormPermissionType.UpdateRequest => "Update existing records via requests",
             FormPermissionType.DeleteRequest => "Delete records via requests",
             FormPermissionType.ViewData => "View the data view page for this form",
+            FormPermissionType.ViewRecordHistory => "View the request history of records in the data view",
             FormPermissionType.BulkActions => "Perform bulk actions from the data view",
             FormPermissionType.BulkUploadCsv => "Upload Excel files for bulk operations",
             FormPermissionType.EditFormDesign => "Edit layout, labels, help text, and static options on this form",
@@ -36,6 +37,7 @@ public static class FormPermissionHelper
             FormPermissionType.UpdateRequest => "Request Operations", 
             FormPermissionType.DeleteRequest => "Request Operations",
             FormPermissionType.ViewData => "Data Access",
+            FormPermissionType.ViewRecordHistory => "Data Access",
             FormPermissionType.BulkActions => "Bulk Operations",
             FormPermissionType.BulkUploadCsv => "Bulk Operations",
             FormPermissionType.EditFormDesign => "Administrative",
@@ -107,6 +109,7 @@ public static class FormPermissionHelper
         {
             FormPermissionType.ViewData => new List<FormPermissionType>
             {
+                FormPermissionType.ViewRecordHistory,
                 FormPermissionType.BulkActions,
                 FormPermissionType.BulkUploadCsv
             },
@@ -125,6 +128,7 @@ public static class FormPermissionHelper
     {
         return permissionType switch
         {
+            FormPermissionType.ViewRecordHistory => new List<FormPermissionType> { FormPermissionType.ViewData },
             FormPermissionType.BulkActions => new List<FormPermissionType> { FormPermissionType.ViewData },
             FormPermissionType.BulkUploadCsv => new List<FormPermissionType> { FormPermissionType.ViewData, FormPermissionType.BulkActions },
             _ => new List<FormPermissionType>()

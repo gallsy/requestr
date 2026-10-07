@@ -93,7 +93,7 @@ public class FormRequestApplicationService : IFormRequestApplicationService
             if (result.Success)
             {
                 await _formRequestRepository.UpdateStatusAsync(formRequestId, RequestStatus.Applied, null);
-                await _formRequestRepository.SetAppliedRecordKeyAsync(formRequestId, result.RecordKey);
+                await _formRequestRepository.SetRecordKeyAsync(formRequestId, result.RecordKey);
 
                 await _historyService.RecordChangeAsync(
                     formRequestId,
@@ -165,7 +165,6 @@ public class FormRequestApplicationService : IFormRequestApplicationService
                 await _lookups.ValidateSubmissionAsync(formDefinition, convertedFieldValues, formRequest.RequestType, convertedOriginalValues);
 
             bool success;
-            object? recordKey = null;
 
             switch (formRequest.RequestType)
             {
@@ -177,7 +176,6 @@ public class FormRequestApplicationService : IFormRequestApplicationService
                         convertedFieldValues
                     );
                     success = insertResult.Success;
-                    recordKey = insertResult.InsertedId;
 
                     // Write the generated identity value back into field values so it's visible on the request
                     if (success && insertResult.InsertedId != null && !string.IsNullOrEmpty(insertResult.IdentityColumn))
@@ -213,11 +211,6 @@ public class FormRequestApplicationService : IFormRequestApplicationService
                         convertedFieldValues,
                         updateWhereConditions
                     );
-                    
-                    if (success)
-                    {
-                        recordKey = string.Join(", ", updateWhereConditions.Select(kvp => $"{kvp.Key}={kvp.Value}"));
-                    }
                     break;
 
                 case RequestType.Delete:
@@ -230,11 +223,6 @@ public class FormRequestApplicationService : IFormRequestApplicationService
                         formDefinition.Schema,
                         deleteWhereConditions
                     );
-                    
-                    if (success)
-                    {
-                        recordKey = string.Join(", ", deleteWhereConditions.Select(kvp => $"{kvp.Key}={kvp.Value}"));
-                    }
                     break;
 
                 default:
@@ -258,7 +246,9 @@ public class FormRequestApplicationService : IFormRequestApplicationService
                         formRequest.Id, string.Join(", ", convertedFieldValues.Keys));
                 }
 
-                return ApplicationResult.Succeeded(recordKey?.ToString());
+                return ApplicationResult.Succeeded(await _dataService.TryBuildRecordKeyAsync(
+                    formDefinition.DatabaseConnectionName, formDefinition.TableName, formDefinition.Schema,
+                    formRequest.RequestType, convertedFieldValues, convertedOriginalValues, _logger));
             }
             else
             {

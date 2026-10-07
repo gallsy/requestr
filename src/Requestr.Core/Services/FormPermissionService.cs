@@ -399,6 +399,7 @@ public class FormPermissionService : IFormPermissionService
                     [FormPermissionType.UpdateRequest] = true,
                     [FormPermissionType.DeleteRequest] = true,
                     [FormPermissionType.ViewData] = true,
+                    [FormPermissionType.ViewRecordHistory] = true,
                     [FormPermissionType.BulkActions] = true,
                     [FormPermissionType.BulkUploadCsv] = true
                 }

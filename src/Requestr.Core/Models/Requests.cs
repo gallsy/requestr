@@ -16,7 +16,7 @@ public class FormRequest : AuditableEntity
     public DateTime? ApprovedAt { get; set; }
     public string? RejectionReason { get; set; }
     public string? Comments { get; set; }
-    public string? AppliedRecordKey { get; set; } // Key of the record that was inserted/updated
+    public string? RecordKey { get; set; } // Canonical target-record key, see RecordKeyBuilder
     public string? FailureMessage { get; set; } // Error message if application failed
     public List<FormRequestHistory> History { get; set; } = new();
     
@@ -86,6 +86,7 @@ public class BulkFormRequestItem : BaseEntity
     public RequestStatus Status { get; set; } = RequestStatus.Pending;
     public string? ValidationErrors { get; set; } // JSON array of validation errors
     public string? ProcessingResult { get; set; } // Result after applying to database
+    public string? RecordKey { get; set; }
 }
 
 public class BulkFormRequestHistory : BaseEntity

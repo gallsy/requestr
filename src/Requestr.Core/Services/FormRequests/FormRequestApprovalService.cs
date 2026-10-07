@@ -4,6 +4,7 @@ using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using Requestr.Core.Repositories;
 using Requestr.Core.Services.Workflow;
+using Requestr.Core.Utilities;
 using System.Text.Json;
 
 namespace Requestr.Core.Services.FormRequests;
@@ -79,12 +80,13 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                 {
                     await _formRequestRepository.SetAppliedAsync(id, applicationResult.RecordKey, connection, transaction);
 
+                    var recordDescription = RecordKeyBuilder.Describe(applicationResult.RecordKey);
                     string successComment = formRequest.RequestType switch
                     {
-                        RequestType.Insert => $"Record successfully inserted. New record key: {applicationResult.RecordKey}",
-                        RequestType.Update => $"Record successfully updated. Updated record: {applicationResult.RecordKey}",
-                        RequestType.Delete => $"Record successfully deleted. Deleted record: {applicationResult.RecordKey}",
-                        _ => $"Request successfully applied. Record key: {applicationResult.RecordKey}"
+                        RequestType.Insert => $"Record successfully inserted. New record key: {recordDescription}",
+                        RequestType.Update => $"Record successfully updated. Updated record: {recordDescription}",
+                        RequestType.Delete => $"Record successfully deleted. Deleted record: {recordDescription}",
+                        _ => $"Request successfully applied. Record key: {recordDescription}"
                     };
 
                     await _historyService.RecordChangeAsync(
@@ -94,7 +96,7 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                         new Dictionary<string, object?> 
                         { 
                             { "Status", "Applied" },
-                            { "AppliedRecordKey", applicationResult.RecordKey },
+                            { "RecordKey", applicationResult.RecordKey },
                             { "OperationType", formRequest.RequestType }
                         },
                         "System",
@@ -220,12 +222,13 @@ public class FormRequestApprovalService : IFormRequestApprovalService
             {
                 await _formRequestRepository.SetAppliedAsync(id, applicationResult.RecordKey, connection, transaction);
 
+                var recordDescription = RecordKeyBuilder.Describe(applicationResult.RecordKey);
                 string successComment = formRequest.RequestType switch
                 {
-                    RequestType.Insert => $"Record successfully inserted after retry. New record key: {applicationResult.RecordKey}",
-                    RequestType.Update => $"Record successfully updated after retry. Updated record: {applicationResult.RecordKey}",
-                    RequestType.Delete => $"Record successfully deleted after retry. Deleted record: {applicationResult.RecordKey}",
-                    _ => $"Request successfully applied after retry. Record key: {applicationResult.RecordKey}"
+                    RequestType.Insert => $"Record successfully inserted after retry. New record key: {recordDescription}",
+                    RequestType.Update => $"Record successfully updated after retry. Updated record: {recordDescription}",
+                    RequestType.Delete => $"Record successfully deleted after retry. Deleted record: {recordDescription}",
+                    _ => $"Request successfully applied after retry. Record key: {recordDescription}"
                 };
 
                 await _historyService.RecordChangeAsync(
@@ -235,7 +238,7 @@ public class FormRequestApprovalService : IFormRequestApprovalService
                     new Dictionary<string, object?> 
                     { 
                         { "Status", "Applied" },
-                        { "AppliedRecordKey", applicationResult.RecordKey },
+                        { "RecordKey", applicationResult.RecordKey },
                         { "OperationType", formRequest.RequestType },
                         { "RetryAttempt", true }
                     },

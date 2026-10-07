@@ -141,6 +141,7 @@ public enum FormPermissionType
     
     // Data view permissions
     ViewData = 10,          // Can see the data view page
+    ViewRecordHistory = 12, // Can see all requests that affected a record from the data view
     
     // Bulk operation permissions
     BulkActions = 20,       // Can perform bulk actions from data view

@@ -446,6 +446,18 @@ public class BulkFormRequestService : IBulkFormRequestService
 
             bulkRequest.Id = bulkRequestId;
 
+            List<string> primaryKeyColumns;
+            try
+            {
+                primaryKeyColumns = await _dataService.GetPrimaryKeyColumnsAsync(
+                    formDefinition.DatabaseConnectionName, formDefinition.TableName, formDefinition.Schema);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not load primary key for bulk request {BulkRequestId}; items will have no record key", bulkRequestId);
+                primaryKeyColumns = [];
+            }
+
             // Create individual bulk request items (not FormRequests)
             foreach (var formRequestDto in createDto.FormRequests)
             {
@@ -455,14 +467,16 @@ public class BulkFormRequestService : IBulkFormRequestService
                     FieldValues = formRequestDto.FieldValues,
                     OriginalValues = formRequestDto.OriginalValues,
                     RowNumber = bulkRequest.Items.Count + 1, // Sequential row numbering
-                    Status = RequestStatus.Pending
+                    Status = RequestStatus.Pending,
+                    RecordKey = RecordKeyBuilder.ForRequest(primaryKeyColumns, createDto.RequestType,
+                        formRequestDto.FieldValues, formRequestDto.OriginalValues)
                 };
 
                 // Create the bulk request item
                 var createItemSql = @"
-                    INSERT INTO BulkFormRequestItems (BulkFormRequestId, FieldValues, OriginalValues, RowNumber, Status, CreatedBy)
+                    INSERT INTO BulkFormRequestItems (BulkFormRequestId, FieldValues, OriginalValues, RowNumber, Status, CreatedBy, RecordKey)
                     OUTPUT INSERTED.Id
-                    VALUES (@BulkFormRequestId, @FieldValues, @OriginalValues, @RowNumber, @Status, @CreatedBy)";
+                    VALUES (@BulkFormRequestId, @FieldValues, @OriginalValues, @RowNumber, @Status, @CreatedBy, @RecordKey)";
 
                 var itemId = await connection.QuerySingleAsync<int>(createItemSql, new
                 {
@@ -471,7 +485,8 @@ public class BulkFormRequestService : IBulkFormRequestService
                     OriginalValues = JsonSerializer.Serialize(bulkItem.OriginalValues),
                     RowNumber = bulkItem.RowNumber,
                     Status = (int)bulkItem.Status,
-                    CreatedBy = userId
+                    CreatedBy = userId,
+                    bulkItem.RecordKey
                 }, transaction);
 
                 bulkItem.Id = itemId;
@@ -1268,6 +1283,7 @@ public class BulkFormRequestService : IBulkFormRequestService
 
             int successCount = 0;
             int failureCount = 0;
+            List<string>? pkColumns = null;
 
             foreach (var item in items)
             {
@@ -1284,18 +1300,22 @@ public class BulkFormRequestService : IBulkFormRequestService
                     if (requestType != RequestType.Delete)
                         await _lookups.ValidateSubmissionAsync(formDefinition, fieldValues, requestType, originalValues);
 
+                    pkColumns ??= await _dataService.GetPrimaryKeyColumnsAsync(dbConnectionName, tableName, schema);
+
                     bool itemSuccess = false;
                     string processingResult;
 
                     switch (requestType)
                     {
                         case RequestType.Insert:
-                            itemSuccess = await _dataService.InsertDataAsync(dbConnectionName, tableName, schema, fieldValues);
+                            var insertResult = await _dataService.InsertDataWithIdAsync(dbConnectionName, tableName, schema, fieldValues);
+                            itemSuccess = insertResult.Success;
+                            if (itemSuccess)
+                                RecordKeyBuilder.ApplyInsertedIdentity(fieldValues, insertResult.InsertedId, insertResult.IdentityColumn);
                             processingResult = itemSuccess ? "Successfully inserted into database" : "Failed to insert into database";
                             break;
 
                         case RequestType.Update:
-                            var pkColumns = await _dataService.GetPrimaryKeyColumnsAsync(dbConnectionName, tableName, schema);
                             if (pkColumns.Count == 0)
                                 throw new InvalidOperationException($"No primary key found for table {schema}.{tableName}");
 
@@ -1313,12 +1333,11 @@ public class BulkFormRequestService : IBulkFormRequestService
                             break;
 
                         case RequestType.Delete:
-                            var deletePkColumns = await _dataService.GetPrimaryKeyColumnsAsync(dbConnectionName, tableName, schema);
-                            if (deletePkColumns.Count == 0)
+                            if (pkColumns.Count == 0)
                                 throw new InvalidOperationException($"No primary key found for table {schema}.{tableName}");
 
                             var deleteConditions = new Dictionary<string, object?>();
-                            foreach (var pk in deletePkColumns)
+                            foreach (var pk in pkColumns)
                             {
                                 if (originalValues.ContainsKey(pk))
                                     deleteConditions[pk] = originalValues[pk];
@@ -1336,12 +1355,15 @@ public class BulkFormRequestService : IBulkFormRequestService
                     }
 
                     await connection.ExecuteAsync(
-                        @"UPDATE BulkFormRequestItems SET Status = @Status, ProcessingResult = @ProcessingResult WHERE Id = @ItemId",
+                        @"UPDATE BulkFormRequestItems SET Status = @Status, ProcessingResult = @ProcessingResult,
+                              RecordKey = COALESCE(@RecordKey, RecordKey)
+                          WHERE Id = @ItemId",
                         new
                         {
                             ItemId = item.Id,
                             Status = itemSuccess ? (int)RequestStatus.Applied : (int)RequestStatus.Failed,
-                            ProcessingResult = processingResult
+                            ProcessingResult = processingResult,
+                            RecordKey = itemSuccess ? RecordKeyBuilder.ForRequest(pkColumns, requestType, fieldValues, originalValues) : null
                         });
 
                     if (itemSuccess) successCount++;

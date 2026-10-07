@@ -283,7 +283,7 @@ public class FormRequestRepository : IFormRequestRepository
                     request.RequestedBy,
                     request.RequestedAt,
                     request.Comments,
-                    request.AppliedRecordKey,
+                    request.RecordKey,
                     request.FailureMessage,
                     WorkflowInstanceId = (int?)null
                 },
@@ -313,7 +313,7 @@ public class FormRequestRepository : IFormRequestRepository
                 request.RequestedBy,
                 request.RequestedAt,
                 request.Comments,
-                request.AppliedRecordKey,
+                request.RecordKey,
                 request.FailureMessage,
                 WorkflowInstanceId = (int?)null
             },
@@ -439,7 +439,7 @@ public class FormRequestRepository : IFormRequestRepository
         }
     }
     
-    public async Task UpdateToAppliedAsync(int id, string? appliedRecordKey)
+    public async Task UpdateToAppliedAsync(int id, string? recordKey)
     {
         try
         {
@@ -448,10 +448,10 @@ public class FormRequestRepository : IFormRequestRepository
             
             await connection.ExecuteAsync(
                 FormRequestQueries.UpdateToApplied,
-                new { Id = id, Status = (int)RequestStatus.Applied, AppliedRecordKey = appliedRecordKey },
+                new { Id = id, Status = (int)RequestStatus.Applied, RecordKey = recordKey },
                 commandTimeout: _connectionFactory.DefaultCommandTimeout);
             
-            _logger.LogInformation("Applied form request {Id} with record key {RecordKey}", id, appliedRecordKey);
+            _logger.LogInformation("Applied form request {Id} with record key {RecordKey}", id, recordKey);
         }
         catch (Exception ex)
         {
@@ -519,14 +519,14 @@ public class FormRequestRepository : IFormRequestRepository
     {
         await connection.ExecuteAsync(
             FormRequestQueries.UpdateToApplied,
-            new { Id = id, Status = (int)RequestStatus.Applied, AppliedRecordKey = recordKey },
+            new { Id = id, Status = (int)RequestStatus.Applied, RecordKey = recordKey },
             transaction,
             commandTimeout: _connectionFactory.DefaultCommandTimeout);
         
         _logger.LogInformation("Set form request {Id} as applied with record key {RecordKey} within transaction", id, recordKey);
     }
     
-    public async Task SetAppliedRecordKeyAsync(int id, string? recordKey)
+    public async Task SetRecordKeyAsync(int id, string? recordKey)
     {
         try
         {
@@ -534,15 +534,15 @@ public class FormRequestRepository : IFormRequestRepository
             await ((Microsoft.Data.SqlClient.SqlConnection)connection).OpenAsync();
             
             await connection.ExecuteAsync(
-                "UPDATE FormRequests SET AppliedRecordKey = @AppliedRecordKey WHERE Id = @Id",
-                new { Id = id, AppliedRecordKey = recordKey },
+                "UPDATE FormRequests SET RecordKey = COALESCE(@RecordKey, RecordKey) WHERE Id = @Id",
+                new { Id = id, RecordKey = recordKey },
                 commandTimeout: _connectionFactory.DefaultCommandTimeout);
             
-            _logger.LogInformation("Set form request {Id} applied record key to {RecordKey}", id, recordKey);
+            _logger.LogInformation("Set form request {Id} record key to {RecordKey}", id, recordKey);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error setting applied record key for form request {Id}", id);
+            _logger.LogError(ex, "Error setting record key for form request {Id}", id);
             throw;
         }
     }
@@ -618,7 +618,7 @@ public class FormRequestRepository : IFormRequestRepository
             ApprovedAt = (DateTime?)row.ApprovedAt,
             RejectionReason = (string?)row.RejectionReason,
             Comments = (string?)row.Comments,
-            AppliedRecordKey = (string?)row.AppliedRecordKey,
+            RecordKey = (string?)row.RecordKey,
             FailureMessage = (string?)row.FailureMessage,
             WorkflowInstanceId = (int?)row.WorkflowInstanceId,
             BulkFormRequestId = row.BulkFormRequestId != null ? (int?)row.BulkFormRequestId : null,
@@ -651,7 +651,7 @@ public class FormRequestRepository : IFormRequestRepository
             ApprovedAt = row.ApprovedAt as DateTime?,
             RejectionReason = row.RejectionReason as string,
             Comments = row.Comments as string,
-            AppliedRecordKey = row.AppliedRecordKey as string,
+            RecordKey = row.RecordKey as string,
             FailureMessage = row.FailureMessage as string
         };
         

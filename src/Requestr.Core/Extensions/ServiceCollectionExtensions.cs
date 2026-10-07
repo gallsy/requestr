@@ -36,6 +36,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFormDesignService, FormDesignService>();
         services.AddScoped<IBulkFormRequestService, BulkFormRequestService>();
         services.AddScoped<IDataViewService, DataViewService>();
+        services.AddScoped<IRecordHistoryService, RecordHistoryService>();
+        services.AddScoped<RecordKeyBackfillService>();
         
         // FormRequest Services
         services.AddScoped<IFormRequestQueryService, FormRequestQueryService>();
