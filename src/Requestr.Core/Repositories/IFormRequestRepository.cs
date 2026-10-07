@@ -119,7 +119,7 @@ public interface IFormRequestRepository
     /// <summary>
     /// Updates a form request to applied status with the record key.
     /// </summary>
-    Task UpdateToAppliedAsync(int id, string? appliedRecordKey);
+    Task UpdateToAppliedAsync(int id, string? recordKey);
     
     /// <summary>
     /// Sets a form request as applied within an existing transaction.
@@ -127,9 +127,9 @@ public interface IFormRequestRepository
     Task SetAppliedAsync(int id, string? recordKey, System.Data.IDbConnection connection, System.Data.IDbTransaction transaction);
     
     /// <summary>
-    /// Sets the applied record key for a form request.
+    /// Sets the target record key for a form request; a null key leaves the existing key unchanged.
     /// </summary>
-    Task SetAppliedRecordKeyAsync(int id, string? recordKey);
+    Task SetRecordKeyAsync(int id, string? recordKey);
     
     /// <summary>
     /// Updates a form request to failed status with the error message.

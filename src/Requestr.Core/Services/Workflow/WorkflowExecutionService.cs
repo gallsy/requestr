@@ -1416,14 +1416,16 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             // Save computed values back to the FormRequest so they're visible in the UI
             if (result)
             {
+                var recordKey = await _dataService.TryBuildRecordKeyAsync(databaseConnectionName, tableName, schema,
+                    requestType, fieldValues, originalValues, _logger);
                 try
                 {
                     int formRequestId = (int)requestData.FormRequestId;
                     using var conn = await _connectionFactory.CreateConnectionAsync();
                     var json = System.Text.Json.JsonSerializer.Serialize(fieldValues);
                     await conn.ExecuteAsync(
-                        "UPDATE FormRequests SET FieldValues = @FieldValues WHERE Id = @Id",
-                        new { Id = formRequestId, FieldValues = json });
+                        "UPDATE FormRequests SET FieldValues = @FieldValues, RecordKey = COALESCE(@RecordKey, RecordKey) WHERE Id = @Id",
+                        new { Id = formRequestId, FieldValues = json, RecordKey = recordKey });
                 }
                 catch (Exception ex)
                 {
@@ -1498,6 +1500,7 @@ public class WorkflowExecutionService : IWorkflowExecutionService
 
             int successCount = 0;
             int failureCount = 0;
+            List<string>? primaryKeyColumns = null;
 
             foreach (var item in items)
             {
@@ -1517,26 +1520,26 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                     if (requestType != RequestType.Delete && bulkFormDefinition != null)
                         await _lookups.ValidateSubmissionAsync(bulkFormDefinition, fieldValues, requestType, originalValues);
 
+                    primaryKeyColumns ??= await _dataService.GetPrimaryKeyColumnsAsync(dbConnectionName, tableName, schema);
+
                     bool itemSuccess = false;
                     string processingResult = "";
 
                     switch (requestType)
                     {
                         case RequestType.Insert:
-                            itemSuccess = await _dataService.InsertDataAsync(
+                            var insertResult = await _dataService.InsertDataWithIdAsync(
                                 dbConnectionName,
                                 tableName,
                                 schema,
                                 fieldValues);
+                            itemSuccess = insertResult.Success;
+                            if (itemSuccess)
+                                RecordKeyBuilder.ApplyInsertedIdentity(fieldValues, insertResult.InsertedId, insertResult.IdentityColumn);
                             processingResult = itemSuccess ? "Successfully inserted into database" : "Failed to insert into database";
                             break;
 
                         case RequestType.Update:
-                            var primaryKeyColumns = await _dataService.GetPrimaryKeyColumnsAsync(
-                                dbConnectionName,
-                                tableName,
-                                schema);
-
                             if (primaryKeyColumns.Count == 0)
                                 throw new InvalidOperationException($"No primary key found for table {schema}.{tableName}");
 
@@ -1559,16 +1562,11 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                             break;
 
                         case RequestType.Delete:
-                            var deletePkColumns = await _dataService.GetPrimaryKeyColumnsAsync(
-                                dbConnectionName,
-                                tableName,
-                                schema);
-
-                            if (deletePkColumns.Count == 0)
+                            if (primaryKeyColumns.Count == 0)
                                 throw new InvalidOperationException($"No primary key found for table {schema}.{tableName}");
 
                             var deleteConditions = new Dictionary<string, object?>();
-                            foreach (var pkColumn in deletePkColumns)
+                            foreach (var pkColumn in primaryKeyColumns)
                             {
                                 if (originalValues.ContainsKey(pkColumn))
                                     deleteConditions[pkColumn] = originalValues[pkColumn];
@@ -1589,7 +1587,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                     const string updateItemSql = @"
                         UPDATE BulkFormRequestItems
                         SET Status = @Status, ProcessingResult = @ProcessingResult,
-                            FieldValues = CASE WHEN @UpdateFieldValues = 1 THEN @FieldValues ELSE FieldValues END
+                            FieldValues = CASE WHEN @UpdateFieldValues = 1 THEN @FieldValues ELSE FieldValues END,
+                            RecordKey = COALESCE(@RecordKey, RecordKey)
                         WHERE Id = @ItemId";
 
                     await connection.ExecuteAsync(updateItemSql, new
@@ -1598,7 +1597,8 @@ public class WorkflowExecutionService : IWorkflowExecutionService
                         Status = itemSuccess ? (int)RequestStatus.Applied : (int)RequestStatus.Failed,
                         ProcessingResult = processingResult,
                         UpdateFieldValues = itemSuccess ? 1 : 0,
-                        FieldValues = itemSuccess ? JsonSerializer.Serialize(fieldValues) : null
+                        FieldValues = itemSuccess ? JsonSerializer.Serialize(fieldValues) : null,
+                        RecordKey = itemSuccess ? RecordKeyBuilder.ForRequest(primaryKeyColumns, requestType, fieldValues, originalValues) : null
                     });
 
                     if (itemSuccess)

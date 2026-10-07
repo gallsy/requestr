@@ -3,6 +3,7 @@ using Requestr.Core.Interfaces;
 using Requestr.Core.Models;
 using Requestr.Core.Repositories;
 using Requestr.Core.Services.Workflow;
+using Requestr.Core.Utilities;
 using Requestr.Core.Validation;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
@@ -23,6 +24,7 @@ public class FormRequestCommandService : IFormRequestCommandService
     private readonly IInputValidationService _inputValidationService;
     private readonly IUniquenessValidationService _uniquenessValidationService;
     private readonly IFormRequestApplicationService _applicationService;
+    private readonly IDataService _dataService;
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<FormRequestCommandService> _logger;
     private readonly ILookupDataService _lookups;
@@ -37,6 +39,7 @@ public class FormRequestCommandService : IFormRequestCommandService
         IInputValidationService inputValidationService,
         IUniquenessValidationService uniquenessValidationService,
         IFormRequestApplicationService applicationService,
+        IDataService dataService,
         IDbConnectionFactory connectionFactory,
         ILogger<FormRequestCommandService> logger,
         ILookupDataService lookups)
@@ -50,6 +53,7 @@ public class FormRequestCommandService : IFormRequestCommandService
         _inputValidationService = inputValidationService;
         _uniquenessValidationService = uniquenessValidationService;
         _applicationService = applicationService;
+        _dataService = dataService;
         _connectionFactory = connectionFactory;
         _logger = logger;
         _lookups = lookups;
@@ -98,6 +102,10 @@ public class FormRequestCommandService : IFormRequestCommandService
             
             // Set initial status based on whether workflow exists
             formRequest.Status = workflowDefinition != null ? RequestStatus.Pending : RequestStatus.Approved;
+
+            formRequest.RecordKey = await _dataService.TryBuildRecordKeyAsync(formDefinition.DatabaseConnectionName,
+                formDefinition.TableName, formDefinition.Schema, formRequest.RequestType,
+                formRequest.FieldValues, formRequest.OriginalValues, _logger);
 
             // Create the form request
             var createdRequest = await _formRequestRepository.CreateAsync(formRequest, connection, transaction);

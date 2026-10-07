@@ -15,7 +15,7 @@ public static class FormRequestQueries
         COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName,
         fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) as ApprovedByName,
         fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-        fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
+        fr.RecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
         fd.Name as FormName, fd.Description as FormDescription,
         fd.DatabaseConnectionName as FormDatabaseConnectionName, fd.TableName as FormTableName, fd.[Schema] as FormSchema";
     
@@ -78,7 +78,7 @@ public static class FormRequestQueries
         SELECT fr.Id, fr.FormDefinitionId, fr.RequestType, fr.FieldValues as FieldValuesJson, 
                fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, fr.RequestedAt, 
                fr.ApprovedBy, fr.ApprovedAt, fr.RejectionReason,
-               fr.Comments, fr.AppliedRecordKey, fr.FailureMessage
+               fr.Comments, fr.RecordKey, fr.FailureMessage
         FROM FormRequests fr
         WHERE fr.FormDefinitionId = @FormDefinitionId
           AND fr.Status IN (@Pending, @Approved)
@@ -146,9 +146,9 @@ public static class FormRequestQueries
     /// Creates a new form request.
     /// </summary>
     public const string Create = @"
-        INSERT INTO FormRequests (FormDefinitionId, RequestType, FieldValues, OriginalValues, Status, RequestedBy, RequestedAt, Comments, AppliedRecordKey, FailureMessage, WorkflowInstanceId)
+        INSERT INTO FormRequests (FormDefinitionId, RequestType, FieldValues, OriginalValues, Status, RequestedBy, RequestedAt, Comments, RecordKey, FailureMessage, WorkflowInstanceId)
         OUTPUT INSERTED.Id
-        VALUES (@FormDefinitionId, @RequestType, @FieldValues, @OriginalValues, @Status, @RequestedBy, @RequestedAt, @Comments, @AppliedRecordKey, @FailureMessage, @WorkflowInstanceId)";
+        VALUES (@FormDefinitionId, @RequestType, @FieldValues, @OriginalValues, @Status, @RequestedBy, @RequestedAt, @Comments, @RecordKey, @FailureMessage, @WorkflowInstanceId)";
     
     /// <summary>
     /// Updates form request status.
@@ -179,7 +179,7 @@ public static class FormRequestQueries
     /// </summary>
     public const string UpdateToApplied = @"
         UPDATE FormRequests 
-        SET Status = @Status, AppliedRecordKey = @AppliedRecordKey, FailureMessage = NULL
+        SET Status = @Status, RecordKey = COALESCE(@RecordKey, RecordKey), FailureMessage = NULL
         WHERE Id = @Id";
     
     /// <summary>

@@ -67,6 +67,8 @@ builder.Services.AddScoped<Requestr.Web.Services.IToastNotificationService, Requ
 // Add user timezone service (scoped = per Blazor circuit)
 builder.Services.AddScoped<Requestr.Web.Services.IUserTimezoneService, Requestr.Web.Services.UserTimezoneService>();
 
+builder.Services.AddHostedService<Requestr.Web.Services.RecordKeyBackfillHostedService>();
+
 // Configure authorization
 builder.Services.AddAuthorization(options =>
 {

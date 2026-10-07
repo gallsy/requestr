@@ -1,0 +1,148 @@
+@* RecordHistory - every request that targeted one record, newest first *@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Requestr.Core.Interfaces
+@using Requestr.Core.Models
+@using Requestr.Web.Authorization
+@using Requestr.Web.Utilities
+@inject IRecordHistoryService HistoryService
+@inject IFormDefinitionService FormDefinitionService
+@inject IFormAuthorizationService FormAuthorizationService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject Requestr.Web.Services.IUserTimezoneService Tz
+@inject ILogger<RecordHistory> Logger
+
+@if (_isLoading)
+{
+    <LoadingSpinner Message="Loading history..." />
+}
+else if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <StandardAlert AlertType="danger" Message="@_errorMessage" />
+}
+else if (_entries.Count == 0)
+{
+    <EmptyState Title="No requests found" Description="No requests have been made for this record." />
+}
+else
+{
+    var outstanding = _entries.Count(entry => entry.IsOutstanding);
+    @if (outstanding > 0)
+    {
+        <div class="alert alert-warning py-2 small" role="status">
+            <i class="bi bi-hourglass-split me-1" aria-hidden="true"></i>
+            @outstanding @(outstanding == 1 ? "request has" : "requests have") not been applied to this record yet.
+        </div>
+    }
+    <ol class="list-unstyled mb-0" aria-label="Requests for this record">
+        @foreach (var entry in _entries)
+        {
+            var form = _forms.GetValueOrDefault(entry.FormDefinitionId);
+            <li class="card mb-3">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="badge @UiHelper.GetRequestTypeBadgeClass(entry.RequestType)">@UiHelper.GetRequestTypeLabel(entry.RequestType)</span>
+                        <span class="badge @UiHelper.GetStatusBadgeClass(entry.Status)">@entry.Status</span>
+                        <a class="ms-auto small" href="@GetLink(entry)">@GetLinkText(entry)</a>
+                    </div>
+                    <div class="small text-muted mt-1">
+                        @entry.RequestedByName &middot; @Tz.FormatDateTime(entry.RequestedAt)
+                        @if (entry.FormDefinitionId != Form.Id)
+                        {
+                            <span> &middot; via @entry.FormName</span>
+                        }
+                    </div>
+                    @if (entry.Changes.Count > 0)
+                    {
+                        <div class="mt-2">
+                            @{ var changes = OrderChanges(entry.Changes, form).ToList(); }
+                            @foreach (var change in changes)
+                            {
+                                var field = form?.Fields.FirstOrDefault(f => string.Equals(f.Name, change.FieldName, StringComparison.OrdinalIgnoreCase));
+                                <FieldValueDisplay FieldName="@change.FieldName"
+                                                   DisplayName="@(field?.DisplayName ?? change.FieldName)"
+                                                   NewValue="@change.NewValue"
+                                                   OriginalValue="@change.OldValue"
+                                                   ShowOriginal="@(entry.RequestType == RequestType.Update)"
+                                                   ShowBorder="@(!ReferenceEquals(change, changes[^1]))"
+                                                   RequestType="@entry.RequestType"
+                                                   ControlType="@(field?.ControlType)"
+                                                   DropdownOptions="@(field?.DropdownOptions)"
+                                                   IsLookup="@(field?.OptionSource == FieldOptionSource.DatabaseLookup)"
+                                                   FormId="@entry.FormDefinitionId"
+                                                   RequestId="@entry.FormRequestId"
+                                                   BulkRequestId="@entry.BulkFormRequestId" />
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="small text-muted mt-2 mb-0">
+                            @(entry.RequestType == RequestType.Delete ? "Deletes this record." : "No field changes.")
+                        </p>
+                    }
+                </div>
+            </li>
+        }
+    </ol>
+}
+
+@code {
+    [Parameter, EditorRequired] public FormDefinition Form { get; set; } = default!;
+    [Parameter, EditorRequired] public string RecordKey { get; set; } = string.Empty;
+
+    private bool _isLoading = true;
+    private string? _errorMessage;
+    private string? _loadedKey;
+    private List<RecordHistoryEntry> _entries = new();
+    private readonly Dictionary<int, FormDefinition?> _forms = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedKey == RecordKey)
+            return;
+        var key = _loadedKey = RecordKey;
+        _isLoading = true;
+        _errorMessage = null;
+        _entries = new();
+        try
+        {
+            var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+            var entries = await HistoryService.GetHistoryAsync(Form, key);
+            var visibleForms = new HashSet<int>();
+            foreach (var formId in entries.Select(entry => entry.FormDefinitionId).Distinct())
+            {
+                if (!await FormAuthorizationService.UserHasPermissionAsync(user, formId, FormPermissionType.ViewRecordHistory))
+                    continue;
+                visibleForms.Add(formId);
+                if (!_forms.ContainsKey(formId))
+                    _forms[formId] = formId == Form.Id ? Form : await FormDefinitionService.GetFormDefinitionAsync(formId);
+            }
+            if (key == _loadedKey)
+                _entries = entries.Where(entry => visibleForms.Contains(entry.FormDefinitionId)).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading record history for form {FormId}", Form.Id);
+            _errorMessage = "The history for this record could not be loaded. Please try again.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static IEnumerable<RecordFieldChange> OrderChanges(IEnumerable<RecordFieldChange> changes, FormDefinition? form) =>
+        changes.OrderBy(change => form?.Fields.FindIndex(f => string.Equals(f.Name, change.FieldName, StringComparison.OrdinalIgnoreCase)) switch
+        {
+            null or -1 => int.MaxValue,
+            var index => index
+        });
+
+    private static string GetLink(RecordHistoryEntry entry) => entry.BulkFormRequestId.HasValue
+        ? $"/bulk-requests/{entry.BulkFormRequestId}"
+        : $"/requests/{entry.FormRequestId}";
+
+    private static string GetLinkText(RecordHistoryEntry entry) => entry.BulkFormRequestId.HasValue
+        ? $"Bulk request #{entry.BulkFormRequestId}, row {entry.BulkRowNumber}"
+        : $"Request #{entry.FormRequestId}";
+}

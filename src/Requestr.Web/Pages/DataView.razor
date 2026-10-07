@@ -13,6 +13,7 @@
 @using Microsoft.JSInterop
 @using Requestr.Web.Authorization
 @using Requestr.Web.Utilities
+@using Requestr.Core.Utilities
 @inject IDataViewService DataViewService
 @inject IFormDefinitionService FormDefinitionService
 @inject IFormAuthorizationService FormAuthorizationService
@@ -151,6 +152,13 @@ else
                                                                 <i class="bi bi-trash" aria-hidden="true"></i>
                                                             </button>
                                                         }
+                                                        @if (_canViewRecordHistory && RecordKeyBuilder.Build(_dataResult.PrimaryKeyColumns, record) is { } recordKey)
+                                                        {
+                                                            <button class="btn btn-outline-secondary" title="History" aria-label="View record history"
+                                                                    @onclick="() => ShowHistory(recordKey)">
+                                                                <i class="bi bi-clock-history" aria-hidden="true"></i>
+                                                            </button>
+                                                        }
                                                     </div>
                                                 </td>
                                                 @foreach (var column in _dataResult.Columns)
@@ -178,6 +186,16 @@ else
                         }
         </div>
 }
+
+<Offcanvas @ref="historyOffcanvas" Title="Record history" Size="OffcanvasSize.Large" OnHidden="OnHistoryHidden">
+    <BodyTemplate>
+        @if (_formDefinition != null && _historyRecordKey != null)
+        {
+            <p class="text-muted mb-3">@RecordKeyBuilder.Describe(_historyRecordKey)</p>
+            <RecordHistory Form="@_formDefinition" RecordKey="@_historyRecordKey" />
+        }
+    </BodyTemplate>
+</Offcanvas>
 
 <!-- Bulk Update Modal -->
 <Modal @ref="bulkUpdateModal" Title="Bulk Update Records" Size="ModalSize.Large">
@@ -535,7 +553,11 @@ else
     private bool _canInsertRequests = false;
     private bool _canUpdateRequests = false;
     private bool _canDeleteRequests = false;
+    private bool _canViewRecordHistory = false;
     private List<string> _userRoles = new();
+
+    private Offcanvas historyOffcanvas = default!;
+    private string? _historyRecordKey;
     
     // Bulk operations - Modal references
     private Modal bulkUpdateModal = default!;
@@ -668,6 +690,7 @@ else
             _canInsertRequests = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.CreateRequest);
             _canUpdateRequests = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.UpdateRequest);
             _canDeleteRequests = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.DeleteRequest);
+            _canViewRecordHistory = await FormAuthorizationService.UserHasPermissionAsync(user, FormDefinitionId, FormPermissionType.ViewRecordHistory);
             
             Logger.LogInformation("Permission check results for form {FormDefinitionId}: ViewData={ViewData}, BulkActions={BulkActions}, BulkUploadCsv={BulkUploadCsv}, Update={Update}, Delete={Delete}", 
                 FormDefinitionId, _canAccessDataView, _canExecuteBulkActions, _canUploadCsv, _canUpdateRequests, _canDeleteRequests);
@@ -1202,6 +1225,14 @@ else
     }
 
 
+
+    private async Task ShowHistory(string recordKey)
+    {
+        _historyRecordKey = recordKey;
+        await historyOffcanvas.ShowAsync();
+    }
+
+    private void OnHistoryHidden() => _historyRecordKey = null;
 
     private void GoToEdit(string recordId)
     {

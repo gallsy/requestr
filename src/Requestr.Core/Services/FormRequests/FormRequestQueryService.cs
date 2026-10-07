@@ -107,7 +107,7 @@ public class FormRequestQueryService : IFormRequestQueryService
                     COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName,
                     fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) as ApprovedByName,
                     fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                    fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
+                    fr.RecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
                     fd.Name as FormName, fd.Description as FormDescription, fd.ApproverRoles
                 FROM FormRequests fr
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
@@ -151,7 +151,7 @@ public class FormRequestQueryService : IFormRequestQueryService
                     COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName, 
                     fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) as ApprovedByName, 
                     fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                    fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
+                    fr.RecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
                     fd.Name as FormName, fd.Description as FormDescription
                 FROM FormRequests fr
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
@@ -249,7 +249,7 @@ public class FormRequestQueryService : IFormRequestQueryService
                     COALESCE(uReq.DisplayName, fr.RequestedBy) as RequestedByName, 
                     fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) as ApprovedByName, 
                     fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                    fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
+                    fr.RecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
                     fd.Name as FormName, fd.Description as FormDescription
                 {baseSql}
                 ORDER BY {orderBy}
@@ -316,7 +316,7 @@ public class FormRequestQueryService : IFormRequestQueryService
                     COALESCE(uReq.DisplayName, fr.RequestedBy) AS RequestedByName, 
                     fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) AS ApprovedByName, 
                     fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                    fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
+                    fr.RecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
                     fd.Name as FormName, fd.Description as FormDescription
                 FROM FormRequests fr
                 INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
@@ -391,7 +391,7 @@ public class FormRequestQueryService : IFormRequestQueryService
                         fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, 
                         COALESCE(uReq.DisplayName, fr.RequestedBy) AS RequestedByName, 
                         fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) AS ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                        fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
+                        fr.RecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
                         fd.Name as FormName, fd.Description as FormDescription, fd.ApproverRoles
                     FROM FormRequests fr
                     INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
@@ -406,7 +406,7 @@ public class FormRequestQueryService : IFormRequestQueryService
                            fr.OriginalValues as OriginalValuesJson, fr.Status, fr.RequestedBy, 
                            COALESCE(uReq.DisplayName, fr.RequestedBy) AS RequestedByName, 
                            fr.RequestedAt, fr.ApprovedBy, COALESCE(uApp.DisplayName, fr.ApprovedBy) AS ApprovedByName, fr.ApprovedAt, fr.RejectionReason, fr.Comments,
-                           fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
+                           fr.RecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId,
                            fd.Name as FormName, fd.Description as FormDescription, fd.ApproverRoles
                     FROM FormRequests fr
                     INNER JOIN FormDefinitions fd ON fr.FormDefinitionId = fd.Id
@@ -482,7 +482,7 @@ public class FormRequestQueryService : IFormRequestQueryService
                        fr.RequestedAt, fr.ApprovedBy, 
                        COALESCE(uApp.DisplayName, fr.ApprovedBy) AS ApprovedByName,
                        fr.ApprovedAt, fr.RejectionReason,
-                       fr.Comments, fr.AppliedRecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId
+                       fr.Comments, fr.RecordKey, fr.FailureMessage, fr.WorkflowInstanceId, fr.BulkFormRequestId
                 FROM FormRequests fr
                 LEFT JOIN Users uReq ON TRY_CONVERT(uniqueidentifier, fr.RequestedBy) = uReq.UserObjectId
                 LEFT JOIN Users uApp ON TRY_CONVERT(uniqueidentifier, fr.ApprovedBy) = uApp.UserObjectId
@@ -515,7 +515,7 @@ public class FormRequestQueryService : IFormRequestQueryService
                     ApprovedAt = row.ApprovedAt as DateTime?,
                     RejectionReason = row.RejectionReason as string,
                     Comments = row.Comments as string,
-                    AppliedRecordKey = row.AppliedRecordKey as string,
+                    RecordKey = row.RecordKey as string,
                     FailureMessage = row.FailureMessage as string,
                     WorkflowInstanceId = row.WorkflowInstanceId as int?,
                     BulkFormRequestId = row.BulkFormRequestId as int?
@@ -566,7 +566,7 @@ public class FormRequestQueryService : IFormRequestQueryService
             ApprovedAt = (DateTime?)row.ApprovedAt,
             RejectionReason = (string?)row.RejectionReason,
             Comments = (string?)row.Comments,
-            AppliedRecordKey = (string?)row.AppliedRecordKey,
+            RecordKey = (string?)row.RecordKey,
             FailureMessage = (string?)row.FailureMessage,
             WorkflowInstanceId = (int?)row.WorkflowInstanceId,
             BulkFormRequestId = (int?)row.BulkFormRequestId,
