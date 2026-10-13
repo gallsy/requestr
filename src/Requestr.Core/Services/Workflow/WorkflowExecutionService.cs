@@ -882,6 +882,39 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             FormRequestId = formRequestId
         }, transaction);
 
+        // Bulk requests run their workflow through a placeholder FormRequest, so close the bulk request and its rows too.
+        const string rejectBulkRequestSql = @"
+            DECLARE @Rejected TABLE (Id int);
+            DECLARE @Now datetime2 = SYSUTCDATETIME();
+
+            UPDATE b
+            SET Status = @RejectedStatus, ApprovedBy = @RejectedBy, ApprovedAt = @Now, RejectionReason = @RejectionReason,
+                UpdatedBy = @RejectedBy, UpdatedAt = @Now
+            OUTPUT INSERTED.Id INTO @Rejected
+            FROM BulkFormRequests b
+            INNER JOIN FormRequests fr ON fr.BulkFormRequestId = b.Id
+            WHERE fr.Id = @FormRequestId AND b.Status = @PendingStatus;
+
+            UPDATE i SET Status = @RejectedStatus
+            FROM BulkFormRequestItems i
+            INNER JOIN @Rejected r ON r.Id = i.BulkFormRequestId
+            WHERE i.Status = @PendingStatus;
+
+            INSERT INTO BulkFormRequestHistory (BulkFormRequestId, ChangeType, ChangedBy, ChangedByName, ChangedAt, Comments)
+            SELECT r.Id, @RejectedChange, @RejectedBy, COALESCE(u.DisplayName, @RejectedBy), @Now, @RejectionReason
+            FROM @Rejected r
+            LEFT JOIN Users u ON u.UserObjectId = TRY_CONVERT(uniqueidentifier, @RejectedBy);";
+
+        await connection.ExecuteAsync(rejectBulkRequestSql, new
+        {
+            FormRequestId = formRequestId,
+            RejectedBy = rejectedBy,
+            RejectionReason = rejectionReason ?? "Request rejected during workflow approval",
+            RejectedStatus = (int)RequestStatus.Rejected,
+            PendingStatus = (int)RequestStatus.Pending,
+            RejectedChange = (int)FormRequestChangeType.Rejected
+        }, transaction);
+
         // Cancel any remaining active step instances (parallel branches)
         await CancelRemainingStepsAsync(connection, transaction, workflowInstanceId);
 
@@ -1506,8 +1539,9 @@ public class WorkflowExecutionService : IWorkflowExecutionService
             {
                 try
                 {
-                    var fieldValuesJson = item.FieldValues?.ToString() ?? "{}";
-                    var originalValuesJson = item.OriginalValues?.ToString() ?? "{}";
+                    // Explicit string types stop `dynamic` flowing into fieldValues and the tuple result below.
+                    string fieldValuesJson = item.FieldValues?.ToString() ?? "{}";
+                    string originalValuesJson = item.OriginalValues?.ToString() ?? "{}";
 
                     var fieldValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(fieldValuesJson) ?? new Dictionary<string, object?>();
                     var originalValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(originalValuesJson) ?? new Dictionary<string, object?>();

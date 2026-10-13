@@ -1289,8 +1289,9 @@ public class BulkFormRequestService : IBulkFormRequestService
             {
                 try
                 {
-                    var fieldValuesJson = item.FieldValues?.ToString() ?? "{}";
-                    var originalValuesJson = item.OriginalValues?.ToString() ?? "{}";
+                    // Explicit string types stop `dynamic` flowing into fieldValues and the tuple result below.
+                    string fieldValuesJson = item.FieldValues?.ToString() ?? "{}";
+                    string originalValuesJson = item.OriginalValues?.ToString() ?? "{}";
 
                     var fieldValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(fieldValuesJson) ?? new Dictionary<string, object?>();
                     var originalValues = JsonSerializer.Deserialize<Dictionary<string, object?>>(originalValuesJson) ?? new Dictionary<string, object?>();
